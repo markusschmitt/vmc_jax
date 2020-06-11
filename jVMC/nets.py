@@ -14,7 +14,7 @@ class CpxRBM(nn.Module):
         layer = nn.Dense.shared(features=numHidden, name='rbm_layer', bias=bias, dtype=np.complex64,
                                 kernel_init=cplx_init, bias_init=cplx_init)
 
-        return jnp.sum(jnp.log(jnp.cosh(layer(s))), axis=0)
+        return jnp.sum(jnp.log(jnp.cosh(layer(s))))
 
 class RBM(nn.Module):
     def apply(self, s, L=4, numHidden=2, bias=False):

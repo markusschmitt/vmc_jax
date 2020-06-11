@@ -7,8 +7,8 @@ from jax import random
 from jax.tree_util import tree_flatten, tree_unflatten
 import numpy as np
 
-from nets import CpxRBM
-from nets import RBM
+from jVMC.nets import CpxRBM
+from jVMC.nets import RBM
 
 class NQS:
     def __init__(self, logModNet, phaseNet=None):
@@ -39,11 +39,11 @@ class NQS:
     def __call__(self, s):
 
         if self.realNets:
-            logMod = jit(self.realNet1)(s)
-            phase = jit(self.realNet2)(s)
+            logMod = jit(vmap(self._eval,in_axes=(None,0)))(self.realNet1,s)
+            phase = jit(vmap(self._eval,in_axes=(None,0)))(self.realNet2,s)
             return logMod + 1.j * phase
         else:
-            return jit(self.cpxNet)(s)
+            return jit(vmap(self._eval,in_axes=(None,0)))(self.cpxNet,s)
 
     # **  end def __call__
 
@@ -158,12 +158,39 @@ class NQS:
             # Update model parameters
             self.cpxNet = self.cpxNet.replace(params=newParams)
                 
-
     # **  end def update_parameters
+
+    
+    def set_parameters(self, P):
+
+        if self.realNets: # FOR REAL NETS
+
+            print("set params not implemented")
+
+        else:             # FOR COMPLEX NET
+
+            self.cpxNet = self.cpxNet.replace(params=P)
+
+    # **  end def set_parameters
+
+    
+    def get_parameters(self):
+
+        if self.realNets: # FOR REAL NETS
+
+            print("get params not implemented")
+
+        else:             # FOR COMPLEX NET
+
+            return self.cpxNet.params
+
+    # **  end def set_parameters
 
 
     def _eval_real(self, net, s):
         return jnp.real(net(s))
+    def _eval(self, net, s):
+        return net(s)
 
 def eval_net(model,s):
     return jnp.real(model(s))
