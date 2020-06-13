@@ -33,6 +33,11 @@ class NQS:
             self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.realNet2.params)[0]]))
             self.numParameters = self.numParameters1 + self.numParameters2
 
+        # Check whether wave function can generate samples
+        self._isGenerator = False
+        if callable(getattr(logModNet, 'sample', None)):
+            self.isGenerator = True
+
     # **  end def __init__
 
 
@@ -44,6 +49,16 @@ class NQS:
             return logMod + 1.j * phase
         else:
             return jit(vmap(self._eval,in_axes=(None,0)))(self.cpxNet,s)
+
+    # **  end def __call__
+    
+
+    def real_coefficients(self, s):
+
+        if self.realNets:
+            return jit(vmap(self._eval,in_axes=(None,0)))(self.realNet1,s)
+        else:
+            return jit(vmap(self._eval_real,in_axes=(None,0)))(self.cpxNet,s)
 
     # **  end def __call__
 
@@ -187,10 +202,17 @@ class NQS:
     # **  end def set_parameters
 
 
+    @property
+    def is_generator(self):
+        return self._isGenerator
+
     def _eval_real(self, net, s):
         return jnp.real(net(s))
     def _eval(self, net, s):
         return net(s)
+
+# **  end class NQS
+
 
 def eval_net(model,s):
     return jnp.real(model(s))
