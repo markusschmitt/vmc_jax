@@ -1,3 +1,7 @@
+import sys
+# Find jVMC package
+sys.path.append(sys.path[0]+"/..")
+
 import flax
 from flax import nn
 import jax
