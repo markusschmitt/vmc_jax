@@ -8,10 +8,10 @@ def Id(idx=0,lDim=2):
     return {'idx': idx, 'map': jnp.array([j for j in range(lDim)],dtype=np.int32), 'matEls':jnp.array([1. for j in range(lDim)],dtype=np.float64)}
 
 def Sx(idx):
-    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([0.5,0.5],dtype=np.float64)}
+    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,1.0],dtype=np.float64)}
 
 def Sz(idx):
-    return {'idx': idx, 'map': jnp.array([0,1],dtype=np.int32), 'matEls':jnp.array([0.5,0.5],dtype=np.float64)}
+    return {'idx': idx, 'map': jnp.array([0,1],dtype=np.int32), 'matEls':jnp.array([-1.0,1.0],dtype=np.float64)}
 
 def Sp(idx):
     return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,0.0],dtype=np.float64)}
@@ -101,7 +101,6 @@ class Operator:
         self.logPsiSP = jnp.zeros((len(self.ops),self.numInStates),dtype=np.complex64)
         self.logPsiSP = jax.ops.index_update(self.logPsiSP, jax.ops.index[self.nonzero], logPsiSP)
 
-        #return jnp.sum(self.matEl * jnp.exp(self.logPsiSP-logPsiS), axis=0)
         return get_O_loc_fun(self.matEl, logPsiS, self.logPsiSP)
 
 if __name__ == '__main__':

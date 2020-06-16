@@ -9,10 +9,13 @@ def cplx_init(rng, shape):
     unif=jax.nn.initializers.uniform()
     return unif(rng1,shape)+1.j*unif(rng2,shape)
 
+def cplx_zeros(rng, shape):
+    return jnp.zeros(shape, dtype=np.complex64)
+
 class CpxRBM(nn.Module):
     def apply(self, s, L=4, numHidden=2, bias=False):
         layer = nn.Dense.shared(features=numHidden, name='rbm_layer', bias=bias, dtype=np.complex64,
-                                kernel_init=cplx_init, bias_init=cplx_init)
+                                kernel_init=cplx_init, bias_init=cplx_zeros)
 
         return jnp.sum(jnp.log(jnp.cosh(layer(s))))
 

@@ -51,7 +51,7 @@ class Sampler:
             configs = jax.ops.index_update(configs, jax.ops.index[numSamples-numMissing:numSamples-numMissing+numAdd], self.states[:numAdd])
             numMissing -= numAdd
 
-        return configs
+        return configs, net(configs)
 
     
     def sweep(self, net, numSteps):
@@ -115,7 +115,7 @@ if __name__ == "__main__":
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
     rbmModel = nn.Model(rbm,params)
     psiC = NQS(rbmModel)
-    configs = sampler.sample(psiC, 10)
+    configs, _ = sampler.sample(psiC, 10)
 
     print(configs)
     print(sampler.acceptance_ratio())
