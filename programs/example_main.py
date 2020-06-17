@@ -14,6 +14,7 @@ from jVMC.vqs import NQS
 import jVMC.operator as op
 import jVMC.sampler as sampler
 import jVMC.tdvp as tdvp
+import jVMC.solver as solver
 
 L=4
 J=-1.0
@@ -33,7 +34,11 @@ for l in range(L):
     hamiltonian.add( op.scal_opstr( J, ( op.Sz(l), op.Sz((l+1)%L) ) ) )
     hamiltonian.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
 
+# Set up sampler
 mcSampler = sampler.Sampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=5)
+
+# Set up solver
+eigenSolver = solver.EigenSolver()
 
 # Get sample
 sampleConfigs, sampleLogPsi =  mcSampler.sample(psi, numSamples)
@@ -48,4 +53,6 @@ print("<E> = ", jnp.real(jnp.mean(Eloc)))
 # Evaluate gradients
 sampleGradients = psi.gradients(sampleConfigs)
 
-tdvp.get_tdvp_equation(Eloc, sampleGradients)
+dw = tdvp.solve(Eloc, sampleGradients, eigenSolver)
+
+print(dw)
