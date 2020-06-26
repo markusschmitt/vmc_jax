@@ -64,7 +64,7 @@ class NQS:
         else:
             return jit(vmap(self._eval_real,in_axes=(None,0)))(self.cpxNet,s)
 
-    # **  end def __call__
+    # **  end def real_coefficients
 
 
     def gradients(self, s):
@@ -123,6 +123,7 @@ class NQS:
 
     # **  end def gradients
 
+
     def update_parameters(self, deltaP):
 
         if self.realNets: # FOR REAL NETS
@@ -137,9 +138,6 @@ class NQS:
             for s in self.paramShapes2:
                 deltaPTreeShape2.append(deltaP[start:start+s[0]].reshape(s[1]))
                 start += s[0]
-
-            print(deltaPTreeShape1)
-            print(deltaPTreeShape2)
             
             # Compute new parameters
             newParams1 = jax.tree_util.tree_multimap( 
@@ -157,21 +155,12 @@ class NQS:
             self.realNet2 = self.realNet2.replace(params=newParams2)
 
         else:             # FOR COMPLEX NET
-
-            # Get complex-valued parameter update vector
-            deltaPCpx = deltaP[:self.numParameters] + 1.j * deltaP[self.numParameters:]
-            
-            # Reshape parameter update according to net tree structure
-            deltaPTreeShape = []
-            start = 0
-            for s in self.paramShapes1:
-                deltaPTreeShape.append(deltaPCpx[start:start+s[0]].reshape(s[1]))
-                start += s[0]
             
             # Compute new parameters
             newParams = jax.tree_util.tree_multimap( 
                             jax.lax.add, self.cpxNet.params, 
-                            tree_unflatten( self.netTreeDef1, deltaPTreeShape ) 
+                            self.param_unflatten_cpx(deltaP)
+                            #tree_unflatten( self.netTreeDef1, deltaPTreeShape ) 
                         )
 
             # Update model parameters
@@ -188,9 +177,28 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            self.cpxNet = self.cpxNet.replace(params=P)
+            # Update model parameters
+            self.cpxNet = self.cpxNet.replace(
+                            params = self.param_unflatten_cpx(P)
+                          )
 
     # **  end def set_parameters
+
+
+    def param_unflatten_cpx(self, P):
+            
+        # Get complex-valued parameter update vector
+        PCpx = P[:self.numParameters] + 1.j * P[self.numParameters:]
+        
+        # Reshape parameter update according to net tree structure
+        PTreeShape = []
+        start = 0
+        for s in self.paramShapes1:
+            PTreeShape.append(PCpx[start:start+s[0]].reshape(s[1]))
+            start += s[0]
+        
+        # Return unflattened parameters
+        return tree_unflatten( self.netTreeDef1, PTreeShape ) 
 
     
     def get_parameters(self):
@@ -201,7 +209,19 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            return self.cpxNet.params
+            paramOut = jnp.empty(2*self.numParameters, dtype=np.float32)
+
+            parameters, _ = tree_flatten( self.cpxNet.params )
+            
+            # Flatten parameters to give a single vector
+            start = 0
+            for p in parameters:
+                numParams = p.size
+                paramOut = jax.ops.index_update(paramOut, jax.ops.index[start:start+numParams], jnp.real(p.reshape(-1)))
+                paramOut = jax.ops.index_update(paramOut, jax.ops.index[self.numParameters+start:self.numParameters+start+numParams], jnp.imag(p.reshape(-1)))
+                start += numParams
+
+            return paramOut
 
     # **  end def set_parameters
 

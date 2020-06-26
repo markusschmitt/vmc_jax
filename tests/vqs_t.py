@@ -27,6 +27,7 @@ class TestGradients(unittest.TestCase):
         psi0 = psiC(s)
         G = psiC.gradients(s)
         delta=1e-5
+        params = psiC.get_parameters()
         for j in range(G.shape[1]):
             u = jax.ops.index_update(jnp.zeros(G.shape[1], dtype=np.float32), jax.ops.index[j], 1)
             psiC.update_parameters(delta * u)

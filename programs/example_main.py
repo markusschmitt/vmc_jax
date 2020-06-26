@@ -2,6 +2,7 @@ import sys
 # Find jVMC package
 sys.path.append(sys.path[0]+"/..")
 
+import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -9,6 +10,8 @@ import jax.random as random
 import flax.nn as nn
 import jax.numpy as jnp
 
+import jVMC
+import jVMC.stepper as jVMCstepper
 import jVMC.nets as nets
 from jVMC.vqs import NQS
 import jVMC.operator as op
@@ -20,7 +23,7 @@ L=4
 J=-1.0
 hx=-0.3
 
-numSamples=10
+numSamples=30
 
 # Set up variational wave function
 rbm = nets.CpxRBM.partial(L=L,numHidden=2,bias=False)
@@ -40,19 +43,10 @@ mcSampler = sampler.Sampler(random.PRNGKey(123), sampler.propose_spin_flip, [L],
 # Set up solver
 eigenSolver = solver.EigenSolver()
 
-# Get sample
-sampleConfigs, sampleLogPsi =  mcSampler.sample(psi, numSamples)
+tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
 
-# Evaluate local energy
-sampleOffdConfigs, matEls = hamiltonian.get_s_primes(sampleConfigs)
-sampleLogPsiOffd = psi(sampleOffdConfigs)
-Eloc = hamiltonian.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
+stepper = jVMCstepper.Euler()
 
-print("<E> = ", jnp.real(jnp.mean(Eloc)))
-
-# Evaluate gradients
-sampleGradients = psi.gradients(sampleConfigs)
-
-dw = tdvp.solve(Eloc, sampleGradients, eigenSolver)
-
-print(dw)
+stepperArgs = {'hamiltonian': hamiltonian, 'psi': psi, 'numSamples': numSamples}
+dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), stepperArgs)
+psi.update_parameters(dp)

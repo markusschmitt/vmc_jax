@@ -2,6 +2,22 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+class Euler:
+
+    def __init__(self, timeStep=1e-3):
+
+        self.dt = timeStep
+
+
+    def step(self, t, f, yInitial, rhsArgs=None):
+
+        dy = f(yInitial, t, rhsArgs)
+
+        return yInitial + self.dt * dy, self.dt
+
+# end class Euler
+
+
 class AdaptiveHeun:
 
     def __init__(self, timeStep=1e-3, tol=1e-8, maxStep=1.):
