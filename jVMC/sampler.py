@@ -4,6 +4,8 @@ import jax.random as random
 import numpy as np
 from jax import vmap, jit
 
+import time
+
 def propose_spin_flip(key, s, info):
     idx = random.randint(key,(1,),0,s.size)[0]
     idx = jnp.unravel_index(idx, s.shape)
@@ -38,17 +40,23 @@ class Sampler:
 
         # Initialize sampling stuff
         self._mc_init(net)
+        t0=time.perf_counter()
         # Thermalize
         self.sweep(net, self.thermalizationSteps)
+        print("Thermalization took ", time.perf_counter()-t0)
 
         numMissing = numSamples
         numAdd = min(self.numChains, numMissing)
         configs = jax.ops.index_update(configs, jax.ops.index[numSamples-numMissing:numSamples-numMissing+numAdd], self.states[:numAdd])
         numMissing -= numAdd
         while numMissing > 0:
+            t0=time.perf_counter()
             self.sweep(net, self.sweepSteps) 
+            print("Sweep took ", time.perf_counter()-t0)
             numAdd = min(self.numChains, numMissing)
+            t0=time.perf_counter()
             configs = jax.ops.index_update(configs, jax.ops.index[numSamples-numMissing:numSamples-numMissing+numAdd], self.states[:numAdd])
+            print("Saving configs took ", time.perf_counter()-t0)
             numMissing -= numAdd
 
         return configs, net(configs)

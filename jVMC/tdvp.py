@@ -50,21 +50,31 @@ class TDVP:
         EOdata = jnp.matmul(EOdata, jnp.conj(self.V))
         self.rhoVar = jnp.var(EOdata, axis=0)
 
-        print(self.rhoVar)
+        self.snr = jnp.sqrt(EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.))
+
 
     def solve(self, Eloc, gradients):
 
+        # Get TDVP equation from MC data
         S, F, Fdata = self.get_tdvp_equation(Eloc, gradients)
 
+        # Transform TDVP equation to eigenbasis
         self.transform_to_eigenbasis(S,F,Fdata)
 
-        return jnp.real( jnp.dot( self.V, (1./self.ev * self.VtF) ) )
+        # Discard eigenvalues below numerical precision
+        self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1./self.ev, 0.)
+
+        # Construct a soft cutoff based on the SNR
+        regularizer = 1. / (1. + (self.snrTol / self.snr)**6 )
+
+        print(jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ))
+        return jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
 
 
     def __call__(self, netParameters, t, rhsArgs):
         
         # Get sample
-        sampleConfigs, sampleLogPsi =  self.sampler.sample(rhsArgs['psi'], rhsArgs['numSamples'])
+        sampleConfigs, sampleLogPsi =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
 
         # Evaluate local energy
         sampleOffdConfigs, matEls = rhsArgs['hamiltonian'].get_s_primes(sampleConfigs)

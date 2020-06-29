@@ -11,6 +11,7 @@ from jax import random
 from jax.tree_util import tree_flatten, tree_unflatten
 import numpy as np
 
+import jVMC.global_defs as global_defs
 from jVMC.nets import CpxRBM
 from jVMC.nets import RBM
 
@@ -71,7 +72,7 @@ class NQS:
 
         if self.realNets: # FOR REAL NETS
             
-            gradOut = jnp.empty((s.shape[0],self.numParameters), dtype=np.complex64)
+            gradOut = jnp.empty((s.shape[0],self.numParameters), dtype=global_defs.tCpx)
 
             # First net
             gradients, self.gradientTreeDef1 = \
@@ -102,7 +103,7 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            gradOut = jnp.empty((s.shape[0],2*self.numParameters), dtype=np.complex64)
+            gradOut = jnp.empty((s.shape[0],2*self.numParameters), dtype=global_defs.tCpx)
 
             gradients, self.gradientTreeDef1 = \
                     tree_flatten( 
@@ -209,7 +210,7 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            paramOut = jnp.empty(2*self.numParameters, dtype=np.float32)
+            paramOut = jnp.empty(2*self.numParameters, dtype=global_defs.tReal)
 
             parameters, _ = tree_flatten( self.cpxNet.params )
             
