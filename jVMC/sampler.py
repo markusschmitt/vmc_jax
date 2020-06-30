@@ -4,6 +4,8 @@ import jax.random as random
 import numpy as np
 from jax import vmap, jit
 
+from functools import partial
+
 import time
 
 def propose_spin_flip(key, s, info):
@@ -40,33 +42,67 @@ class Sampler:
 
         # Initialize sampling stuff
         self._mc_init(net)
-        t0=time.perf_counter()
         # Thermalize
         self.sweep(net, self.thermalizationSteps)
-        print("Thermalization took ", time.perf_counter()-t0)
 
         numMissing = numSamples
         numAdd = min(self.numChains, numMissing)
         configs = jax.ops.index_update(configs, jax.ops.index[numSamples-numMissing:numSamples-numMissing+numAdd], self.states[:numAdd])
         numMissing -= numAdd
         while numMissing > 0:
-            t0=time.perf_counter()
             self.sweep(net, self.sweepSteps) 
-            print("Sweep took ", time.perf_counter()-t0)
             numAdd = min(self.numChains, numMissing)
-            t0=time.perf_counter()
             configs = jax.ops.index_update(configs, jax.ops.index[numSamples-numMissing:numSamples-numMissing+numAdd], self.states[:numAdd])
-            print("Saving configs took ", time.perf_counter()-t0)
             numMissing -= numAdd
 
         return configs, net(configs)
 
-    
-    def sweep(self, net, numSteps):
-        
-        for n in range(numSteps):
-            self._mc_update(net)
 
+    def sweep(self, net, numSteps):
+
+        self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted =\
+            self._sweep(self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted,
+                        net, numSteps, self.updateProposer, self.updateProposerArg)
+
+
+    @partial(jax.jit, static_argnums=(0,8))
+    def _sweep(self, states, logPsiSq, key, numProposed, numAccepted, net, numSteps, updateProposer, updateProposerArg):
+        
+        def perform_mc_update(i, carry):
+            
+            # Generate update proposals
+            newKeys = random.split(carry[2],carry[0].shape[0]+1)
+            carryKey = newKeys[-1]
+            newStates = jit(vmap(updateProposer, in_axes=(0, 0, None)))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
+
+            # Compute acceptance probabilities
+            newLogPsiSq = net.real_coefficients(newStates)
+            P = jnp.exp( newLogPsiSq - carry[1] )
+
+            # Roll dice
+            newKey, carryKey = random.split(carryKey,)
+            accepted = random.bernoulli(newKey, P).reshape((-1,))
+
+            # Bookkeeping
+            numProposed = carry[3] + len(newStates)
+            numAccepted = carry[4] + jnp.sum(accepted)
+
+
+            # Perform accepted updates
+            def update(carry, x):
+                newState,_ = jax.lax.cond(x[0], lambda x: (x[1],x[0]), lambda x: (x[0],x[1]), (x[1],x[2]))
+                return carry, newState
+            _, carryStates = jax.lax.scan(update, [None], (accepted, carry[0], newStates))
+
+            carryLogPsiSq = jnp.where(accepted==True, newLogPsiSq, carry[1])
+
+            return (carryStates, carryLogPsiSq, carryKey, numProposed, numAccepted)
+
+        tmpInt = numSteps.astype(int)
+        (states, logPsiSq, key, numProposed, numAccepted) =\
+            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, logPsiSq, key, numProposed, numAccepted))
+
+        return states, logPsiSq, key, numProposed, numAccepted
 
     def _mc_init(self, net):
         
@@ -75,31 +111,6 @@ class Sampler:
 
         self.numProposed = 0
         self.numAccepted = 0
-
-
-    def _mc_update(self, net):
-        
-        # Generate update proposals
-        newKeys = random.split(self.key,len(self.states)+1)
-        self.key = newKeys[-1]
-        newStates = jit(vmap(self.updateProposer, in_axes=(0, 0, None)))(newKeys[:len(self.states)], self.states, self.updateProposerArg)
-
-        # Compute acceptance probabilities
-        newLogPsiSq = net.real_coefficients(newStates)
-        P = jnp.exp( newLogPsiSq - self.logPsiSq )
-
-        # Roll dice
-        newKey, self.key = random.split(self.key,)
-        accepted = random.bernoulli(newKey, P)
-        update = jnp.where(accepted)
-
-        # Bookkeeping
-        self.numProposed += len(newStates)
-        self.numAccepted += update[0].shape[0]
-
-        # Perform accepted updates
-        self.states = jax.ops.index_update(self.states, jax.ops.index[update], newStates[update])
-        self.logPsiSq = jax.ops.index_update(self.logPsiSq, jax.ops.index[update], newLogPsiSq[update])
 
 
     def acceptance_ratio(self):

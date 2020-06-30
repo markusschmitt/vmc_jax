@@ -2,13 +2,15 @@ import sys
 # Find jVMC package
 sys.path.append(sys.path[0]+"/..")
 
-import flax
-from flax import nn
 import jax
+from jax.config import config
+config.update("jax_enable_x64", True)
 from jax import jit,grad,vmap
 from jax import numpy as jnp
 from jax import random
 from jax.tree_util import tree_flatten, tree_unflatten
+import flax
+from flax import nn
 import numpy as np
 
 import jVMC.global_defs as global_defs
@@ -239,6 +241,31 @@ class NQS:
 # **  end class NQS
 
 
+# Register NQS class as new pytree node
+
+def flatten_nqs(nqs):
+    auxReal = nqs.realNets
+    if auxReal:
+        flatNet1, auxNet1 = jax.tree_util.tree_flatten(nqs.realNet1)
+        flatNet2, auxNet2 = jax.tree_util.tree_flatten(nqs.realNet2)
+        return (flatNet1, flatNet2), (auxReal, auxNet1, auxNet2)
+    else:
+        flatNet, auxNet = jax.tree_util.tree_flatten(nqs.cpxNet)
+        return (flatNet,), (auxReal, auxNet)
+
+def unflatten_nqs(aux,treeData):
+    if aux[0]:
+        net1 = jax.tree_util.tree_unflatten(aux[1], treeData[0])
+        net2 = jax.tree_util.tree_unflatten(aux[2], treeData[1])
+        return NQS(net1, net2)
+    else:
+        net = jax.tree_util.tree_unflatten(aux[1], treeData[0])
+        return NQS(net)
+
+jax.tree_util.register_pytree_node(NQS, flatten_nqs, unflatten_nqs)
+
+
+
 def eval_net(model,s):
     return jnp.real(model(s))
 
@@ -248,17 +275,23 @@ if __name__ == '__main__':
     rbmModel = nn.Model(rbm,params)
     s=2*jnp.zeros((2,3),dtype=np.int32)-1
     s=jax.ops.index_update(s,jax.ops.index[0,1],1)
-    print(jit(vmap(rbmModel))(s))
+    #print(jit(vmap(rbmModel))(s))
     gradients=jit(vmap(grad(eval_net),in_axes=(None,0)))(rbmModel,s)
 
-    print(gradients.params)
-    print(jax.tree_util.tree_flatten(gradients.params))
+    #print(gradients.params)
+    #print(jax.tree_util.tree_flatten(gradients.params))
 
     print("** Complex net **")
     psiC = NQS(rbmModel)
     G = psiC.gradients(s)
-    print(G)
     psiC.update_parameters(jnp.real(G[0]))
+    
+    a,b=tree_flatten(psiC)
+
+    print(a)
+    print(b)
+
+    psiC = tree_unflatten(b,a)
     
     print("** Real nets **")
     rbmR = RBM.partial(L=3,numHidden=2,bias=True)
@@ -269,6 +302,13 @@ if __name__ == '__main__':
     rbmIModel = nn.Model(rbmI,paramsI)
  
     psiR = NQS(rbmRModel,rbmIModel)
+
+    a,b=tree_flatten(psiR)
+
+    print(a)
+    print(b)
+
+    psiR = tree_unflatten(b,a)
 
     G = psiR.gradients(s)
     print(G)

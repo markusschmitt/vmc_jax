@@ -22,6 +22,7 @@ def measure(ops, psi, sampler, numSamples):
     
     # Get sample
     sampleConfigs, sampleLogPsi =  sampler.sample( psi, numSamples )
+    print(sampleConfigs)
 
     result = []
     for op in ops:
@@ -38,7 +39,7 @@ L=4
 J=-1.0
 hx=-3
 
-numSamples=50
+numSamples=500
 
 # Set up variational wave function
 rbm = nets.CpxRBM.partial(L=L,numHidden=2,bias=False)
@@ -59,7 +60,7 @@ for l in range(L):
     observables[2].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
 
 # Set up sampler
-mcSampler = sampler.Sampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=5)
+mcSampler = sampler.Sampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10)
 
 tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
 
