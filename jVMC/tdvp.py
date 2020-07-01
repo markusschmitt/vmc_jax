@@ -74,7 +74,7 @@ class TDVP:
     def __call__(self, netParameters, t, rhsArgs):
         
         # Get sample
-        sampleConfigs, sampleLogPsi =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
+        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
 
         # Evaluate local energy
         sampleOffdConfigs, matEls = rhsArgs['hamiltonian'].get_s_primes(sampleConfigs)

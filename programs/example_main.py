@@ -10,6 +10,8 @@ import jax.random as random
 import flax.nn as nn
 import jax.numpy as jnp
 
+import numpy as np
+
 import jVMC
 import jVMC.stepper as jVMCstepper
 import jVMC.nets as nets
@@ -18,19 +20,26 @@ import jVMC.operator as op
 import jVMC.sampler as sampler
 import jVMC.tdvp as tdvp
 
-def measure(ops, psi, sampler, numSamples):
+from functools import partial
+
+
+def measure(ops, psi, sampler, numSamples=0):
     
     # Get sample
-    sampleConfigs, sampleLogPsi =  sampler.sample( psi, numSamples )
-    print(sampleConfigs)
+    sampleConfigs, sampleLogPsi, p =  sampler.sample( psi, numSamples )
 
     result = []
+
     for op in ops:
+
         sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs)
         sampleLogPsiOffd = psi(sampleOffdConfigs)
         Oloc = op.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
 
-        result.append( [jnp.mean(Oloc), jnp.var(Oloc) / jnp.sqrt(numSamples)] )
+        if p is not None:
+            result.append( jnp.dot(p, Oloc) )
+        else:
+            result.append( [jnp.mean(Oloc), jnp.var(Oloc) / jnp.sqrt(numSamples)] )
 
     return jnp.real(jnp.array(result))
 
@@ -59,14 +68,20 @@ for l in range(L):
     observables[1].add( ( op.Sx(l), ) )
     observables[2].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
 
-# Set up sampler
-mcSampler = sampler.Sampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10)
+# Set up MCMC sampler
+mcSampler = sampler.MCMCSampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10)
+
+# Set up exact sampler
+exactSampler=sampler.ExactSampler(L)
 
 tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
+#tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1)
 
 stepper = jVMCstepper.Euler(timeStep=1e-4)
 
 t=0
+obs = measure(observables, psi, exactSampler)
+print(t, obs[0], obs[1], obs[2])
 obs = measure(observables, psi, mcSampler, numSamples)
 print(t, obs[0], obs[1], obs[2])
 while t<1:

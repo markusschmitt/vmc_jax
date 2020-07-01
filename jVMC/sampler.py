@@ -14,7 +14,7 @@ def propose_spin_flip(key, s, info):
     update = (s[idx] + 1 ) % 2
     return jax.ops.index_update( s, jax.ops.index[idx], update )
 
-class Sampler:
+class MCMCSampler:
 
     def __init__(self, key, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
                     thermalizationSteps=10, sweepSteps=10):
@@ -55,7 +55,7 @@ class Sampler:
             configs = jax.ops.index_update(configs, jax.ops.index[numSamples-numMissing:numSamples-numMissing+numAdd], self.states[:numAdd])
             numMissing -= numAdd
 
-        return configs, net(configs)
+        return configs, net(configs), None
 
 
     def sweep(self, net, numSteps):
@@ -121,6 +121,55 @@ class Sampler:
         return 0.
 
 # ** end class Sampler
+
+
+class ExactSampler:
+
+    def __init__(self, sampleShape):
+
+        self.N = jnp.prod(jnp.asarray(sampleShape))
+        self.sampleShape = sampleShape
+
+        self.get_basis()
+
+        self.lastNorm = 0.
+
+
+    def get_basis(self):
+
+        intReps = jnp.arange(2**self.N)
+        self.basis = jnp.zeros((2**self.N, self.N), dtype=np.int32)
+        self.basis = self._get_basis(self.basis, intReps)
+
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_basis(self, states, intReps):
+
+        def make_state(state, intRep):
+
+            def for_fun(i, x):
+                return (jax.lax.cond(x[1]>>i & 1, lambda x: jax.ops.index_update(x[0], jax.ops.index[x[1]], 1), lambda x : x[0], (x[0],i)), x[1])
+
+            (state, _)=jax.lax.fori_loop(0,state.shape[0],for_fun,(state, intRep))
+
+            return state
+
+        basis = jax.vmap(make_state, in_axes=(0,0))(states, intReps)
+
+        return basis
+    
+
+    def sample(self, net, numSamples=0):
+
+        logPsi = net(self.basis)
+        nrm = jnp.linalg.norm( jnp.exp( logPsi - self.lastNorm ) )
+        self.lastNorm = jnp.log(nrm)
+        p = jnp.exp(2 * jnp.real( logPsi - self.lastNorm ))
+        
+        return self.basis, logPsi, p
+
+# ** end class ExactSampler
+
 
 if __name__ == "__main__":
     import nets
