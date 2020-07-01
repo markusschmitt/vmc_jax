@@ -19,59 +19,13 @@ from jVMC.vqs import NQS
 import jVMC.operator as op
 import jVMC.sampler as sampler
 import jVMC.tdvp as tdvp
+from jVMC.util import measure, ground_state_search
 
 from functools import partial
 
-
-def measure(ops, psi, sampler, numSamples=0):
-    
-    # Get sample
-    sampleConfigs, sampleLogPsi, p =  sampler.sample( psi, numSamples )
-
-    result = []
-
-    for op in ops:
-
-        sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs)
-        sampleLogPsiOffd = psi(sampleOffdConfigs)
-        Oloc = op.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
-
-        if p is not None:
-            result.append( jnp.dot(p, Oloc) )
-        else:
-            result.append( [jnp.mean(Oloc), jnp.var(Oloc) / jnp.sqrt(numSamples)] )
-
-    return jnp.real(jnp.array(result))
-
-
-def ground_state_search(net, hamiltonian, tdvpEquation, numSteps=200, stepSize=1e-2, observables=None):
-
-    delta = tdvpEquation.diagonalShift
-
-    print("** Starting ground state search")
-    stepper = jVMCstepper.Euler(timeStep=stepSize)
-
-    n=0
-    if observables is not None:
-        obs = measure(observables, psi, exactSampler)
-        print("{0:d} {1:.6f} {2:.6f} {3:.6f}".format(n, obs[0], obs[1]/L, obs[2]/L))
-    while n<numSteps:
-        stepperArgs = {'hamiltonian': hamiltonian, 'psi': psi, 'numSamples': numSamples}
-        dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), stepperArgs)
-        psi.set_parameters(dp)
-        n += 1
-
-        if observables is not None:
-            obs = measure(observables, psi, exactSampler)
-            print("{0:d} {1:.6f} {2:.6f} {3:.6f}".format(n, obs[0], obs[1]/L, obs[2]/L))
-
-        delta=0.95*delta
-        tdvpEquation.set_diagonal_shift(delta)
-
-
 L=4
 J0=-1.0
-hx0=-2.5
+hx0=-1.3
 J=-1.0
 hx=-1.5
 
@@ -96,14 +50,14 @@ for l in range(L):
     hamiltonian.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
 
 # Set up observables
-observables = [hamiltonian, op.Operator(), op.Operator(), op.Operator()]
+observables = [hamiltonianGS, op.Operator(), op.Operator(), op.Operator()]
 for l in range(L):
     observables[1].add( ( op.Sx(l), ) )
     observables[2].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
     observables[3].add( ( op.Sz(l), op.Sz((l+2)%L) ) )
 
 # Set up MCMC sampler
-mcSampler = sampler.MCMCSampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10)
+mcSampler = sampler.MCMCSampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10, numSamples=numSamples)
 
 # Set up exact sampler
 exactSampler=sampler.ExactSampler(L)
@@ -113,11 +67,13 @@ delta=5
 tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
 
 # Perform ground state search to get initial state
-ground_state_search(psi, hamiltonianGS, tdvpEquation, numSteps=50, stepSize=1e-2, observables=observables)
+print("** Ground state search")
+ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=1e-2, observables=observables)
 
 
 print("** Time evolution")
 
+observables[0] = hamiltonianGS
 tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
 stepper = jVMCstepper.Euler(timeStep=1e-3)
 

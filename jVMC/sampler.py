@@ -17,7 +17,7 @@ def propose_spin_flip(key, s, info):
 class MCMCSampler:
 
     def __init__(self, key, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
-                    thermalizationSteps=10, sweepSteps=10):
+                    numSamples=100, thermalizationSteps=10, sweepSteps=10):
         stateShape = [numChains]
         for s in sampleShape:
             stateShape.append(s)
@@ -29,11 +29,20 @@ class MCMCSampler:
         self.key = key
         self.thermalizationSteps = thermalizationSteps
         self.sweepSteps = sweepSteps
+        self.numSamples = numSamples
 
         self.numChains = numChains
 
 
-    def sample(self, net, numSamples):
+    def set_number_of_samples(self, N):
+
+        self.numSamples = N
+
+
+    def sample(self, net, numSamples=None):
+
+        if numSamples is None:
+            numSamples = self.numSamples
 
         # Prepare for output
         outShape = [s for s in self.states.shape]
