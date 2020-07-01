@@ -163,7 +163,7 @@ class ExactSampler:
 
         logPsi = net(self.basis)
         nrm = jnp.linalg.norm( jnp.exp( logPsi - self.lastNorm ) )
-        self.lastNorm = jnp.log(nrm)
+        self.lastNorm += jnp.log(nrm)
         p = jnp.exp(2 * jnp.real( logPsi - self.lastNorm ))
         
         return self.basis, logPsi, p

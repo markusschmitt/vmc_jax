@@ -44,9 +44,36 @@ def measure(ops, psi, sampler, numSamples=0):
     return jnp.real(jnp.array(result))
 
 
+def ground_state_search(net, hamiltonian, tdvpEquation, numSteps=200, stepSize=1e-2, observables=None):
+
+    delta = tdvpEquation.diagonalShift
+
+    print("** Starting ground state search")
+    stepper = jVMCstepper.Euler(timeStep=stepSize)
+
+    n=0
+    if observables is not None:
+        obs = measure(observables, psi, exactSampler)
+        print("{0:d} {1:.6f} {2:.6f} {3:.6f}".format(n, obs[0], obs[1]/L, obs[2]/L))
+    while n<numSteps:
+        stepperArgs = {'hamiltonian': hamiltonian, 'psi': psi, 'numSamples': numSamples}
+        dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), stepperArgs)
+        psi.set_parameters(dp)
+        n += 1
+
+        if observables is not None:
+            obs = measure(observables, psi, exactSampler)
+            print("{0:d} {1:.6f} {2:.6f} {3:.6f}".format(n, obs[0], obs[1]/L, obs[2]/L))
+
+        delta=0.95*delta
+        tdvpEquation.set_diagonal_shift(delta)
+
+
 L=4
+J0=-1.0
+hx0=-2.5
 J=-1.0
-hx=-3
+hx=-1.5
 
 numSamples=500
 
@@ -56,6 +83,12 @@ _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
 rbmModel = nn.Model(rbm,params)
 psi = NQS(rbmModel)
 
+# Set up hamiltonian for ground state search
+hamiltonianGS = op.Operator()
+for l in range(L):
+    hamiltonianGS.add( op.scal_opstr( J0, ( op.Sz(l), op.Sz((l+1)%L) ) ) )
+    hamiltonianGS.add( op.scal_opstr( hx0, ( op.Sx(l), ) ) )
+
 # Set up hamiltonian
 hamiltonian = op.Operator()
 for l in range(L):
@@ -63,10 +96,11 @@ for l in range(L):
     hamiltonian.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
 
 # Set up observables
-observables = [hamiltonian, op.Operator(), op.Operator()]
+observables = [hamiltonian, op.Operator(), op.Operator(), op.Operator()]
 for l in range(L):
     observables[1].add( ( op.Sx(l), ) )
     observables[2].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
+    observables[3].add( ( op.Sz(l), op.Sz((l+2)%L) ) )
 
 # Set up MCMC sampler
 mcSampler = sampler.MCMCSampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10)
@@ -74,21 +108,28 @@ mcSampler = sampler.MCMCSampler(random.PRNGKey(123), sampler.propose_spin_flip, 
 # Set up exact sampler
 exactSampler=sampler.ExactSampler(L)
 
-tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
-#tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1)
+#tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
+delta=5
+tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
 
-stepper = jVMCstepper.Euler(timeStep=1e-4)
+# Perform ground state search to get initial state
+ground_state_search(psi, hamiltonianGS, tdvpEquation, numSteps=50, stepSize=1e-2, observables=observables)
+
+
+print("** Time evolution")
+
+tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
+stepper = jVMCstepper.Euler(timeStep=1e-3)
 
 t=0
+tmax=1
 obs = measure(observables, psi, exactSampler)
-print(t, obs[0], obs[1], obs[2])
-obs = measure(observables, psi, mcSampler, numSamples)
-print(t, obs[0], obs[1], obs[2])
-while t<1:
+print("{0:.6f} {1:.6f} {2:.6f} {3:.6f} {4:.6f}".format(t, obs[0], obs[1]/L, obs[2]/L, obs[3]/L))
+while t<tmax:
     stepperArgs = {'hamiltonian': hamiltonian, 'psi': psi, 'numSamples': numSamples}
     dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), stepperArgs)
-    psi.update_parameters(dp)
-    t+=dt
-    obs = measure(observables, psi, mcSampler, numSamples)
+    psi.set_parameters(dp)
+    t += dt
 
-    print(t, obs[0], obs[1], obs[2])
+    obs = measure(observables, psi, exactSampler)
+    print("{0:.6f} {1:.6f} {2:.6f} {3:.6f} {4:.6f}".format(t, obs[0], obs[1]/L, obs[2]/L, obs[3]/L))

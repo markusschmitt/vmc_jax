@@ -8,12 +8,15 @@ def realFun(x):
 def imagFun(x):
     return 0.5 * ( x - jnp.conj(x) )
 
+
 class TDVP:
 
-    def __init__(self, sampler, snrTol=2, makeReal='imag', rhsPrefactor=1.j):
+    def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0.):
 
         self.sampler = sampler
         self.snrTol = snrTol
+        self.svdTol = svdTol
+        self.diagonalShift = diagonalShift
         self.rhsPrefactor = rhsPrefactor
 
         self.makeReal = realFun
@@ -21,18 +24,41 @@ class TDVP:
             self.makeReal = imagFun
 
 
-    def get_tdvp_equation(self, Eloc, gradients):
-        
-        Eloc -= jnp.mean(Eloc)
-        gradients -= jnp.mean(gradients, axis=0)
-        
-        def eoFun(carry, xs):
-            return carry, xs[0] * xs[1]
-        _, EOdata = jax.lax.scan(eoFun, [None], (Eloc, jnp.conjugate(gradients)))
-        EOdata = self.makeReal( -self.rhsPrefactor * EOdata )
+    def set_diagonal_shift(self, delta):
+        self.diagonalShift = delta
 
-        F = jnp.mean(EOdata, axis=0)
-        S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients) )
+    def get_tdvp_equation(self, Eloc, gradients, p=None):
+        
+        if p is None:
+            Eloc -= jnp.mean(Eloc)
+            gradients -= jnp.mean(gradients, axis=0)
+            
+            def eoFun(carry, xs):
+                return carry, xs[0] * xs[1]
+            _, EOdata = jax.lax.scan(eoFun, [None], (Eloc, jnp.conjugate(gradients)))
+            EOdata = self.makeReal( -self.rhsPrefactor * EOdata )
+
+            F = jnp.mean(EOdata, axis=0)
+            S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients) ) / Eloc.shape[0]
+
+        else:
+            Eloc -= jnp.dot(p, Eloc)
+            gradients -= jnp.dot(p,gradients)
+
+            EOdata = -self.rhsPrefactor * jnp.matmul(jnp.diag(p*Eloc), jnp.conj(gradients))
+            EOdata = self.makeReal( EOdata )
+            
+            F = jnp.sum(EOdata, axis=0)
+            S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ) )
+
+            #work with complex matrix
+            #np = gradients.shape[1]//2
+            #EOdata = EOdata[:,:np]
+            #F = jnp.sum(EOdata, axis=0)
+            #S = jnp.matmul(jnp.conj(jnp.transpose(gradients[:,:np])), jnp.matmul(jnp.diag(p), gradients[:,:np]) )
+
+        if self.diagonalShift > 1e-10:
+            S = S + jnp.diag(self.diagonalShift * jnp.diag(S))
 
         return S, F, EOdata
 
@@ -45,7 +71,7 @@ class TDVP:
     def transform_to_eigenbasis(self, S, F, EOdata):
         
         self.ev, self.V = jnp.linalg.eigh(S)
-        self.VtF = jnp.dot(jnp.transpose(self.V),F)
+        self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
         EOdata = jnp.matmul(EOdata, jnp.conj(self.V))
         self.rhoVar = jnp.var(EOdata, axis=0)
@@ -53,22 +79,29 @@ class TDVP:
         self.snr = jnp.sqrt(EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.))
 
 
-    def solve(self, Eloc, gradients):
+    def solve(self, Eloc, gradients, p=None):
 
         # Get TDVP equation from MC data
-        S, F, Fdata = self.get_tdvp_equation(Eloc, gradients)
+        S, F, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
 
         # Transform TDVP equation to eigenbasis
         self.transform_to_eigenbasis(S,F,Fdata)
 
         # Discard eigenvalues below numerical precision
-        self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1./self.ev, 0.)
+        self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > self.svdTol, 1./self.ev, 0.)
 
-        # Construct a soft cutoff based on the SNR
-        regularizer = 1. / (1. + (self.snrTol / self.snr)**6 )
+        if p is None:
+            # Construct a soft cutoff based on the SNR
+            regularizer = 1. / (1. + (self.snrTol / self.snr)**6 )
+        else:
+            regularizer = jnp.ones(len(self.invEv))
 
-        print(jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ))
-        return jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
+        update = jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
+        return update
+
+        #work with complex matrix
+        #update = jnp.dot( self.V, (self.invEv * (regularizer * self.VtF)) )
+        #return jnp.concatenate((jnp.real(update), jnp.imag(update)))
 
 
     def __call__(self, netParameters, t, rhsArgs):
@@ -84,6 +117,8 @@ class TDVP:
         # Evaluate gradients
         sampleGradients = rhsArgs['psi'].gradients(sampleConfigs)
 
-        return self.solve(Eloc, sampleGradients)
+        update=self.solve(Eloc, sampleGradients, p)
+
+        return update
 
 
