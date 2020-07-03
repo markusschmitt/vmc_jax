@@ -13,12 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import jVMC
-import jVMC.stepper as jVMCstepper
-import jVMC.nets as nets
-from jVMC.vqs import NQS
 import jVMC.operator as op
-import jVMC.sampler as sampler
-import jVMC.tdvp as tdvp
 from jVMC.util import measure, ground_state_search
 
 from functools import partial
@@ -32,10 +27,10 @@ hx=-0.3
 numSamples=500
 
 # Set up variational wave function
-rbm = nets.CpxRBM.partial(L=L,numHidden=2,bias=False)
+rbm = jVMC.nets.CpxRBM.partial(L=L,numHidden=2,bias=False)
 _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
 rbmModel = nn.Model(rbm,params)
-psi = NQS(rbmModel)
+psi = jVMC.vqs.NQS(rbmModel)
 
 # Set up hamiltonian for ground state search
 hamiltonianGS = op.Operator()
@@ -57,10 +52,10 @@ for l in range(L):
     observables[3].add( ( op.Sz(l), op.Sz((l+2)%L) ) )
 
 # Set up MCMC sampler
-mcSampler = sampler.MCMCSampler(random.PRNGKey(123), sampler.propose_spin_flip, [L], numChains=10, numSamples=numSamples)
+mcSampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), jVMC.sampler.propose_spin_flip, [L], numChains=10, numSamples=numSamples)
 
 # Set up exact sampler
-exactSampler=sampler.ExactSampler(L)
+exactSampler=jVMC.sampler.ExactSampler(L)
 
 #tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
 delta=5
@@ -78,8 +73,8 @@ print("** Time evolution")
 
 observables[0] = hamiltonian
 tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
-#stepper = jVMCstepper.Euler(timeStep=1e-3)
-stepper = jVMCstepper.AdaptiveHeun(timeStep=1e-3, tol=1e-5)
+#stepper = jVMC.stepper.Euler(timeStep=1e-3)
+stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-5)
 
 t=0
 tmax=1
