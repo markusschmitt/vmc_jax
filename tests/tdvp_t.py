@@ -26,7 +26,7 @@ import jVMC.tdvp as tdvp
 from jVMC.util import measure, ground_state_search
 
 class TestGsSearch(unittest.TestCase):
-    def test_gs_search(self):
+    def test_gs_search_cpx(self):
         L=4
         J=-1.0
         hxs=[-1.3, -0.3]
@@ -35,7 +35,7 @@ class TestGsSearch(unittest.TestCase):
 
         for hx,exE in zip(hxs,exEs):
             # Set up variational wave function
-            rbm = nets.CpxRBM.partial(L=L,numHidden=6,bias=False)
+            rbm = nets.CpxRBM.partial(numHidden=6,bias=False)
             _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
             rbmModel = nn.Model(rbm,params)
             psi = NQS(rbmModel)
@@ -59,6 +59,7 @@ class TestGsSearch(unittest.TestCase):
 
             self.assertTrue( jnp.max( jnp.abs( ( obs[0] - exE ) / exE) ) < 1e-3 )
 
+
 class TestTimeEvolution(unittest.TestCase):
     def test_time_evolution(self):
         L=4
@@ -73,7 +74,7 @@ class TestTimeEvolution(unittest.TestCase):
                 )
 
         # Set up variational wave function
-        rbm = nets.CpxRBM.partial(L=L,numHidden=2,bias=False)
+        rbm = nets.CpxRBM.partial(numHidden=2,bias=False)
         _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
         rbmModel = nn.Model(rbm,params)
         psi = NQS(rbmModel)

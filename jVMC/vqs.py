@@ -22,28 +22,25 @@ class NQS:
         # The net arguments have to be instances of flax.nn.Model
         self.realNets = False
         if phaseNet is None:
-            self.cpxNet = logModNet
+            self.net = logModNet
 
-            self.paramShapes1 = [(p.size,p.shape) for p in tree_flatten(self.cpxNet.params)[0]]
-            self.netTreeDef1 = jax.tree_util.tree_structure(self.cpxNet.params)
-            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.cpxNet.params)[0]]))
+            self.paramShapes = [(p.size,p.shape) for p in tree_flatten(self.net.params)[0]]
+            self.netTreeDef = jax.tree_util.tree_structure(self.net.params)
+            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net.params)[0]]))
         else:
             self.realNets = True
-            self.realNet1 = logModNet # for log|psi(s)|
-            self.realNet2 = phaseNet # for arg(psi(2))
+            self.net = [logModNet, phaseNet] # for [ log|psi(s)|, arg(psi(2)) ]
 
-            self.paramShapes1 = [(p.size,p.shape) for p in tree_flatten(self.realNet1.params)[0]]
-            self.paramShapes2 = [(p.size,p.shape) for p in tree_flatten(self.realNet2.params)[0]]
-            self.netTreeDef1 = jax.tree_util.tree_structure(self.realNet1.params)
-            self.netTreeDef2 = jax.tree_util.tree_structure(self.realNet2.params)
-            self.numParameters1 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.realNet1.params)[0]]))
-            self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.realNet2.params)[0]]))
+            self.paramShapes = [ [(p.size,p.shape) for p in tree_flatten(net.params)[0]] for net in self.net ]
+            self.netTreeDef = [ jax.tree_util.tree_structure(net.params) for net in self.net ]
+            self.numParameters1 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net[0].params)[0]]))
+            self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net[1].params)[0]]))
             self.numParameters = self.numParameters1 + self.numParameters2
 
         # Check whether wave function can generate samples
         self._isGenerator = False
         if callable(getattr(logModNet, 'sample', None)):
-            self.isGenerator = True
+            self._isGenerator = True
 
     # **  end def __init__
 
@@ -51,11 +48,11 @@ class NQS:
     def __call__(self, s):
 
         if self.realNets:
-            logMod = jit(vmap(self._eval,in_axes=(None,0)))(self.realNet1,s)
-            phase = jit(vmap(self._eval,in_axes=(None,0)))(self.realNet2,s)
+            logMod = jit(vmap(self._eval,in_axes=(None,0)))(self.net[0],s)
+            phase = jit(vmap(self._eval,in_axes=(None,0)))(self.net[1],s)
             return logMod + 1.j * phase
         else:
-            return jit(vmap(self._eval,in_axes=(None,0)))(self.cpxNet,s)
+            return jit(vmap(self._eval,in_axes=(None,0)))(self.net,s)
 
     # **  end def __call__
     
@@ -63,9 +60,9 @@ class NQS:
     def real_coefficients(self, s):
 
         if self.realNets:
-            return jit(vmap(self._eval,in_axes=(None,0)))(self.realNet1,s)
+            return jit(vmap(self._eval,in_axes=(None,0)))(self.net[0],s)
         else:
-            return jit(vmap(self._eval_real,in_axes=(None,0)))(self.cpxNet,s)
+            return jit(vmap(self._eval_real,in_axes=(None,0)))(self.net,s)
 
     # **  end def real_coefficients
 
@@ -77,9 +74,9 @@ class NQS:
             gradOut = jnp.empty((s.shape[0],self.numParameters), dtype=global_defs.tCpx)
 
             # First net
-            gradients, self.gradientTreeDef1 = \
+            gradients, _ = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.realNet1,s)
+                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[0],s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -90,9 +87,9 @@ class NQS:
                 start += numGradients
             
             # Second net
-            gradients, self.gradientTreeDef1 = \
+            gradients, _ = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.realNet2,s)
+                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[1],s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -109,7 +106,7 @@ class NQS:
 
             gradients, self.gradientTreeDef1 = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.cpxNet,s)
+                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net,s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -132,42 +129,26 @@ class NQS:
         if self.realNets: # FOR REAL NETS
             
             # Reshape parameter update according to net tree structure
-            deltaPTreeShape1 = []
-            deltaPTreeShape2 = []
-            start = 0
-            for s in self.paramShapes1:
-                deltaPTreeShape1.append(deltaP[start:start+s[0]].reshape(s[1]))
-                start += s[0]
-            for s in self.paramShapes2:
-                deltaPTreeShape2.append(deltaP[start:start+s[0]].reshape(s[1]))
-                start += s[0]
-            
-            # Compute new parameters
-            newParams1 = jax.tree_util.tree_multimap( 
-                            jax.lax.add, self.realNet1.params, 
-                            tree_unflatten( self.netTreeDef1, deltaPTreeShape1 ) 
-                         )
-
-            newParams2 = jax.tree_util.tree_multimap( 
-                            jax.lax.add, self.realNet2.params, 
-                            tree_unflatten( self.netTreeDef2, deltaPTreeShape2 ) 
-                         )
-
+            newParams = self._param_unflatten_real(deltaP)
             # Update model parameters
-            self.realNet1 = self.realNet1.replace(params=newParams1)
-            self.realNet2 = self.realNet2.replace(params=newParams2)
+            for netId in [0,1]:
+                self.net[netId] = self.net[netId].replace(params=
+                                        jax.tree_util.tree_multimap( 
+                                            jax.lax.add, self.net[netId].params, 
+                                            newParams[netId] 
+                                        )
+                                    )
 
         else:             # FOR COMPLEX NET
             
             # Compute new parameters
             newParams = jax.tree_util.tree_multimap( 
-                            jax.lax.add, self.cpxNet.params, 
-                            self.param_unflatten_cpx(deltaP)
-                            #tree_unflatten( self.netTreeDef1, deltaPTreeShape ) 
+                            jax.lax.add, self.net.params, 
+                            self._param_unflatten_cpx(deltaP)
                         )
 
             # Update model parameters
-            self.cpxNet = self.cpxNet.replace(params=newParams)
+            self.net = self.net.replace(params=newParams)
                 
     # **  end def update_parameters
 
@@ -175,20 +156,40 @@ class NQS:
     def set_parameters(self, P):
 
         if self.realNets: # FOR REAL NETS
+            
+            newP = self._param_unflatten_real(P)
 
-            print("set params not implemented")
+            # Update model parameters
+            for netId in [0,1]:
+                self.net[netId] = self.net[netId].replace( params = newP[netId] )
 
         else:             # FOR COMPLEX NET
 
             # Update model parameters
-            self.cpxNet = self.cpxNet.replace(
-                            params = self.param_unflatten_cpx(P)
+            self.net = self.net.replace(
+                            params = self._param_unflatten_cpx(P)
                           )
 
     # **  end def set_parameters
 
 
-    def param_unflatten_cpx(self, P):
+    def _param_unflatten_real(self, P):
+        
+        # Reshape parameter update according to net tree structure
+        PTreeShape = [[],[]]
+        start = 0
+        for netId in [0,1]:
+            for s in self.paramShapes[netId]:
+                PTreeShape[netId].append(P[start:start+s[0]].reshape(s[1]))
+                start += s[0]
+        
+        # Return unflattened parameters
+        return ( tree_unflatten( self.netTreeDef[0], PTreeShape[0] ), tree_unflatten( self.netTreeDef[1], PTreeShape[1] ) )
+
+    # **  end def _param_unflatten_cpx
+
+
+    def _param_unflatten_cpx(self, P):
             
         # Get complex-valued parameter update vector
         PCpx = P[:self.numParameters] + 1.j * P[self.numParameters:]
@@ -196,25 +197,39 @@ class NQS:
         # Reshape parameter update according to net tree structure
         PTreeShape = []
         start = 0
-        for s in self.paramShapes1:
+        for s in self.paramShapes:
             PTreeShape.append(PCpx[start:start+s[0]].reshape(s[1]))
             start += s[0]
         
         # Return unflattened parameters
-        return tree_unflatten( self.netTreeDef1, PTreeShape ) 
+        return tree_unflatten( self.netTreeDef, PTreeShape ) 
 
+    # **  end def _param_unflatten_cpx
     
+
     def get_parameters(self):
 
         if self.realNets: # FOR REAL NETS
 
-            print("get params not implemented")
+            paramOut = jnp.empty(self.numParameters, dtype=global_defs.tReal)
+
+            start = 0
+            for netId in [0,1]:
+                parameters, _ = tree_flatten( self.net[netId].params )
+                
+                # Flatten parameters to give a single vector
+                for p in parameters:
+                    numParams = p.size
+                    paramOut = jax.ops.index_update( paramOut, jax.ops.index[start:start+numParams], p.reshape(-1) )
+                    start += numParams
+
+            return paramOut
 
         else:             # FOR COMPLEX NET
 
             paramOut = jnp.empty(2*self.numParameters, dtype=global_defs.tReal)
 
-            parameters, _ = tree_flatten( self.cpxNet.params )
+            parameters, _ = tree_flatten( self.net.params )
             
             # Flatten parameters to give a single vector
             start = 0

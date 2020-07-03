@@ -27,10 +27,20 @@ hx=-0.3
 numSamples=500
 
 # Set up variational wave function
-rbm = jVMC.nets.CpxRBM.partial(L=L,numHidden=2,bias=False)
+rbm = jVMC.nets.CpxRBM.partial(numHidden=2,bias=False)
 _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
 rbmModel = nn.Model(rbm,params)
-psi = jVMC.vqs.NQS(rbmModel)
+
+rbm1 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
+_, params1 = rbm1.init_by_shape(random.PRNGKey(123),[(1,L)])
+rbmModel1 = nn.Model(rbm1,params1)
+#rbm2 = jVMC.nets.FFN.partial(layers=[5,5],bias=False)
+rbm2 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
+_, params2 = rbm2.init_by_shape(random.PRNGKey(321),[(1,L)])
+rbmModel2 = nn.Model(rbm2,params2)
+
+#psi = jVMC.vqs.NQS(rbmModel)
+psi = jVMC.vqs.NQS(rbmModel1, rbmModel2)
 
 # Set up hamiltonian for ground state search
 hamiltonianGS = op.Operator()
@@ -72,9 +82,9 @@ print(psi.get_parameters())
 print("** Time evolution")
 
 observables[0] = hamiltonian
-tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
+tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-6, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
 #stepper = jVMC.stepper.Euler(timeStep=1e-3)
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-5)
+stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-2)
 
 t=0
 tmax=1

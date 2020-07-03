@@ -16,7 +16,7 @@ def measure(ops, psi, sampler, numSamples=0):
     sampleConfigs, sampleLogPsi, p =  sampler.sample( psi, numSamples )
 
     result = []
-
+    
     for op in ops:
 
         sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs)
