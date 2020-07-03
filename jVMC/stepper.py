@@ -20,13 +20,13 @@ class Euler:
 
 class AdaptiveHeun:
 
-    def __init__(self, timeStep=1e-3, tol=1e-8, maxStep=1.):
+    def __init__(self, timeStep=1e-3, tol=1e-8, maxStep=1):
         self.dt = timeStep
         self.tolerance = tol
         self.maxStep = maxStep
 
 
-    def step(self, t, f, yInitial, normFunction, rhsArgs=None):
+    def step(self, t, f, yInitial, normFunction=jnp.linalg.norm, rhsArgs=None):
 
         fe = 0.5
 
@@ -53,7 +53,7 @@ class AdaptiveHeun:
             # compute deviation
             updateDiff = normFunction(dy1 - dy0)
             fe = self.tolerance / updateDiff
-
+            
             if 0.2>0.9*fe**0.33333:
                 tmp = 0.2
             else:

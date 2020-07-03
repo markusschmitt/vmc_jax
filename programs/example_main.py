@@ -25,9 +25,9 @@ from functools import partial
 
 L=4
 J0=-1.0
-hx0=-1.3
+hx0=-2.5
 J=-1.0
-hx=-1.5
+hx=-0.3
 
 numSamples=500
 
@@ -70,12 +70,16 @@ tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=
 print("** Ground state search")
 ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=1e-2, observables=observables)
 
+states, logPsi, _ = exactSampler.sample(psi)
+print(jnp.exp(logPsi))
+print(psi.get_parameters())
 
 print("** Time evolution")
 
-observables[0] = hamiltonianGS
+observables[0] = hamiltonian
 tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
-stepper = jVMCstepper.Euler(timeStep=1e-3)
+#stepper = jVMCstepper.Euler(timeStep=1e-3)
+stepper = jVMCstepper.AdaptiveHeun(timeStep=1e-3, tol=1e-5)
 
 t=0
 tmax=1
@@ -83,7 +87,7 @@ obs = measure(observables, psi, exactSampler)
 print("{0:.6f} {1:.6f} {2:.6f} {3:.6f} {4:.6f}".format(t, obs[0], obs[1]/L, obs[2]/L, obs[3]/L))
 while t<tmax:
     stepperArgs = {'hamiltonian': hamiltonian, 'psi': psi, 'numSamples': numSamples}
-    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), stepperArgs)
+    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), rhsArgs=stepperArgs)
     psi.set_parameters(dp)
     t += dt
 

@@ -105,6 +105,9 @@ class TDVP:
 
 
     def __call__(self, netParameters, t, rhsArgs):
+
+        tmpParameters = rhsArgs['psi'].get_parameters()
+        rhsArgs['psi'].set_parameters(netParameters)
         
         # Get sample
         sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
@@ -118,6 +121,8 @@ class TDVP:
         sampleGradients = rhsArgs['psi'].gradients(sampleConfigs)
 
         update=self.solve(Eloc, sampleGradients, p)
+        
+        rhsArgs['psi'].set_parameters(tmpParameters)
 
         return update
 

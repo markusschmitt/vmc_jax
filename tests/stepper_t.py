@@ -11,8 +11,12 @@ import jax.random as random
 import jax.numpy as jnp
 import numpy as np
 
+
 class TestIntegrationHeun(unittest.TestCase):
+
+    # Test adaptive integrator with multi-dimensional linear ODE
     def test_integration(self):
+
         def f(y,t,args):
             return args['mat'].dot(y)
 
@@ -21,6 +25,7 @@ class TestIntegrationHeun(unittest.TestCase):
 
         N = 4
 
+        np.random.seed(123)
         stepper = st.AdaptiveHeun()
         rhsArgs={}
         rhsArgs['mat'] = jnp.array(np.random.rand(N,N) + 1.j * np.random.rand(N,N))
@@ -37,6 +42,7 @@ class TestIntegrationHeun(unittest.TestCase):
             diffs.append(norm(diff)/N)
 
         self.assertTrue( jnp.max(jnp.array(diffs)) < 1e-5 )
+
 
 if __name__ == "__main__":
     unittest.main()
