@@ -261,11 +261,11 @@ class NQS:
 def flatten_nqs(nqs):
     auxReal = nqs.realNets
     if auxReal:
-        flatNet1, auxNet1 = jax.tree_util.tree_flatten(nqs.realNet1)
-        flatNet2, auxNet2 = jax.tree_util.tree_flatten(nqs.realNet2)
+        flatNet1, auxNet1 = jax.tree_util.tree_flatten(nqs.net[0])
+        flatNet2, auxNet2 = jax.tree_util.tree_flatten(nqs.net[1])
         return (flatNet1, flatNet2), (auxReal, auxNet1, auxNet2)
     else:
-        flatNet, auxNet = jax.tree_util.tree_flatten(nqs.cpxNet)
+        flatNet, auxNet = jax.tree_util.tree_flatten(nqs.net)
         return (flatNet,), (auxReal, auxNet)
 
 def unflatten_nqs(aux,treeData):
@@ -278,6 +278,34 @@ def unflatten_nqs(aux,treeData):
         return NQS(net)
 
 jax.tree_util.register_pytree_node(NQS, flatten_nqs, unflatten_nqs)
+
+
+# Register NQS class for flax serialization
+
+def nqs_to_state_dict(nqs):
+
+    stateDict = {}
+    if nqs.realNets:
+        stateDict['net1'] = flax.serialization.to_state_dict(nqs.net[0])
+        stateDict['net2'] = flax.serialization.to_state_dict(nqs.net[1])
+    else:
+        stateDict['net'] = flax.serialization.to_state_dict(nqs.net)
+
+    return stateDict
+
+def nqs_from_state_dict(nqs, stateDict):
+
+    if nqs.realNets:
+        return NQS(
+                    flax.serialization.from_state_dict(nqs.net[0], stateDict['net1']),
+                    flax.serialization.from_state_dict(nqs.net[1], stateDict['net2'])
+                )
+    else:
+        return NQS(
+                    flax.serialization.from_state_dict(nqs.net, stateDict['net'])
+                )
+
+flax.serialization.register_serialization_state(NQS, nqs_to_state_dict, nqs_from_state_dict)
 
 
 

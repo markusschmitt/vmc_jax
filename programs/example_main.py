@@ -7,6 +7,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 import jax.random as random
+import flax
 import flax.nn as nn
 import jax.numpy as jnp
 
@@ -74,10 +75,6 @@ tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=
 # Perform ground state search to get initial state
 print("** Ground state search")
 ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=1e-2, observables=observables)
-
-states, logPsi, _ = exactSampler.sample(psi)
-print(jnp.exp(logPsi))
-print(psi.get_parameters())
 
 print("** Time evolution")
 

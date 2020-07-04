@@ -53,3 +53,5 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, stepSize=
 
         delta=0.95*delta
         tdvpEquation.set_diagonal_shift(delta)
+
+
