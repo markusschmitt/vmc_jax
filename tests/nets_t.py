@@ -32,7 +32,7 @@ class TestCNN(unittest.TestCase):
         self.assertTrue( jnp.max( jnp.abs( psiS ) ) < 1e-12 )
     
 
-    def test_cnn_1d(self):
+    def test_cnn_2d(self):
         cnn = nets.CNN.partial(F=(3,3), channels=[3,2,5], strides=[1,1])
         _,params = cnn.init_by_shape(random.PRNGKey(0),[(1,4,4)])
         cnnModel = nn.Model(cnn,params)
