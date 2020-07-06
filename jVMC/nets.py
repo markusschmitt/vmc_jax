@@ -55,4 +55,29 @@ class FFN(nn.Module):
                                 bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
                      ))
 
-# ** end class RBM
+# ** end class FFN
+
+
+class CNN(nn.Module):
+
+    def apply(self, x, F=(8,), channels=[10], strides=[1], actFun=nn.elu, bias=True):
+       
+        # Set up padding for periodic boundary conditions 
+        pads=[(0,0)]
+        for f in F:
+            pads.append((0,f-1))
+        pads.append((0,0))
+
+        # List of axes that will be summed for symmetrization
+        reduceDims=tuple([-i-1 for i in range(len(strides)+1)])
+
+        # Add feature dimension
+        x = jnp.expand_dims(2*x-1, axis=-1)
+        for c in channels:
+            x = jnp.pad(x, pads, 'wrap')
+            x = actFun( nn.Conv(x, features=c, kernel_size=F, strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
+
+        nrm = jnp.sqrt( jnp.prod(x.shape[reduceDims[-1]:]) )
+        return jnp.sum(x, axis=reduceDims) / nrm
+
+# ** end class CNN
