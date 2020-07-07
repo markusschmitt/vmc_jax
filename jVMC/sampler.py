@@ -45,6 +45,11 @@ class MCMCSampler:
         if numSamples is None:
             numSamples = self.numSamples
 
+        if net.is_generator:
+            tmpKey, self.key = random.split(self.key)
+            configs, logP = net.sample(numSamples, self.key)
+            return configs, logP, None
+
         # Prepare for output
         outShape = [s for s in self.states.shape]
         outShape[0] = numSamples

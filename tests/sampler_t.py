@@ -30,9 +30,9 @@ def state_to_int(s):
     return x
 
 
-class TestTimeEvolution(unittest.TestCase):
+class TestMCMC(unittest.TestCase):
 
-    def test_time_evolution(self):
+    def test_MCMC_sampling(self):
         L=4
         
         weights=jnp.array(
@@ -67,7 +67,41 @@ class TestTimeEvolution(unittest.TestCase):
 
         # Compare histogram to exact probabilities
         self.assertTrue( jnp.max( jnp.abs( pmc/numSamples - pex ) ) < 1e-3 )
+    
 
+    def test_autoregressive_sampling(self):
+
+        L=4
+
+        # Set up variational wave function
+        rnn = nets.RNN.partial( L=4, units=[5] )
+        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
+        rnnModel = nn.Model(rnn,params)
+        rbm = nets.RBM.partial(numHidden=2,bias=False)
+        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
+        rbmModel = nn.Model(rbm,params)
+        
+        psi = NQS(rnnModel, rbmModel)
+        
+        # Set up exact sampler
+        exactSampler=sampler.ExactSampler(L)
+        
+        # Set up MCMC sampler
+        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        
+        # Compute exact probabilities
+        _, _, pex = exactSampler.sample(psi)
+
+        numSamples=500000
+        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+        
+        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc))-p) ) < 1e-12 )
+        
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+        pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
+
+        self.assertTrue( jnp.max( jnp.abs( pmc/numSamples-pex ) ) < 1e-3 )
 
 if __name__ == "__main__":
     unittest.main()

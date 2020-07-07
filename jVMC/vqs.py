@@ -244,6 +244,17 @@ class NQS:
     # **  end def set_parameters
 
 
+    def sample(self, numSamples, key):
+
+        if self._isGenerator:
+            samples, logP = self.net[0].sample(numSamples, key)
+            return samples, logP
+
+        return 0
+    
+    # **  end def sample
+
+
     @property
     def is_generator(self):
         return self._isGenerator

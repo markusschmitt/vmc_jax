@@ -81,3 +81,73 @@ class CNN(nn.Module):
         return jnp.sum(x, axis=reduceDims) / nrm
 
 # ** end class CNN
+
+
+class RNN(nn.Module):
+
+    def apply(self, x, L=10, units=[10], inputDim=2, actFun=nn.elu, initScale=1.0):
+
+        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+        initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
+
+        cellIn = nn.Dense.shared(features=units[0],
+                                    name='rnn_cell_in',
+                                    bias=False, dtype=global_defs.tReal)
+        cellCarry = nn.Dense.shared(features=units[0],
+                                    name='rnn_cell_carry',
+                                    bias=True,
+                                    kernel_init=initFunctionCell, dtype=global_defs.tReal)
+
+        outputDense = nn.Dense.shared(features=inputDim,
+                                      name='rnn_output_dense',
+                                      kernel_init=initFunctionOut, dtype=global_defs.tReal)
+
+        state = jnp.zeros(units[0])
+
+        def rnn_cell(carry, x):
+            newCarry = actFun(cellCarry(carry[0]) + cellIn(carry[1]))
+            prob = nn.softmax(outputDense(newCarry))
+            prob = jnp.log( jnp.sum( prob * x, axis=-1 ) )
+            return (newCarry, x), prob
+      
+        _, probs = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
+
+        return 0.5 * jnp.sum(probs, axis=0)
+
+
+    @nn.module_method
+    def sample(self,batchSize,key,L,units,inputDim=2,actFun=nn.elu, initScale=1.0):
+
+        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+        initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
+
+        cellIn = nn.Dense.shared(features=units[0],
+                                 name='rnn_cell_in',
+                                 bias=False, dtype=global_defs.tReal)
+        cellCarry = nn.Dense.shared(features=units[0],
+                                    name='rnn_cell_carry',
+                                    bias=True,
+                                    kernel_init=initFunctionCell, dtype=global_defs.tReal)
+
+        outputDense = nn.Dense.shared(features=inputDim,
+                                      name='rnn_output_dense',
+                                      kernel_init=initFunctionOut, dtype=global_defs.tReal)
+
+        outputs = jnp.asarray(np.zeros((batchSize,L,L)))
+        
+        state = jnp.zeros((batchSize, units[0]))
+
+        def rnn_cell(carry, x):
+            newCarry = actFun( cellCarry(carry[0]) + cellIn(carry[1]) )
+            logits = outputDense(newCarry)
+            sampleOut = jax.random.categorical( x, logits )
+            sample = jax.nn.one_hot( sampleOut, inputDim )
+            logProb = jnp.log( jnp.sum( nn.softmax(logits) * sample, axis=1 ) )
+            return (newCarry, sample), (logProb, sampleOut)
+ 
+        keys = jax.random.split(key,L)
+        _, res = jax.lax.scan( rnn_cell, (state, jnp.zeros((batchSize,inputDim))), keys )
+
+        return jnp.transpose( res[1] ), 0.5 * jnp.sum(res[0], axis=0)
+
+# ** end class RNN
