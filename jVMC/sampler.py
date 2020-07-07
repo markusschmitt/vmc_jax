@@ -14,6 +14,7 @@ def propose_spin_flip(key, s, info):
     update = (s[idx] + 1 ) % 2
     return jax.ops.index_update( s, jax.ops.index[idx], update )
 
+
 class MCMCSampler:
 
     def __init__(self, key, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
@@ -85,7 +86,7 @@ class MCMCSampler:
             newStates = jit(vmap(updateProposer, in_axes=(0, 0, None)))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
 
             # Compute acceptance probabilities
-            newLogPsiSq = net.real_coefficients(newStates)
+            newLogPsiSq = 2.*net.real_coefficients(newStates)
             P = jnp.exp( newLogPsiSq - carry[1] )
 
             # Roll dice
@@ -95,7 +96,6 @@ class MCMCSampler:
             # Bookkeeping
             numProposed = carry[3] + len(newStates)
             numAccepted = carry[4] + jnp.sum(accepted)
-
 
             # Perform accepted updates
             def update(carry, x):
@@ -116,7 +116,7 @@ class MCMCSampler:
     def _mc_init(self, net):
         
         # Initialize logPsiSq
-        self.logPsiSq = net.real_coefficients(self.states)
+        self.logPsiSq = 2. * net.real_coefficients(self.states)
 
         self.numProposed = 0
         self.numAccepted = 0
