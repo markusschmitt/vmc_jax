@@ -19,7 +19,7 @@ import flax.nn as nn
 class TestGradients(unittest.TestCase):
     
     def test_gradients_cpx(self):
-        rbm = nets.CpxRBM.partial(L=3,numHidden=2,bias=True)
+        rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
         _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
         rbmModel = nn.Model(rbm,params)
         s=2*jnp.zeros((2,3),dtype=np.int32)-1
@@ -45,10 +45,10 @@ class TestGradients(unittest.TestCase):
                 self.assertTrue( jnp.max( jnp.abs( Gfd - G[:,j] ) ) < 1e-2 )
     
     def test_gradients_real(self):
-        rbm1 = nets.RBM.partial(L=3,numHidden=2,bias=True)
+        rbm1 = nets.RBM.partial(numHidden=2,bias=True)
         _,params1 = rbm1.init_by_shape(random.PRNGKey(0),[(1,3)])
         rbmModel1 = nn.Model(rbm1,params1)
-        rbm2 = nets.RBM.partial(L=3,numHidden=3,bias=True)
+        rbm2 = nets.RBM.partial(numHidden=3,bias=True)
         _,params2 = rbm2.init_by_shape(random.PRNGKey(0),[(1,3)])
         rbmModel2 = nn.Model(rbm2,params2)
 
@@ -76,7 +76,7 @@ class TestGradients(unittest.TestCase):
 
 class TestEvaluation(unittest.TestCase):
     def test_evaluation_cpx(self):
-        rbm = nets.CpxRBM.partial(L=3,numHidden=2,bias=True)
+        rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
         _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
         rbmModel = nn.Model(rbm,params)
         s=2*jnp.zeros((2,3),dtype=np.int32)-1
