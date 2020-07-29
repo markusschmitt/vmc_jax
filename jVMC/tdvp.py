@@ -33,10 +33,8 @@ class TDVP:
             Eloc -= jnp.mean(Eloc)
             gradients -= jnp.mean(gradients, axis=0)
             
-            def eoFun(carry, xs):
-                return carry, xs[0] * xs[1]
-            _, EOdata = jax.lax.scan(eoFun, [None], (Eloc, jnp.conjugate(gradients)))
-            EOdata = self.makeReal( -self.rhsPrefactor * EOdata )
+            EOdata = -self.rhsPrefactor * jnp.multiply(Eloc[:,None], jnp.conj(gradients))
+            EOdata = self.makeReal( EOdata )
 
             F = jnp.mean(EOdata, axis=0)
             S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients) ) / Eloc.shape[0]
@@ -45,7 +43,7 @@ class TDVP:
             Eloc -= jnp.dot(p, Eloc)
             gradients -= jnp.dot(p,gradients)
 
-            EOdata = -self.rhsPrefactor * jnp.matmul(jnp.diag(p*Eloc), jnp.conj(gradients))
+            EOdata = -self.rhsPrefactor * jnp.multiply((p*Eloc)[:,None], jnp.conj(gradients))
             EOdata = self.makeReal( EOdata )
             
             F = jnp.sum(EOdata, axis=0)
