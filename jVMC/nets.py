@@ -25,6 +25,7 @@ class CpxRBM(nn.Module):
 
 # ** end class CpxRBM
 
+
 class RBM(nn.Module):
 
     def apply(self, s, numHidden=2, bias=False):
@@ -63,6 +64,7 @@ class CNN(nn.Module):
     def apply(self, x, F=(8,), channels=[10], strides=[1], actFun=nn.elu, bias=True):
        
         # Set up padding for periodic boundary conditions 
+        # Padding size must be 1 - filter diameter
         pads=[(0,0)]
         for f in F:
             pads.append((0,f-1))
@@ -72,12 +74,14 @@ class CNN(nn.Module):
         reduceDims=tuple([-i-1 for i in range(len(strides)+1)])
 
         # Add feature dimension
-        x = jnp.expand_dims(2*x-1, axis=-1)
+        #x = jnp.expand_dims(2*x-1, axis=(0,-1))
+        x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
         for c in channels:
             x = jnp.pad(x, pads, 'wrap')
             x = actFun( nn.Conv(x, features=c, kernel_size=F, strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
 
         nrm = jnp.sqrt( jnp.prod(x.shape[reduceDims[-1]:]) )
+        
         return jnp.sum(x, axis=reduceDims) / nrm
 
 # ** end class CNN
@@ -102,7 +106,7 @@ class RNN(nn.Module):
                                       name='rnn_output_dense',
                                       kernel_init=initFunctionOut, dtype=global_defs.tReal)
 
-        state = jnp.zeros(units[0])
+        state = jnp.zeros((units[0]))
 
         def rnn_cell(carry, x):
             newCarry = actFun(cellCarry(carry[0]) + cellIn(carry[1]))

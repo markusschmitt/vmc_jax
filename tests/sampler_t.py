@@ -43,7 +43,7 @@ class TestMCMC(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM.partial(numHidden=2,bias=False)
-        _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
+        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
         rbmModel = nn.Model(rbm,params)
         psi = NQS(rbmModel)
         psi.set_parameters(weights)

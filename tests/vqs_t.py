@@ -22,7 +22,6 @@ class TestGradients(unittest.TestCase):
         rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
         _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
         rbmModel = nn.Model(rbm,params)
-        s=2*jnp.zeros((2,3),dtype=np.int32)-1
         s=2*jnp.zeros((4,3),dtype=np.int32)-1
         s=jax.ops.index_update(s,jax.ops.index[0,1],1)
         s=jax.ops.index_update(s,jax.ops.index[2,2],1)
@@ -77,9 +76,8 @@ class TestGradients(unittest.TestCase):
 class TestEvaluation(unittest.TestCase):
     def test_evaluation_cpx(self):
         rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
-        _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
+        _,params = rbm.init_by_shape(random.PRNGKey(0),[(4,3)])
         rbmModel = nn.Model(rbm,params)
-        s=2*jnp.zeros((2,3),dtype=np.int32)-1
         s=2*jnp.zeros((4,3),dtype=np.int32)-1
         s=jax.ops.index_update(s,jax.ops.index[0,1],1)
         s=jax.ops.index_update(s,jax.ops.index[2,2],1)
@@ -87,7 +85,7 @@ class TestEvaluation(unittest.TestCase):
         psiC = NQS(rbmModel)
         cpxCoeffs = psiC(s)
         realCoeffs = psiC.real_coefficients(s)
-
+        
         self.assertTrue( jnp.linalg.norm(jnp.real(cpxCoeffs) - realCoeffs) < 1e-6 )
 
 if __name__ == "__main__":

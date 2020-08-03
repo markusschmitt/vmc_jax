@@ -17,6 +17,8 @@ import jVMC.global_defs as global_defs
 from jVMC.nets import CpxRBM
 from jVMC.nets import RBM
 
+from functools import partial
+
 class NQS:
     def __init__(self, logModNet, phaseNet=None):
         # The net arguments have to be instances of flax.nn.Model
@@ -42,27 +44,38 @@ class NQS:
         if callable(getattr(logModNet, 'sample', None)):
             self._isGenerator = True
 
+        # Need to keep handles of jit'd functions to avoid recompilation
+        self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
+        self.evalJitdNet2 = jit(vmap(self._eval, in_axes=(None, 0)))
+        self.evalJitdReal = jit(vmap(self._eval_real, in_axes=(None, 0)))
+        self.gradJitdNet1 = jit(vmap(grad(self._eval_real), in_axes=(None, 0)))
+        self.gradJitdNet2 = jit(vmap(grad(self._eval_real), in_axes=(None, 0)))
+
     # **  end def __init__
 
 
     def __call__(self, s):
 
         if self.realNets:
-            logMod = jit(vmap(self._eval,in_axes=(None,0)))(self.net[0],s)
-            phase = jit(vmap(self._eval,in_axes=(None,0)))(self.net[1],s)
+            logMod = self.evalJitdNet1(self.net[0],s)
+            phase = self.evalJitdNet2(self.net[1],s)
+            #logMod = self._eval(self.net[0],s)
+            #phase = self._eval(self.net[1],s)
             return logMod + 1.j * phase
         else:
-            return jit(vmap(self._eval,in_axes=(None,0)))(self.net,s)
+            return self.evalJitdNet1(self.net,s)
+            #return self._eval(self.net,s)
 
     # **  end def __call__
     
 
+    @partial(jit, static_argnums=(0,))
     def real_coefficients(self, s):
 
         if self.realNets:
-            return jit(vmap(self._eval,in_axes=(None,0)))(self.net[0],s)
+            return self.evalJitdNet1(self.net[0],s)
         else:
-            return jit(vmap(self._eval_real,in_axes=(None,0)))(self.net,s)
+            return self.evalJitdReal(self.net,s)
 
     # **  end def real_coefficients
 
@@ -89,7 +102,7 @@ class NQS:
             # Second net
             gradients, _ = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[1],s)
+                        jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net[1],s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -106,7 +119,7 @@ class NQS:
 
             gradients, self.gradientTreeDef1 = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net,s)
+                        jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net,s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -261,6 +274,7 @@ class NQS:
 
     def _eval_real(self, net, s):
         return jnp.real(net(s))
+
     def _eval(self, net, s):
         return net(s)
 
