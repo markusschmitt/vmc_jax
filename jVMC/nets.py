@@ -13,6 +13,9 @@ def cplx_init(rng, shape):
     unif=jax.nn.initializers.uniform()
     return unif(rng1,shape)+1.j*unif(rng2,shape)
 
+# ! ! !
+# Nets have to be defined to act on a single configuration (not a batch)
+
 class CpxRBM(nn.Module):
 
     def apply(self, s, numHidden=2, bias=False):
@@ -71,10 +74,10 @@ class CNN(nn.Module):
         pads.append((0,0))
 
         # List of axes that will be summed for symmetrization
-        reduceDims=tuple([-i-1 for i in range(len(strides)+1)])
+        reduceDims=tuple([-i-1 for i in range(len(strides)+2)])
 
         # Add feature dimension
-        #x = jnp.expand_dims(2*x-1, axis=(0,-1))
+        #x = jnp.expand_dims(2*x-1, axis=-1)
         x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
         for c in channels:
             x = jnp.pad(x, pads, 'wrap')
