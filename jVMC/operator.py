@@ -98,14 +98,16 @@ class Operator:
 
         self.nonzero=jnp.where(jnp.abs(self.matEl)>1e-6)
 
-        return self.sp[self.nonzero], self.matEl[self.nonzero]
+        #return self.sp[self.nonzero], self.matEl[self.nonzero]
+        return self.sp.reshape((-1,self.sp.shape[-1])), self.matEl
 
 
     def get_O_loc(self,logPsiS,logPsiSP):
-
-        self.logPsiSP = jnp.zeros((len(self.ops),self.numInStates),dtype=global_defs.tCpx)
-        self.logPsiSP = jax.ops.index_update(self.logPsiSP, jax.ops.index[self.nonzero], logPsiSP)
-        return get_O_loc_fun(self.matEl, logPsiS, self.logPsiSP)
+        
+        #self.logPsiSP = jnp.zeros((len(self.ops),self.numInStates),dtype=global_defs.tCpx)
+        #self.logPsiSP = jax.ops.index_update(self.logPsiSP, jax.ops.index[self.nonzero], logPsiSP)
+        #return get_O_loc_fun(self.matEl[self.nonzero], logPsiS[self.nonzero[1]], logPsiSP)
+        return get_O_loc_fun(self.matEl, logPsiS, logPsiSP.reshape((len(self.ops),self.numInStates)))
 
 
 if __name__ == '__main__':
