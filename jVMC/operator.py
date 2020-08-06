@@ -102,11 +102,11 @@ class Operator:
 
 
     def get_O_loc(self,logPsiS,logPsiSP):
-
+       
         self.logPsiSP = jnp.zeros((len(self.ops),self.numInStates),dtype=global_defs.tCpx)
         self.logPsiSP = jax.ops.index_update(self.logPsiSP, jax.ops.index[self.nonzero], logPsiSP)
         return get_O_loc_fun(self.matEl, logPsiS, self.logPsiSP)
-
+    
 
 if __name__ == '__main__':
     L=4
