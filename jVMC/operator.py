@@ -25,17 +25,12 @@ def scal_opstr(a,op):
     op[0]['matEls'] = a * op[0]['matEls']
     return op
 
-def op_map(s,idx,sMap):
-    s=jax.ops.index_update(s,jax.ops.index[idx],sMap[s[idx]])
-    return s
-
-@jit
 def apply_fun(s,matEl,idx,sMap,matEls):
     matEl=matEl*matEls[s[idx]]
-    #s=vmap(op_map,in_axes=(0,None,None))(s,idx,sMap)
-    s=op_map(s,idx,sMap)
+    s=jax.ops.index_update(s,jax.ops.index[idx],sMap[s[idx]])
     return s,matEl
 
+@jit
 def apply_multi(s,matEl,opIdx,opMap,opMatEls):
     for idx,mp,me in zip(opIdx,opMap,opMatEls):
         s,matEl=vmap(apply_fun, in_axes=(0,0,None,None,None))(s,matEl,idx,mp,me)
@@ -110,7 +105,6 @@ class Operator:
 
         self.logPsiSP = jnp.zeros((len(self.ops),self.numInStates),dtype=global_defs.tCpx)
         self.logPsiSP = jax.ops.index_update(self.logPsiSP, jax.ops.index[self.nonzero], logPsiSP)
-
         return get_O_loc_fun(self.matEl, logPsiS, self.logPsiSP)
 
 

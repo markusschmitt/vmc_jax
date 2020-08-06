@@ -36,6 +36,7 @@ class TDVP:
             EOdata = -self.rhsPrefactor * jnp.multiply(Eloc[:,None], jnp.conj(gradients))
             EOdata = self.makeReal( EOdata )
 
+            # Need MPI
             F = jnp.mean(EOdata, axis=0)
             S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients) ) / Eloc.shape[0]
 
@@ -46,6 +47,7 @@ class TDVP:
             EOdata = -self.rhsPrefactor * jnp.multiply((p*Eloc)[:,None], jnp.conj(gradients))
             EOdata = self.makeReal( EOdata )
             
+            # Need MPI
             F = jnp.sum(EOdata, axis=0)
             S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ) )
 
@@ -72,6 +74,7 @@ class TDVP:
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
         EOdata = jnp.matmul(EOdata, jnp.conj(self.V))
+        # Need MPI
         self.rhoVar = jnp.var(EOdata, axis=0)
 
         self.snr = jnp.sqrt(EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.))
@@ -108,6 +111,7 @@ class TDVP:
         rhsArgs['psi'].set_parameters(netParameters)
         
         # Get sample
+        # Need MPI
         sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
 
         # Evaluate local energy
