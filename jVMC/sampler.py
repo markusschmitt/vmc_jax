@@ -4,6 +4,12 @@ import jax.random as random
 import numpy as np
 from jax import vmap, jit
 
+import sys
+# Find jVMC package
+sys.path.append(sys.path[0]+"/..")
+
+import jVMC.mpi_wrapper as mpi
+
 from functools import partial
 
 import time
@@ -151,8 +157,11 @@ class ExactSampler:
 
     def get_basis(self):
 
-        intReps = jnp.arange(2**self.N)
-        self.basis = jnp.zeros((2**self.N, self.N), dtype=np.int32)
+        myNumStates = mpi.distribute_sampling(2**self.N)
+        myFirstState = mpi.first_sample_id()
+
+        intReps = jnp.arange(myFirstState, myFirstState + myNumStates)
+        self.basis = jnp.zeros((myNumStates, self.N), dtype=np.int32)
         self.basis = self._get_basis(self.basis, intReps)
 
 
@@ -186,18 +195,21 @@ class ExactSampler:
 
 
 if __name__ == "__main__":
+    
+
     import nets
     from vqs import NQS
     from flax import nn
 
-    L=8
-    sampler = Sampler(random.PRNGKey(123), propose_spin_flip, [L], numChains=5)
+    L=4
+    #sampler = Sampler(random.PRNGKey(123), propose_spin_flip, [L], numChains=5)
+    sampler = ExactSampler((L,))
 
-    rbm = nets.CpxRBM.partial(L=L,numHidden=2,bias=True)
-    _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
+    rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
+    _,params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
     rbmModel = nn.Model(rbm,params)
     psiC = NQS(rbmModel)
-    configs, _ = sampler.sample(psiC, 10)
+    configs, _, _ = sampler.sample(psiC, 10)
 
     print(configs)
-    print(sampler.acceptance_ratio())
+#    print(sampler.acceptance_ratio())

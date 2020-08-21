@@ -30,6 +30,7 @@ class TDVP:
     def get_tdvp_equation(self, Eloc, gradients, p=None):
         
         if p is None:
+            # Need MPI
             Eloc -= jnp.mean(Eloc)
             gradients -= jnp.mean(gradients, axis=0)
             
@@ -41,6 +42,7 @@ class TDVP:
             S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients) ) / Eloc.shape[0]
 
         else:
+            # Need MPI
             Eloc -= jnp.dot(p, Eloc)
             gradients -= jnp.dot(p,gradients)
 
