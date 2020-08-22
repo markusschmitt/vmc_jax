@@ -2,6 +2,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+import jVMC.mpi_wrapper as mpi
+
 def realFun(x):
     return jnp.real(x)
 
@@ -43,15 +45,24 @@ class TDVP:
 
         else:
             # Need MPI
-            Eloc -= jnp.dot(p, Eloc)
-            gradients -= jnp.dot(p,gradients)
+            Eloc -= mpi.global_sum( jnp.array([jnp.dot(p, Eloc)]) )
+            gradients -= mpi.global_sum( jnp.expand_dims(jnp.dot(p,gradients), axis=0) )
 
             EOdata = -self.rhsPrefactor * jnp.multiply((p*Eloc)[:,None], jnp.conj(gradients))
             EOdata = self.makeReal( EOdata )
             
             # Need MPI
-            F = jnp.sum(EOdata, axis=0)
-            S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ) )
+            #F = jnp.sum(EOdata, axis=0)
+            F = mpi.global_sum(EOdata)
+            #S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ) )
+            S = self.makeReal(
+                    mpi.global_sum( 
+                        jnp.expand_dims(
+                            jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ),
+                            axis=0
+                        )
+                    )
+                )
 
             #work with complex matrix
             #np = gradients.shape[1]//2
@@ -77,7 +88,8 @@ class TDVP:
 
         EOdata = jnp.matmul(EOdata, jnp.conj(self.V))
         # Need MPI
-        self.rhoVar = jnp.var(EOdata, axis=0)
+        # self.rhoVar = jnp.var(EOdata, axis=0)
+        self.rhoVar = mpi.global_variance(EOdata)
 
         self.snr = jnp.sqrt(EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.))
 
@@ -113,8 +125,10 @@ class TDVP:
         rhsArgs['psi'].set_parameters(netParameters)
         
         # Get sample
-        # Need MPI
-        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
+        myNumSamples = 0
+        if rhsArgs['numSamples'] is not None:
+            myNumSamples = mpi.distribute_sampling(rhsArgs['numSamples'])
+        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], myNumSamples )
 
         # Evaluate local energy
         sampleOffdConfigs, matEls = rhsArgs['hamiltonian'].get_s_primes(sampleConfigs)

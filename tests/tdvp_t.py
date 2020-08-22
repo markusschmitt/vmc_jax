@@ -36,7 +36,7 @@ class TestGsSearch(unittest.TestCase):
         for hx,exE in zip(hxs,exEs):
             # Set up variational wave function
             rbm = nets.CpxRBM.partial(numHidden=6,bias=False)
-            _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
+            _, params = rbm.init_by_shape(random.PRNGKey(1),[(1,L)])
             rbmModel = nn.Model(rbm,params)
             psi = NQS(rbmModel)
 
@@ -53,10 +53,10 @@ class TestGsSearch(unittest.TestCase):
             tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
 
             # Perform ground state search to get initial state
-            ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=150, stepSize=1e-2)
+            ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=2e-2)
                 
             obs = measure([hamiltonianGS], psi, exactSampler)
-
+            
             self.assertTrue( jnp.max( jnp.abs( ( obs[0] - exE ) / exE) ) < 1e-3 )
 
 
@@ -66,7 +66,6 @@ class TestTimeEvolution(unittest.TestCase):
         J=-1.0
         hx=-0.3
         
-        exEs=[-6.10160339, -4.09296160]
         weights=jnp.array(
                 [ 0.23898957,  0.12614753,  0.19479055,  0.17325271,  0.14619853,  0.21392751,
                   0.19648707,  0.17103704, -0.15457255,  0.10954413,  0.13228065, -0.14935214,

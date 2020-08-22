@@ -54,6 +54,37 @@ def global_mean(data):
     return jnp.array(res) / globNumSamples
 
 
+def global_variance(data):
+
+    mean = global_mean(data)
+
+    # Compute sum locally
+    localSum = np.array( jnp.linalg.norm(data - mean, axis=0)**2 )
+    
+    # Allocate memory for result
+    res = np.empty_like(localSum, dtype=localSum.dtype)
+
+    # Global sum
+    global globNumSamples
+    comm.Allreduce(localSum, res, op=MPI.SUM)
+
+    return jnp.array(res) / globNumSamples
+
+
+def global_sum(data):
+
+    # Compute sum locally
+    localSum = np.array( jnp.sum(data, axis=0) )
+    
+    # Allocate memory for result
+    res = np.empty_like(localSum, dtype=localSum.dtype)
+
+    # Global sum
+    comm.Allreduce(localSum, res, op=MPI.SUM)
+
+    return jnp.array(res)
+
+
 
 if __name__ == "__main__":
     data=jnp.array(np.arange(720*4).reshape((720,4)))

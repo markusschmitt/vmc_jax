@@ -185,8 +185,9 @@ class ExactSampler:
     def sample(self, net, numSamples=0):
 
         logPsi = net(self.basis)
-        nrm = jnp.linalg.norm( jnp.exp( logPsi - self.lastNorm ) )
-        self.lastNorm += jnp.log(nrm)
+        nrm = jnp.array([jnp.linalg.norm( jnp.exp( logPsi - self.lastNorm ) )**2])
+        nrm = mpi.global_sum(nrm)
+        self.lastNorm += 0.5 * jnp.log(nrm)
         p = jnp.exp(2 * jnp.real( logPsi - self.lastNorm ))
         
         return self.basis, logPsi, p
