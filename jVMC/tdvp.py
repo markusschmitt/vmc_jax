@@ -33,15 +33,22 @@ class TDVP:
         
         if p is None:
             # Need MPI
-            Eloc -= jnp.mean(Eloc)
-            gradients -= jnp.mean(gradients, axis=0)
+            Eloc -= mpi.global_mean(Eloc)
+            gradients -= mpi.global_mean(gradients)
             
             EOdata = -self.rhsPrefactor * jnp.multiply(Eloc[:,None], jnp.conj(gradients))
             EOdata = self.makeReal( EOdata )
 
             # Need MPI
-            F = jnp.mean(EOdata, axis=0)
-            S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients) ) / Eloc.shape[0]
+            F = mpi.global_mean(EOdata)
+            S = self.makeReal( 
+                    mpi.global_mean(
+                        jnp.expand_dims(
+                            jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients),
+                            axis=0
+                        )
+                    )
+                )
 
         else:
             # Need MPI
