@@ -55,7 +55,7 @@ class TestGsSearch(unittest.TestCase):
             # Perform ground state search to get initial state
             ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=2e-2)
                 
-            obs = measure([hamiltonianGS], psi, exactSampler)
+            obs, _ = measure([hamiltonianGS], psi, exactSampler)
             
             self.assertTrue( jnp.max( jnp.abs( ( obs[0] - exE ) / exE) ) < 1e-3 )
 
@@ -102,14 +102,15 @@ class TestTimeEvolution(unittest.TestCase):
         obs=[]
         times=[]
         times.append(t)
-        obs.append(measure([hamiltonian, ZZ], psi, exactSampler))
+        newMeas, _ = measure([hamiltonian, ZZ], psi, exactSampler)
+        obs.append(newMeas)
         while t<0.5:
-            stepperArgs = {'hamiltonian': hamiltonian, 'psi': psi, 'numSamples': 0}
-            dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), rhsArgs=stepperArgs)
+            dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=hamiltonian, psi=psi, numSamples=0)
             psi.set_parameters(dp)
             t += dt
             times.append(t)
-            obs.append(measure([hamiltonian, ZZ], psi, exactSampler))
+            newMeas, _ = measure([hamiltonian, ZZ], psi, exactSampler)
+            obs.append(newMeas)
 
         obs = np.array(jnp.asarray(obs))
 

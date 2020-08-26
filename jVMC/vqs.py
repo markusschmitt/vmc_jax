@@ -89,7 +89,8 @@ class NQS:
             # First net
             gradients, _ = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[0],s)
+                        #jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[0],s)
+                        self.gradJitdNet1(self.net[0],s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -102,7 +103,8 @@ class NQS:
             # Second net
             gradients, _ = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net[1],s)
+                        #jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net[1],s)
+                        self.gradJitdNet2(self.net[1],s)
                     )
             
             # Flatten gradients to give a single vector per sample
@@ -119,7 +121,8 @@ class NQS:
 
             gradients, self.gradientTreeDef1 = \
                     tree_flatten( 
-                        jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net,s)
+                        #jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net,s)
+                        self.gradJitdNet1(self.net,s)
                     )
             
             # Flatten gradients to give a single vector per sample

@@ -17,7 +17,7 @@ class TestIntegrationHeun(unittest.TestCase):
     # Test adaptive integrator with multi-dimensional linear ODE
     def test_integration(self):
 
-        def f(y,t,args):
+        def f(y,t,**args):
             return args['mat'].dot(y)
 
         def norm(y):
@@ -27,17 +27,16 @@ class TestIntegrationHeun(unittest.TestCase):
 
         np.random.seed(123)
         stepper = st.AdaptiveHeun()
-        rhsArgs={}
-        rhsArgs['mat'] = jnp.array(np.random.rand(N,N) + 1.j * np.random.rand(N,N))
+        mat = jnp.array(np.random.rand(N,N) + 1.j * np.random.rand(N,N))
 
         y0 = jnp.array(np.random.rand(N))
         y = y0.copy()
         t=0
         diffs=[]
         for k in range(100):
-            y, dt = stepper.step(t,f,y,normFunction=norm,rhsArgs=rhsArgs)
+            y, dt = stepper.step(t,f,y,normFunction=norm,mat=mat)
             t+=dt
-            yExact = jax.scipy.linalg.expm(t * rhsArgs['mat']).dot(y0)
+            yExact = jax.scipy.linalg.expm(t * mat).dot(y0)
             diff = y - yExact
             diffs.append(norm(diff)/N)
 

@@ -37,7 +37,7 @@ class MCMCSampler:
         self.thermalizationSteps = thermalizationSteps
         self.sweepSteps = sweepSteps
         self.numSamples = numSamples
-
+        
         self.numChains = numChains
 
 
@@ -46,10 +46,18 @@ class MCMCSampler:
         self.numSamples = N
 
 
+    def get_last_number_of_samples(self):
+
+        return self.lastNumSamples
+
+
     def sample(self, net, numSamples=None):
 
         if numSamples is None:
             numSamples = self.numSamples
+
+        self.lastNumSamples = numSamples
+        numSamples = mpi.distribute_sampling(numSamples)
 
         if net.is_generator:
             tmpKey, self.key = random.split(self.key)

@@ -98,7 +98,7 @@ class TDVP:
         # self.rhoVar = jnp.var(EOdata, axis=0)
         self.rhoVar = mpi.global_variance(EOdata)
 
-        self.snr = jnp.sqrt(EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.))
+        self.snr = jnp.sqrt( jnp.abs( EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.) ) )
 
 
     def solve(self, Eloc, gradients, p=None):
@@ -126,26 +126,45 @@ class TDVP:
         #return jnp.concatenate((jnp.real(update), jnp.imag(update)))
 
 
-    def __call__(self, netParameters, t, rhsArgs):
+    def __call__(self, netParameters, t, **rhsArgs):
 
         tmpParameters = rhsArgs['psi'].get_parameters()
         rhsArgs['psi'].set_parameters(netParameters)
         
+        outp = None
+        if "outp" in rhsArgs:
+            outp = rhsArgs["outp"]
+
+        def start_timing(outp, name):
+            if outp is not None:
+                outp.start_timing(name)
+
+        def stop_timing(outp, name):
+            if outp is not None:
+                outp.stop_timing(name)
+
         # Get sample
-        myNumSamples = 0
-        if rhsArgs['numSamples'] is not None:
-            myNumSamples = mpi.distribute_sampling(rhsArgs['numSamples'])
-        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], myNumSamples )
+        start_timing(outp, "sampling")
+        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
+        stop_timing(outp, "sampling")
 
         # Evaluate local energy
+        start_timing(outp, "compute Eloc")
         sampleOffdConfigs, matEls = rhsArgs['hamiltonian'].get_s_primes(sampleConfigs)
+        start_timing(outp, "evaluate off-diagonal")
         sampleLogPsiOffd = rhsArgs['psi'](sampleOffdConfigs)
+        stop_timing(outp, "evaluate off-diagonal")
         Eloc = rhsArgs['hamiltonian'].get_O_loc(sampleLogPsi,sampleLogPsiOffd)
+        stop_timing(outp, "compute Eloc")
 
         # Evaluate gradients
+        start_timing(outp, "compute gradients")
         sampleGradients = rhsArgs['psi'].gradients(sampleConfigs)
+        stop_timing(outp, "compute gradients")
 
+        start_timing(outp, "solve TDVP eqn.")
         update=self.solve(Eloc, sampleGradients, p)
+        stop_timing(outp, "solve TDVP eqn.")
         
         rhsArgs['psi'].set_parameters(tmpParameters)
 

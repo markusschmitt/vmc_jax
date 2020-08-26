@@ -9,9 +9,9 @@ class Euler:
         self.dt = timeStep
 
 
-    def step(self, t, f, yInitial, rhsArgs=None):
+    def step(self, t, f, yInitial, **rhsArgs):
 
-        dy = f(yInitial, t, rhsArgs)
+        dy = f(yInitial, t, **rhsArgs)
 
         return yInitial + self.dt * dy, self.dt
 
@@ -26,7 +26,7 @@ class AdaptiveHeun:
         self.maxStep = maxStep
 
 
-    def step(self, t, f, yInitial, normFunction=jnp.linalg.norm, rhsArgs=None):
+    def step(self, t, f, yInitial, normFunction=jnp.linalg.norm, **rhsArgs):
 
         fe = 0.5
 
@@ -35,19 +35,19 @@ class AdaptiveHeun:
         while fe < 1.:
         
             y = yInitial.copy()
-            k0 = f(y, t, rhsArgs)
+            k0 = f(y, t, **rhsArgs)
             y += dt * k0
-            k1 = f(y, t + dt, rhsArgs)
+            k1 = f(y, t + dt, **rhsArgs)
             dy0 = 0.5 * dt * (k0 + k1)
             
             # now with half step size
             y -= 0.5 * dt * k0
-            k10 = f(y, t + 0.5 * dt, rhsArgs)
+            k10 = f(y, t + 0.5 * dt, **rhsArgs)
             dy1 = 0.25 * dt * (k0 + k10)
             y = yInitial + dy1
-            k01 = f(y, t + 0.5 * dt, rhsArgs)
+            k01 = f(y, t + 0.5 * dt, **rhsArgs)
             y += 0.5 * dt * k01
-            k11 = f(y, t + dt, rhsArgs)
+            k11 = f(y, t + dt, **rhsArgs)
             dy1 += 0.25 * dt * (k01 + k11)
 
             # compute deviation
@@ -73,27 +73,3 @@ class AdaptiveHeun:
 
         return yInitial + dy1, realDt
 
-
-#def f(y,t,args):
-#    return args['mat'].dot(y)
-#
-#def norm(y):
-#    return jnp.real(jnp.conjugate(y).dot(y))
-#
-#stepper = AdaptiveHeun()
-#rhsArgs={}
-#rhsArgs['mat'] = jnp.array(np.random.rand(4,4) + 1.j * np.random.rand(4,4))
-#
-#y0 = jnp.array(np.random.rand(4))
-#y = y0.copy()
-#t=0
-#diffs=[]
-#for k in range(100):
-#    y, dt = stepper.step(t,f,y,normFunction=norm,rhsArgs=rhsArgs)
-#    t+=dt
-#    yExact = jax.scipy.linalg.expm(t * rhsArgs['mat']).dot(y0)
-#    diff = y - yExact
-#    diffs.append(norm(diff))
-#
-#print(diffs)
-#print(np.max(np.array(diffs)))
