@@ -89,7 +89,7 @@ def global_sum(data):
 if __name__ == "__main__":
     data=jnp.array(np.arange(720*4).reshape((720,4)))
     myNumSamples = distribute_sampling(720)
-
+    
     myData=data[rank*myNumSamples:(rank+1)*myNumSamples]
 
     print(global_mean(myData)-jnp.mean(data,axis=0))

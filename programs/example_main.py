@@ -103,7 +103,7 @@ tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., d
 outp.print("** Ground state search")
 outp.set_group("ground_state_search")
 
-ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=100, stepSize=1e-2, observables=observables, outp=outp)
+ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=10, stepSize=1e-2, observables=observables, outp=outp)
 
 # Time evolution
 outp.print("** Time evolution")
