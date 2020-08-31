@@ -45,11 +45,12 @@ class NQS:
             self._isGenerator = True
 
         # Need to keep handles of jit'd functions to avoid recompilation
-        self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
-        self.evalJitdNet2 = jit(vmap(self._eval, in_axes=(None, 0)))
-        self.evalJitdReal = jit(vmap(self._eval_real, in_axes=(None, 0)))
-        self.gradJitdNet1 = jit(vmap(grad(self._eval_real), in_axes=(None, 0)))
-        self.gradJitdNet2 = jit(vmap(grad(self._eval_real), in_axes=(None, 0)))
+        #self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
+        self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+        self.evalJitdNet2 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+        self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
+        self.gradJitdNet1 = jax.pmap(vmap(grad(self._eval_real), in_axes=(None, 0)), in_axes=(None, 0))
+        self.gradJitdNet2 = jax.pmap(vmap(grad(self._eval_real), in_axes=(None, 0)), in_axes=(None, 0))
 
     # **  end def __init__
 
@@ -59,12 +60,9 @@ class NQS:
         if self.realNets:
             logMod = self.evalJitdNet1(self.net[0],s)
             phase = self.evalJitdNet2(self.net[1],s)
-            #logMod = self._eval(self.net[0],s)
-            #phase = self._eval(self.net[1],s)
             return logMod + 1.j * phase
         else:
             return self.evalJitdNet1(self.net,s)
-            #return self._eval(self.net,s)
 
     # **  end def __call__
     
@@ -341,19 +339,18 @@ def eval_net(model,s):
     return jnp.real(model(s))
 
 if __name__ == '__main__':
-    rbm = CpxRBM.partial(L=3,numHidden=2,bias=True)
+    rbm = CpxRBM.partial(numHidden=2,bias=True)
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
     rbmModel = nn.Model(rbm,params)
-    s=2*jnp.zeros((2,3),dtype=np.int32)-1
-    s=jax.ops.index_update(s,jax.ops.index[0,1],1)
-    #print(jit(vmap(rbmModel))(s))
-    gradients=jit(vmap(grad(eval_net),in_axes=(None,0)))(rbmModel,s)
-
-    #print(gradients.params)
-    #print(jax.tree_util.tree_flatten(gradients.params))
 
     print("** Complex net **")
     psiC = NQS(rbmModel)
+
+    s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
+
+    print(psiC(s))
+
+    exit()
     G = psiC.gradients(s)
     psiC.update_parameters(jnp.real(G[0]))
     
@@ -365,8 +362,8 @@ if __name__ == '__main__':
     psiC = tree_unflatten(b,a)
     
     print("** Real nets **")
-    rbmR = RBM.partial(L=3,numHidden=2,bias=True)
-    rbmI = RBM.partial(L=3,numHidden=3,bias=True)
+    rbmR = RBM.partial(numHidden=2,bias=True)
+    rbmI = RBM.partial(numHidden=3,bias=True)
     _,paramsR = rbmR.init_by_shape(random.PRNGKey(0),[(1,3)])
     _,paramsI = rbmI.init_by_shape(random.PRNGKey(0),[(1,3)])
     rbmRModel = nn.Model(rbmR,paramsR)

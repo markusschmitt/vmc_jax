@@ -74,7 +74,11 @@ def global_variance(data):
 def global_sum(data):
 
     # Compute sum locally
-    localSum = np.array( jnp.sum(data, axis=0) )
+    def sum_up(data):
+        s = jnp.sum(data, axis=0)
+        return jax.lax.psum(s, 'i')
+
+    localSum = np.array( jax.pmap(sum_up, axis_name='i')(data)[0] )
     
     # Allocate memory for result
     res = np.empty_like(localSum, dtype=localSum.dtype)

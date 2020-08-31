@@ -158,6 +158,11 @@ class ExactSampler:
         self.N = jnp.prod(jnp.asarray(sampleShape))
         self.sampleShape = sampleShape
 
+        # pmap'd member functions
+        self._get_basis_pmapd = jax.pmap(self._get_basis, in_axes=(0, 0))
+        self._compute_probabilities_pmapd = jax.pmap(self._compute_probabilities, in_axes=(0, None, 0))
+        self._normalize_pmapd = jax.pmap(self._normalize, in_axes=(0, None))
+
         self.get_basis()
 
         self.lastNorm = 0.
@@ -168,12 +173,19 @@ class ExactSampler:
         myNumStates = mpi.distribute_sampling(2**self.N)
         myFirstState = mpi.first_sample_id()
 
-        intReps = jnp.arange(myFirstState, myFirstState + myNumStates)
-        self.basis = jnp.zeros((myNumStates, self.N), dtype=np.int32)
-        self.basis = self._get_basis(self.basis, intReps)
+        self.numStatesPerDevice = [(myNumStates + jax.device_count() - 1) // jax.device_count()] * jax.device_count()
+        self.numStatesPerDevice[-1] += myNumStates - jax.device_count() * self.numStatesPerDevice[0]
+        self.numStatesPerDevice = jnp.array(self.numStatesPerDevice)
+
+        print(self.numStatesPerDevice)
+
+        totalNumStates = jax.device_count() * self.numStatesPerDevice[0]
+
+        intReps = jnp.arange(myFirstState, myFirstState + totalNumStates).reshape((jax.device_count(), -1))
+        self.basis = jnp.zeros((intReps.shape[0], intReps.shape[1], self.N), dtype=np.int32)
+        self.basis = self._get_basis_pmapd(self.basis, intReps)
 
 
-    @partial(jax.jit, static_argnums=(0,))
     def _get_basis(self, states, intReps):
 
         def make_state(state, intRep):
@@ -188,16 +200,38 @@ class ExactSampler:
         basis = jax.vmap(make_state, in_axes=(0,0))(states, intReps)
 
         return basis
-    
+
+
+    def _compute_probabilities(self, logPsi, lastNorm, numStates):
+
+        p = jnp.exp(2. * jnp.real( logPsi - lastNorm ))
+
+        def scan_fun(c, x):
+            out = jax.lax.cond(c[1]<c[0], lambda x: x[0], lambda x: x[1], (x, 0.))
+            newC = c[1] + 1
+            return (c[0], newC), out
+
+        _, p = jax.lax.scan(scan_fun, (numStates, 0), p)
+
+        return p
+
+
+    def _normalize(self, p, nrm):
+
+            return p/nrm
+
 
     def sample(self, net, numSamples=0):
 
         logPsi = net(self.basis)
-        nrm = jnp.array([jnp.linalg.norm( jnp.exp( logPsi - self.lastNorm ) )**2])
-        nrm = mpi.global_sum(nrm)
-        self.lastNorm += 0.5 * jnp.log(nrm)
-        p = jnp.exp(2 * jnp.real( logPsi - self.lastNorm ))
+
+        p = self._compute_probabilities_pmapd(logPsi, self.lastNorm, self.numStatesPerDevice)
+
+        nrm = mpi.global_sum(p)
+        p = self._normalize_pmapd(p,nrm)
         
+        self.lastNorm += 0.5 * jnp.log(nrm)
+ 
         return self.basis, logPsi, p
 
 # ** end class ExactSampler
@@ -218,7 +252,10 @@ if __name__ == "__main__":
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
     rbmModel = nn.Model(rbm,params)
     psiC = NQS(rbmModel)
-    configs, _, _ = sampler.sample(psiC, 10)
+    configs, logpsi, p = sampler.sample(psiC, 10)
 
-    print(configs)
+    print(configs[1].device_buffer.device())
+    print(p[1].device_buffer.device())
+    print(logpsi[1].device_buffer.device())
+    print(jnp.sum(p))
 #    print(sampler.acceptance_ratio())
