@@ -93,6 +93,9 @@ class Operator:
                 self.diag.append(o)
             o=o+1
 
+        #if len(self.diag) == 0:
+        #    self.diag.append(0) # append dummy diagonal entry
+
         self.idxC = jnp.array(self.idx,dtype=np.int32)
         self.mapC = jnp.array(self.map,dtype=np.int32)
         self.matElsC = jnp.array(self.matEls,dtype=global_defs.tReal)
@@ -110,11 +113,11 @@ class Operator:
 
         # vmap over operators
         sp, matEl = vmap(apply_multi,in_axes=(0,0,0,0,0,None))(sp,matEl,idxC,mapC,matElsC,diag)
-        
-        # Reduce diagonal operators to one element
-        matEl = jax.ops.index_update(matEl, jax.ops.index[diag[0],:], jnp.sum(matEl[diag], axis=0))
-        matEl = jax.ops.index_update(matEl, jax.ops.index[diag[1:],:],
-                                     jnp.zeros((diag.shape[0]-1,matEl.shape[1]), dtype=global_defs.tReal))
+
+        if len(diag) > 1:
+            matEl = jax.ops.index_update(matEl, jax.ops.index[diag[0],:], jnp.sum(matEl[diag], axis=0))
+            matEl = jax.ops.index_update(matEl, jax.ops.index[diag[1:],:],
+                                         jnp.zeros((diag.shape[0]-1,matEl.shape[1]), dtype=global_defs.tReal))
 
         return sp, matEl
 
@@ -159,7 +162,7 @@ class Operator:
         #self.matEl = self._array_idx_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)])
         self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)], self.numNonzero)
         self.sp = self._array_idx_pmapd(self.sp, idx[:,:,:jnp.max(self.numNonzero)])
-
+        print(self.numNonzero)
         return self.sp, self.matEl
 
 
