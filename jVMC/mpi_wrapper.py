@@ -10,6 +10,19 @@ commSize = comm.Get_size()
 globNumSamples=0
 myNumSamples=0
 
+from functools import partial
+
+@partial(jax.pmap, axis_name='i')
+def _sum_up_pmapd(data):
+    s = jnp.sum(data, axis=0)
+    return jax.lax.psum(s, 'i')
+
+@partial(jax.pmap, axis_name='i', in_axes=(0,None))
+def _sum_sq_pmapd(data,mean):
+    s = jnp.linalg.norm(data - mean, axis=0)**2
+    return jax.lax.psum(s, 'i')
+
+
 def distribute_sampling(numSamples):
 
     global globNumSamples
@@ -39,46 +52,10 @@ def first_sample_id():
     return firstSampleId
 
 
-def global_mean(data):
-
-    # Compute sum locally
-    localSum = np.array( jnp.sum(data, axis=0) )
-    
-    # Allocate memory for result
-    res = np.empty_like(localSum, dtype=localSum.dtype)
-
-    # Global sum
-    global globNumSamples
-    comm.Allreduce(localSum, res, op=MPI.SUM)
-
-    return jnp.array(res) / globNumSamples
-
-
-def global_variance(data):
-
-    mean = global_mean(data)
-
-    # Compute sum locally
-    localSum = np.array( jnp.linalg.norm(data - mean, axis=0)**2 )
-    
-    # Allocate memory for result
-    res = np.empty_like(localSum, dtype=localSum.dtype)
-
-    # Global sum
-    global globNumSamples
-    comm.Allreduce(localSum, res, op=MPI.SUM)
-
-    return jnp.array(res) / globNumSamples
-
-
 def global_sum(data):
 
     # Compute sum locally
-    def sum_up(data):
-        s = jnp.sum(data, axis=0)
-        return jax.lax.psum(s, 'i')
-
-    localSum = np.array( jax.pmap(sum_up, axis_name='i')(data)[0] )
+    localSum = np.array( _sum_up_pmapd(data)[0] )
     
     # Allocate memory for result
     res = np.empty_like(localSum, dtype=localSum.dtype)
@@ -87,6 +64,30 @@ def global_sum(data):
     comm.Allreduce(localSum, res, op=MPI.SUM)
 
     return jnp.array(res)
+
+
+def global_mean(data):
+
+    global globNumSamples
+
+    return global_sum(data) / globNumSamples
+
+
+def global_variance(data):
+
+    mean = global_mean(data)
+
+    # Compute sum locally
+    localSum = np.array( _sum_sq_pmapd(data,mean) )
+    
+    # Allocate memory for result
+    res = np.empty_like(localSum, dtype=localSum.dtype)
+
+    # Global sum
+    global globNumSamples
+    comm.Allreduce(localSum, res, op=MPI.SUM)
+
+    return jnp.array(res) / globNumSamples
 
 
 
