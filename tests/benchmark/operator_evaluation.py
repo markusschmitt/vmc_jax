@@ -24,7 +24,7 @@ for l in range(L):
     hamiltonian.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
 
 
-states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
+states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L)), dtype=np.int32)
 
 print("* Compute off-diagonal configurations")
 
@@ -43,9 +43,9 @@ for i in range(timingReps):
     t += t1-t0
 print("  Avg. time elapsed (jit'd, %d repetitions): %f seconds" % (timingReps, t/timingReps))
 
-logPsi = jax.random.normal(jax.random.PRNGKey(0), shape=(len(states),)) + 1.j * jax.random.normal(jax.random.PRNGKey(1), shape=(len(states),))
-logPsip = jax.random.normal(jax.random.PRNGKey(2), shape=(len(sp),)) + 1.j * jax.random.normal(jax.random.PRNGKey(3), shape=(len(sp),))
-
+logPsi = jax.random.normal(jax.random.PRNGKey(0), shape=(jax.device_count(),states.shape[1])) + 1.j * jax.random.normal(jax.random.PRNGKey(1), shape=(jax.device_count(),states.shape[1]))
+logPsip = jax.random.normal(jax.random.PRNGKey(2), shape=(jax.device_count(),sp.shape[1],sp.shape[2]))\
+          + 1.j * jax.random.normal(jax.random.PRNGKey(3), shape=(jax.device_count(),sp.shape[1],sp.shape[2]))
 
 print("* Compute local energy")
 

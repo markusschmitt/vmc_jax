@@ -162,7 +162,7 @@ class Operator:
         #self.matEl = self._array_idx_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)])
         self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)], self.numNonzero)
         self.sp = self._array_idx_pmapd(self.sp, idx[:,:,:jnp.max(self.numNonzero)])
-        print(self.numNonzero)
+        
         return self.sp, self.matEl
 
 

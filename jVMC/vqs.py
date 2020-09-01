@@ -49,8 +49,10 @@ class NQS:
         self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
         self.evalJitdNet2 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
         self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
-        self.gradJitdNet1 = jax.pmap(vmap(grad(self._eval_real), in_axes=(None, 0)), in_axes=(None, 0))
-        self.gradJitdNet2 = jax.pmap(vmap(grad(self._eval_real), in_axes=(None, 0)), in_axes=(None, 0))
+        self._get_gradients_net1_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
+        self._get_gradients_net2_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
+        self._append_gradients_holo = jax.pmap(lambda x: jnp.concatenate((x, 1.j*x), axis=1))
+        self._append_gradients = jax.pmap(lambda x,y: jnp.concatenate((x, 1.j*y), axis=1))
 
     # **  end def __init__
 
@@ -67,7 +69,6 @@ class NQS:
     # **  end def __call__
     
 
-    @partial(jit, static_argnums=(0,))
     def real_coefficients(self, s):
 
         if self.realNets:
@@ -78,62 +79,32 @@ class NQS:
     # **  end def real_coefficients
 
 
+    def _get_gradients(self, net, s):
+        
+        gradients, _ = \
+                tree_flatten(
+                    jax.tree_util.tree_map( lambda x: jnp.reshape(x, (s.shape[0],-1)), 
+                        vmap(grad(lambda x, y: jnp.real(x(y))), in_axes=(None, 0))(net, s)
+                    )
+                )
+
+        return jnp.concatenate(gradients, axis=1)
+
+
     def gradients(self, s):
 
         if self.realNets: # FOR REAL NETS
             
-            gradOut = jnp.empty((s.shape[0],self.numParameters), dtype=global_defs.tCpx)
+            gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s)
+            gradOut2 = self._get_gradients_net2_pmapd(self.net[1], s)
 
-            # First net
-            gradients, _ = \
-                    tree_flatten( 
-                        #jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[0],s)
-                        self.gradJitdNet1(self.net[0],s)
-                    )
-            
-            # Flatten gradients to give a single vector per sample
-            start = 0
-            for g in gradients:
-                numGradients = g[0].size
-                gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,start:start+numGradients], g.reshape((s.shape[0],-1)))
-                start += numGradients
-            
-            # Second net
-            gradients, _ = \
-                    tree_flatten( 
-                        #jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net[1],s)
-                        self.gradJitdNet2(self.net[1],s)
-                    )
-            
-            # Flatten gradients to give a single vector per sample
-            for g in gradients:
-                numGradients = g[0].size
-                gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,start:start+numGradients], 1.j * g.reshape((s.shape[0],-1)))
-                start += numGradients
-
-            return gradOut
+            return self._append_gradients(gradOut1, gradOut2)
 
         else:             # FOR COMPLEX NET
 
-            gradOut = jnp.empty((s.shape[0],2*self.numParameters), dtype=global_defs.tCpx)
+            gradOut = self._get_gradients_net1_pmapd(self.net, s)
 
-            gradients, self.gradientTreeDef1 = \
-                    tree_flatten( 
-                        #jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net,s)
-                        self.gradJitdNet1(self.net,s)
-                    )
-            
-            # Flatten gradients to give a single vector per sample
-            start = 0
-            for g in gradients:
-                numGradients = g[0].size
-                gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,start:start+numGradients], g.reshape((s.shape[0],-1)))
-                start += numGradients
-
-            # Add gradients w.r.t. imaginary parts: g_i = I * g_r
-            gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,self.numParameters:], 1.j * gradOut[:,:self.numParameters])
-
-            return gradOut
+            return self._append_gradients_holo(gradOut)
 
     # **  end def gradients
 
@@ -334,10 +305,6 @@ def nqs_from_state_dict(nqs, stateDict):
 flax.serialization.register_serialization_state(NQS, nqs_to_state_dict, nqs_from_state_dict)
 
 
-
-def eval_net(model,s):
-    return jnp.real(model(s))
-
 if __name__ == '__main__':
     rbm = CpxRBM.partial(numHidden=2,bias=True)
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
@@ -348,11 +315,14 @@ if __name__ == '__main__':
 
     s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
 
-    print(psiC(s))
+    #print(psiC(s))
 
-    exit()
+    s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
     G = psiC.gradients(s)
-    psiC.update_parameters(jnp.real(G[0]))
+
+    print(G)
+    psiC.update_parameters(jnp.real(G[0][0]))
+    exit()
     
     a,b=tree_flatten(psiC)
 
