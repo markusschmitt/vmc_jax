@@ -28,7 +28,7 @@ class MCMCSampler:
         stateShape = [jax.device_count(), numChains]
         for s in sampleShape:
             stateShape.append(s)
-        self.states=jnp.zeros(stateShape, dtype=np.int32)
+        self.states=jax.pmap(lambda x: x)(jnp.zeros(stateShape, dtype=np.int32)).block_until_ready()
 
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
@@ -96,14 +96,10 @@ class MCMCSampler:
         numSamples = mpi.distribute_sampling(numSamples, localDevices=jax.device_count(), numChainsPerDevice=self.numChains)
         numSamplesStr = str(numSamples)
 
-        # Determine output shape
-        outShape = [s for s in self.states.shape]
-        outShape[1] = numSamples * self.numChains
-
         # check whether _get_samples is already compiled for given number of samples
         if not numSamplesStr in self._get_samples_pmapd:
             self._get_samples_pmapd[numSamplesStr] = jax.pmap(partial(self._get_samples, sweepFunction=self._sweep),
-                                                                static_broadcasted_argnums=(1,9),
+                                                                static_broadcasted_argnums=(1,2,3,9),
                                                                 in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None))
 
         (self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted), configs =\
@@ -140,11 +136,10 @@ class MCMCSampler:
             newKeys = random.split(carry[2],carry[0].shape[0]+1)
             carryKey = newKeys[-1]
             newStates = vmap(updateProposer, in_axes=(0, 0, None))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
+            #newStates = carry[0] 
 
             # Compute acceptance probabilities
-            def eval(net, s):
-                return net(s)
-            newLogPsiSq = 2.*jnp.real(jax.vmap(eval, in_axes=(None,0))(net,newStates))
+            newLogPsiSq = jax.vmap(lambda x,y: 2.*jnp.real(x(y)), in_axes=(None,0))(net,newStates)
             P = jnp.exp( newLogPsiSq - carry[1] )
 
             # Roll dice
@@ -164,7 +159,6 @@ class MCMCSampler:
 
             return (carryStates, carryLogPsiSq, carryKey, numProposed, numAccepted)
 
-        tmpInt = numSteps.astype(int)
         (states, logPsiSq, key, numProposed, numAccepted) =\
             jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, logPsiSq, key, numProposed, numAccepted))
 
@@ -282,11 +276,11 @@ if __name__ == "__main__":
     from vqs import NQS
     from flax import nn
 
-    L=64
-    sampler = MCMCSampler(random.PRNGKey(123), propose_spin_flip, [L], numChains=1000)
+    L=128
+    sampler = MCMCSampler(random.PRNGKey(123), propose_spin_flip, [L], numChains=500, sweepSteps=128)
     #sampler = ExactSampler((L,))
 
-    rbm = nets.CpxRBM.partial(numHidden=20,bias=True)
+    rbm = nets.CpxRBM.partial(numHidden=128,bias=True)
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
     rbmModel = nn.Model(rbm,params)
     psiC = NQS(rbmModel)
