@@ -79,6 +79,16 @@ class NQS:
     # **  end def real_coefficients
 
 
+    def get_sampler_net(self):
+    
+        if self.realNets:
+            return self.net[0]
+        else:
+            return self.net
+
+    # **  end def get_sampler_net
+
+
     def _get_gradients(self, net, s):
         
         gradients, _ = \
@@ -232,12 +242,18 @@ class NQS:
     def sample(self, numSamples, key):
 
         if self._isGenerator:
-            samples, logP = self.net[0].sample(numSamples, key)
+            #samples, logP = self.net[0].sample(numSamples, key)
+            samples, logP = jax.pmap(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
             return samples, logP
 
         return 0
     
     # **  end def sample
+
+
+    def _sample(self, net, numSamples, key):
+
+        return net.sample(numSamples, key)
 
 
     @property
@@ -322,7 +338,6 @@ if __name__ == '__main__':
 
     print(G)
     psiC.update_parameters(jnp.real(G[0][0]))
-    exit()
     
     a,b=tree_flatten(psiC)
 
@@ -330,6 +345,7 @@ if __name__ == '__main__':
     print(b)
 
     psiC = tree_unflatten(b,a)
+    exit()
     
     print("** Real nets **")
     rbmR = RBM.partial(numHidden=2,bias=True)

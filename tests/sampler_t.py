@@ -19,6 +19,7 @@ import jVMC.nets as nets
 from jVMC.vqs import NQS
 import jVMC.sampler as sampler
 
+import time
 
 def state_to_int(s):
 
@@ -60,13 +61,13 @@ class TestMCMC(unittest.TestCase):
         # Get samples from MCMC sampler
         numSamples=500000
         smc, _, _ = mcSampler.sample(psi, numSamples=numSamples)
-
+    
         # Compute histogram of sampled configurations
-        smcInt = jax.vmap(state_to_int)(smc)
+        smcInt = jax.vmap(state_to_int)(smc.reshape((smc.shape[0]*smc.shape[1], -1)))
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
-
+        
         # Compare histogram to exact probabilities
-        self.assertTrue( jnp.max( jnp.abs( pmc/numSamples - pex ) ) < 1e-3 )
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16] ) ) < 2e-3 )
     
 
     def test_autoregressive_sampling(self):
@@ -98,10 +99,10 @@ class TestMCMC(unittest.TestCase):
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc))-p) ) < 1e-12 )
         
         # Compute histogram of sampled configurations
-        smcInt = jax.vmap(state_to_int)(smc)
+        smcInt = jax.vmap(state_to_int)(smc.reshape((smc.shape[0]*smc.shape[1],-1)))
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
 
-        self.assertTrue( jnp.max( jnp.abs( pmc/numSamples-pex ) ) < 1e-3 )
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,15 +23,30 @@ def _sum_sq_pmapd(data,mean):
     return jax.lax.psum(s, 'i')
 
 
-def distribute_sampling(numSamples):
+def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1):
 
     global globNumSamples
-    globNumSamples = numSamples
+    
+    if localDevices is None:
+    
+        globNumSamples = numSamples
+
+        mySamples = numSamples // commSize
+
+        if rank < numSamples % commSize:
+            mySamples+=1
+
+        return mySamples
 
     mySamples = numSamples // commSize
 
     if rank < numSamples % commSize:
         mySamples+=1
+
+    mySamples = (mySamples + localDevices - 1) // localDevices
+    mySamples = (mySamples + numChainsPerDevice - 1) // numChainsPerDevice
+
+    globNumSamples = commSize * localDevices * numChainsPerDevice * mySamples
 
     return mySamples
 
