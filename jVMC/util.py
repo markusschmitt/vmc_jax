@@ -28,7 +28,7 @@ def measure(ops, psi, sampler, numSamples=None):
         Oloc = op.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
 
         if p is not None:
-            means.append( mpi.global_sum( jnp.array([jnp.dot(p, Oloc)]) ) )
+            means.append( mpi.global_mean(Oloc, p) )
             errors.append(0.0)
         else:
             means.append( mpi.global_mean(Oloc) )
@@ -144,10 +144,9 @@ class OutputManager:
 
     def print_timings(self, indent=""):
 
-        if mpi.rank == 0:
-            print("%sRecorded timings:" % indent)
-            for key, item in self.timings.items():
-                print( "%s  * %s: %fs" % ( indent, key, item["total"]-item["last_total"] ) )
+        self.print("%sRecorded timings:" % indent)
+        for key, item in self.timings.items():
+            self.print( "%s  * %s: %fs" % ( indent, key, item["total"]-item["last_total"] ) )
             
         for key in self.timings:
             self.timings[key]["last_total"] = self.timings[key]["total"]
@@ -155,7 +154,7 @@ class OutputManager:
 
     def print(self, text):
         if mpi.rank == 0:
-            print(text)
+            print(text, flush=True)
 
 import numpy as np
 

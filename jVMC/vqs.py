@@ -45,11 +45,14 @@ class NQS:
             self._isGenerator = True
 
         # Need to keep handles of jit'd functions to avoid recompilation
-        self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
-        self.evalJitdNet2 = jit(vmap(self._eval, in_axes=(None, 0)))
-        self.evalJitdReal = jit(vmap(self._eval_real, in_axes=(None, 0)))
-        self.gradJitdNet1 = jit(vmap(grad(self._eval_real), in_axes=(None, 0)))
-        self.gradJitdNet2 = jit(vmap(grad(self._eval_real), in_axes=(None, 0)))
+        #self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
+        self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+        self.evalJitdNet2 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+        self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
+        self._get_gradients_net1_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
+        self._get_gradients_net2_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
+        self._append_gradients_holo = jax.pmap(lambda x: jnp.concatenate((x, 1.j*x), axis=1))
+        self._append_gradients = jax.pmap(lambda x,y: jnp.concatenate((x, 1.j*y), axis=1))
 
     # **  end def __init__
 
@@ -59,17 +62,13 @@ class NQS:
         if self.realNets:
             logMod = self.evalJitdNet1(self.net[0],s)
             phase = self.evalJitdNet2(self.net[1],s)
-            #logMod = self._eval(self.net[0],s)
-            #phase = self._eval(self.net[1],s)
             return logMod + 1.j * phase
         else:
             return self.evalJitdNet1(self.net,s)
-            #return self._eval(self.net,s)
 
     # **  end def __call__
     
 
-    @partial(jit, static_argnums=(0,))
     def real_coefficients(self, s):
 
         if self.realNets:
@@ -80,62 +79,42 @@ class NQS:
     # **  end def real_coefficients
 
 
+    def get_sampler_net(self):
+    
+        if self.realNets:
+            return self.net[0]
+        else:
+            return self.net
+
+    # **  end def get_sampler_net
+
+
+    def _get_gradients(self, net, s):
+        
+        gradients, _ = \
+                tree_flatten(
+                    jax.tree_util.tree_map( lambda x: jnp.reshape(x, (s.shape[0],-1)), 
+                        vmap(grad(lambda x, y: jnp.real(x(y))), in_axes=(None, 0))(net, s)
+                    )
+                )
+
+        return jnp.concatenate(gradients, axis=1)
+
+
     def gradients(self, s):
 
         if self.realNets: # FOR REAL NETS
             
-            gradOut = jnp.empty((s.shape[0],self.numParameters), dtype=global_defs.tCpx)
+            gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s)
+            gradOut2 = self._get_gradients_net2_pmapd(self.net[1], s)
 
-            # First net
-            gradients, _ = \
-                    tree_flatten( 
-                        #jit(vmap(grad(self._eval_real),in_axes=(None,0)))(self.net[0],s)
-                        self.gradJitdNet1(self.net[0],s)
-                    )
-            
-            # Flatten gradients to give a single vector per sample
-            start = 0
-            for g in gradients:
-                numGradients = g[0].size
-                gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,start:start+numGradients], g.reshape((s.shape[0],-1)))
-                start += numGradients
-            
-            # Second net
-            gradients, _ = \
-                    tree_flatten( 
-                        #jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net[1],s)
-                        self.gradJitdNet2(self.net[1],s)
-                    )
-            
-            # Flatten gradients to give a single vector per sample
-            for g in gradients:
-                numGradients = g[0].size
-                gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,start:start+numGradients], 1.j * g.reshape((s.shape[0],-1)))
-                start += numGradients
-
-            return gradOut
+            return self._append_gradients(gradOut1, gradOut2)
 
         else:             # FOR COMPLEX NET
 
-            gradOut = jnp.empty((s.shape[0],2*self.numParameters), dtype=global_defs.tCpx)
+            gradOut = self._get_gradients_net1_pmapd(self.net, s)
 
-            gradients, self.gradientTreeDef1 = \
-                    tree_flatten( 
-                        #jit(vmap(grad(self._eval_real), in_axes=(None,0)))(self.net,s)
-                        self.gradJitdNet1(self.net,s)
-                    )
-            
-            # Flatten gradients to give a single vector per sample
-            start = 0
-            for g in gradients:
-                numGradients = g[0].size
-                gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,start:start+numGradients], g.reshape((s.shape[0],-1)))
-                start += numGradients
-
-            # Add gradients w.r.t. imaginary parts: g_i = I * g_r
-            gradOut = jax.ops.index_update(gradOut, jax.ops.index[:,self.numParameters:], 1.j * gradOut[:,:self.numParameters])
-
-            return gradOut
+            return self._append_gradients_holo(gradOut)
 
     # **  end def gradients
 
@@ -263,12 +242,18 @@ class NQS:
     def sample(self, numSamples, key):
 
         if self._isGenerator:
-            samples, logP = self.net[0].sample(numSamples, key)
+            #samples, logP = self.net[0].sample(numSamples, key)
+            samples, logP = jax.pmap(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
             return samples, logP
 
         return 0
     
     # **  end def sample
+
+
+    def _sample(self, net, numSamples, key):
+
+        return net.sample(numSamples, key)
 
 
     @property
@@ -336,26 +321,23 @@ def nqs_from_state_dict(nqs, stateDict):
 flax.serialization.register_serialization_state(NQS, nqs_to_state_dict, nqs_from_state_dict)
 
 
-
-def eval_net(model,s):
-    return jnp.real(model(s))
-
 if __name__ == '__main__':
-    rbm = CpxRBM.partial(L=3,numHidden=2,bias=True)
+    rbm = CpxRBM.partial(numHidden=2,bias=True)
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
     rbmModel = nn.Model(rbm,params)
-    s=2*jnp.zeros((2,3),dtype=np.int32)-1
-    s=jax.ops.index_update(s,jax.ops.index[0,1],1)
-    #print(jit(vmap(rbmModel))(s))
-    gradients=jit(vmap(grad(eval_net),in_axes=(None,0)))(rbmModel,s)
-
-    #print(gradients.params)
-    #print(jax.tree_util.tree_flatten(gradients.params))
 
     print("** Complex net **")
     psiC = NQS(rbmModel)
+
+    s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
+
+    #print(psiC(s))
+
+    s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
     G = psiC.gradients(s)
-    psiC.update_parameters(jnp.real(G[0]))
+
+    print(G)
+    psiC.update_parameters(jnp.real(G[0][0]))
     
     a,b=tree_flatten(psiC)
 
@@ -363,10 +345,11 @@ if __name__ == '__main__':
     print(b)
 
     psiC = tree_unflatten(b,a)
+    exit()
     
     print("** Real nets **")
-    rbmR = RBM.partial(L=3,numHidden=2,bias=True)
-    rbmI = RBM.partial(L=3,numHidden=3,bias=True)
+    rbmR = RBM.partial(numHidden=2,bias=True)
+    rbmI = RBM.partial(numHidden=3,bias=True)
     _,paramsR = rbmR.init_by_shape(random.PRNGKey(0),[(1,3)])
     _,paramsI = rbmI.init_by_shape(random.PRNGKey(0),[(1,3)])
     rbmRModel = nn.Model(rbmR,paramsR)

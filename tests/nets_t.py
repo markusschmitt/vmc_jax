@@ -21,7 +21,7 @@ class TestCNN(unittest.TestCase):
         cnn = nets.CNN.partial(F=(4,), channels=[3,2,5])
         _,params = cnn.init_by_shape(random.PRNGKey(0),[(5,)])
         cnnModel = nn.Model(cnn,params)
-  
+ 
         S0=jnp.pad(jnp.array([1,0,1,1,0]),(0,4),'wrap')
         S=jnp.array(
                 [S0[i:i+5]for i in range(5)]

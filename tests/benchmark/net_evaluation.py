@@ -16,7 +16,6 @@ import time
 from functools import partial
 
 def time_net_eval(states, timingReps, get_net):
-    L=states.shape[1]
     
     model = get_net()
     psi = NQS(model)
@@ -35,7 +34,6 @@ def time_net_eval(states, timingReps, get_net):
     print("      Avg. time elapsed (jit'd, %d repetitions): %f seconds" % (timingReps, t/timingReps))
 
 def time_net_gradients(states, timingReps, get_net):
-    L=states.shape[1]
     
     model = get_net()
     psi = NQS(model)
@@ -43,7 +41,7 @@ def time_net_gradients(states, timingReps, get_net):
     t0 = time.perf_counter()
     psi.gradients(states).block_until_ready()
     t1 = time.perf_counter()
-    print("      Time elapsed (incl. jit): %f seconds" % (t1-t0))
+    print("      Time elapsed (incl. jit): %f seconds" % (t1-t0), flush=True)
 
     t=0
     for i in range(timingReps):
@@ -51,7 +49,7 @@ def time_net_gradients(states, timingReps, get_net):
         psi.gradients(states).block_until_ready()
         t1 = time.perf_counter()
         t += t1-t0
-    print("      Avg. time elapsed (jit'd, %d repetitions): %f seconds" % (timingReps, t/timingReps))
+    print("      Avg. time elapsed (jit'd, %d repetitions): %f seconds" % (timingReps, t/timingReps), flush=True)
 
 
 stateNums=[100,1000,10000]
@@ -65,23 +63,27 @@ print("  - evaluation")
 
 def get_rbm(L):
 
-    rbm = nets.RBM.partial(numHidden=32)
+    rbm = nets.RBM.partial(numHidden=128)
     _,params = rbm.init_by_shape(jax.random.PRNGKey(0),[(L,)])
     return nn.Model(rbm,params)
 
 Ls=[64,256]
 for numStates in stateNums:
-    for L in Ls:
-        print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
-        time_net_eval(states,timingReps, partial(get_rbm, L=L))
+    for L in Ls+[1024]:
+        print("    > number of states: %d, L = %d" % (numStates, L), flush=True)
+        key = jax.random.split(jax.random.PRNGKey(0), jax.device_count())
+        for d in range(jax.device_count()):
+            states = jax.pmap(lambda key: jnp.array(jax.random.bernoulli(key, shape=(numStates*jax.device_count()//(d+1),L)), dtype=np.int32))(key[:d+1])
+            states.block_until_ready()
+            print("    >> number of devices: %d" % (d+1), flush=True)
+            time_net_eval(states,timingReps, partial(get_rbm, L=L))
 
 print("  - gradients")
 
 for numStates in stateNumsGrad:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L)), dtype=np.int32)
         time_net_gradients(states,timingReps, partial(get_rbm, L=L))
 
 print("* CNN 1D")
@@ -97,7 +99,7 @@ Ls=[64,256]
 for numStates in stateNums:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L)), dtype=np.int32)
         time_net_eval(states,timingReps, partial(get_1d_cnn, L=L))
 
 print("  - gradients")
@@ -105,7 +107,7 @@ print("  - gradients")
 for numStates in stateNumsGrad:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L)), dtype=np.int32)
         time_net_gradients(states,timingReps, partial(get_1d_cnn, L=L))
 
 
@@ -122,7 +124,7 @@ Ls=[10,20]
 for numStates in stateNums:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L,L)), dtype=np.int32)
         time_net_eval(states,timingReps, partial(get_2d_cnn, L=L))
 
 print("  - gradients")
@@ -130,7 +132,7 @@ print("  - gradients")
 for numStates in stateNumsGrad:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L,L)), dtype=np.int32)
         time_net_gradients(states,timingReps, partial(get_2d_cnn, L=L))
 
 
@@ -147,7 +149,7 @@ Ls=[64,256]
 for numStates in stateNums:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L)), dtype=np.int32)
         time_net_eval(states,timingReps, partial(get_1d_rnn, L=L))
 
 print("  - gradients")
@@ -155,5 +157,5 @@ print("  - gradients")
 for numStates in stateNumsGrad+[1000]:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
-        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(numStates,L)), dtype=np.int32)
+        states = jnp.array(jax.random.bernoulli(jax.random.PRNGKey(0), shape=(jax.device_count(),numStates,L)), dtype=np.int32)
         time_net_gradients(states,timingReps, partial(get_1d_rnn, L=L))

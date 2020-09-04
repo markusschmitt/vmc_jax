@@ -3,6 +3,9 @@ from jax import jit, vmap, grad, partial
 import jax.numpy as jnp
 import numpy as np
 
+import sys
+# Find jVMC package
+sys.path.append(sys.path[0]+"/..")
 import jVMC.global_defs as global_defs
 
 # Common operators
@@ -38,10 +41,6 @@ def apply_multi(s,matEl,opIdx,opMap,opMatEls,diag):
     
     return s,matEl
 
-@jit
-def get_O_loc_fun(matEl, logPsiS, logPsiSP):
-    return jnp.sum(matEl * jnp.exp(logPsiSP-logPsiS), axis=0)
-
 
 class Operator:
 
@@ -50,6 +49,14 @@ class Operator:
         self.lDim=lDim
         self.compiled=False
 
+        # pmap'd member functions
+        self._get_s_primes_pmapd = jax.pmap(self._get_s_primes, static_broadcasted_argnums=(1,2,3,4))
+        self._find_nonzero_pmapd = jax.pmap(vmap(self._find_nonzero, in_axes=1))
+        self._set_zero_to_zero_pmapd = jax.pmap(jax.vmap(self.set_zero_to_zero, in_axes=(1,0,0), out_axes=1), in_axes=(0,0,0))
+        self._array_idx_pmapd = jax.pmap(jax.vmap(lambda data, idx: data[idx], in_axes=(1,0), out_axes=1), in_axes=(0,0))
+        #self._get_O_loc_pmapd = jax.pmap(jax.vmap(self._get_O_loc, in_axes=(1,0,1), out_axes=1))
+        self._get_O_loc_pmapd = jax.pmap(self._get_O_loc)
+        self._flatten_pmapd = jax.pmap(lambda x: x.reshape(-1,*x.shape[2:]))
 
     def add(self,opDescr):
         self.ops.append(opDescr)
@@ -88,6 +95,9 @@ class Operator:
                 self.diag.append(o)
             o=o+1
 
+        #if len(self.diag) == 0:
+        #    self.diag.append(0) # append dummy diagonal entry
+
         self.idxC = jnp.array(self.idx,dtype=np.int32)
         self.mapC = jnp.array(self.map,dtype=np.int32)
         self.matElsC = jnp.array(self.matEls,dtype=global_defs.tReal)
@@ -96,49 +106,83 @@ class Operator:
         self.compiled=True
 
 
+    def _get_s_primes(self, s, idxC, mapC, matElsC, diag):
+
+        numInStates = s.shape[0]
+        numOps = idxC.shape[0]
+        matEl=jnp.ones((numOps,numInStates),dtype=global_defs.tReal)
+        sp=jnp.vstack([[s]]*numOps)
+
+        # vmap over operators
+        sp, matEl = vmap(apply_multi,in_axes=(0,0,0,0,0,None))(sp,matEl,idxC,mapC,matElsC,diag)
+
+        if len(diag) > 1:
+            matEl = jax.ops.index_update(matEl, jax.ops.index[diag[0],:], jnp.sum(matEl[diag], axis=0))
+            matEl = jax.ops.index_update(matEl, jax.ops.index[diag[1:],:],
+                                         jnp.zeros((diag.shape[0]-1,matEl.shape[1]), dtype=global_defs.tReal))
+
+        return sp, matEl
+
+
+    def _find_nonzero(self, m):
+
+        choice = jnp.zeros(m.shape, dtype=np.int64) + m.shape[0] - 1
+
+        def scan_fun(c, x):
+            b = jnp.abs(x[0])>1e-6
+            out = jax.lax.cond(b, lambda z: z[0], lambda z: z[1], (c[1], x[1]))
+            newcarry = jax.lax.cond(b, lambda z:  (z[0]+1,z[1]+1), lambda z: (z[0],z[1]+1), c)
+            return newcarry, out
+
+        carry, choice = jax.lax.scan(scan_fun, (0,0), (m,choice))
+
+        return jnp.sort(choice), carry[0]
+
+
+    def set_zero_to_zero(self, m, idx, numNonzero):
+
+        def scan_fun(c, x):
+            out = jax.lax.cond(c[1]<c[0], lambda z: z[0], lambda z: z[1], (x, 0.))
+            newCarry = (c[0], c[1]+1)
+            return newCarry, out
+
+        _, m = jax.lax.scan(scan_fun, (numNonzero, 0), m[idx])
+
+        return m
+
+
     def get_s_primes(self,s):
 
         if not self.compiled:
             self.compile()
-        self.numInStates = s.shape[0]
-        self.matEl=jnp.ones((len(self.ops),self.numInStates),dtype=global_defs.tReal)
-        self.sp=jnp.vstack([[s.copy()]]*len(self.ops))
 
-        # vmap over operators
-        self.sp,self.matEl = vmap(apply_multi,in_axes=(0,0,0,0,0,None))(self.sp,self.matEl,self.idxC,self.mapC,self.matElsC,self.diag)
+        # Compute matrix elements
+        self.sp, self.matEl = self._get_s_primes_pmapd(s, self.idxC, self.mapC, self.matElsC, self.diag)
 
-        # Reduce diagonal operators to one element
-        if len(self.diag)>1:
-            self.matEl = jax.ops.index_update(self.matEl, jax.ops.index[self.diag[0],:], jnp.sum(self.matEl[self.diag], axis=0))
-            self.matEl = jax.ops.index_update(self.matEl,
-                                              jax.ops.index[self.diag[1:],:],
-                                              jnp.zeros((len(self.diag)-1,self.matEl.shape[1]), dtype=global_defs.tReal))
-
-        self.nonzero=jnp.where(jnp.abs(self.matEl)>1e-6)
+        # Get only non-zero contributions
+        idx, self.numNonzero = self._find_nonzero_pmapd(self.matEl)
+        #self.matEl = self._array_idx_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)])
+        self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)], self.numNonzero)
+        self.sp = self._array_idx_pmapd(self.sp, idx[:,:,:jnp.max(self.numNonzero)])
         
-        return self.sp[self.nonzero], self.matEl[self.nonzero]
-        #return self.sp.reshape((-1,self.sp.shape[-1])), self.matEl
+        return self._flatten_pmapd(self.sp), self.matEl
+
+
+    def _get_O_loc(self, matEl, logPsiS, logPsiSP):
+
+        return jax.vmap(lambda x,y,z: jnp.sum(x * jnp.exp(z-y), axis=0), in_axes=(1,0,1), out_axes=1)(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
+        #return jnp.sum(matEl * jnp.exp(logPsiSP-logPsiS), axis=0)
 
 
     def get_O_loc(self,logPsiS,logPsiSP):
-        
-        self.logPsiSP = jnp.zeros((len(self.ops),self.numInStates),dtype=global_defs.tCpx)
-        self.logPsiSP = jax.ops.index_update(self.logPsiSP, jax.ops.index[self.nonzero], logPsiSP)
-        return get_O_loc_fun(self.matEl, logPsiS, self.logPsiSP)
-        #return get_O_loc_fun(self.matEl[self.nonzero], logPsiS[self.nonzero[1]], logPsiSP)
-        #return get_O_loc_fun(self.matEl, logPsiS, logPsiSP.reshape((len(self.ops),self.numInStates)))
+      
+        return self._get_O_loc_pmapd(self.matEl, logPsiS, logPsiSP)
 
 
 if __name__ == '__main__':
     L=4
     lDim=2
-    s=jnp.zeros((2,L),dtype=np.int32)
-    matEl=jnp.ones((2),dtype=global_defs.tReal)
-
-    idx=2
-    sMap=jnp.array([1,0],dtype=np.int32)
-    matEls=jnp.array([0.5,0.5],dtype=global_defs.tReal)
-    print(s)
+    s=jnp.array([jnp.zeros((2,L),dtype=np.int32)] * jax.local_device_count())
 
     h=Operator()
 
@@ -149,7 +193,8 @@ if __name__ == '__main__':
     h.add((Sm(0),))
 
     sp,matEl=h.get_s_primes(s)
-    logPsi=jnp.ones(s.shape[0])*(0.5j)
-    logPsiSP=0.3*jnp.ones(sp.shape[0])
+
+    logPsi=jax.pmap(lambda s: jnp.ones(s.shape[0])*(0.5j))(s)
+    logPsiSP=jax.pmap(lambda sp: 0.3*jnp.ones((sp.shape[0], sp.shape[1])))(sp)
 
     print(h.get_O_loc(logPsi,logPsiSP))

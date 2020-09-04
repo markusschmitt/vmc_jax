@@ -43,8 +43,8 @@ else:
 
     inp["sampler"] = {
         "type" : "MC",
-        "numSamples" : 1000,
-        "numChains" : 30
+        "numSamples" : 50000,
+        "numChains" : 500
     }
 
 L = inp["system"]["L"]
@@ -90,7 +90,10 @@ for l in range(L):
 sampler = None
 if inp["sampler"]["type"] == "MC":
     # Set up MCMC sampler
-    sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), jVMC.sampler.propose_spin_flip, [L], numChains=inp["sampler"]["numChains"], numSamples=inp["sampler"]["numSamples"])
+    sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), jVMC.sampler.propose_spin_flip, [L],
+                                        numChains=inp["sampler"]["numChains"],
+                                        numSamples=inp["sampler"]["numSamples"],
+                                        thermalizationSweeps=25, sweepSteps=L )
 else:
     # Set up exact sampler
     sampler=jVMC.sampler.ExactSampler(L)
@@ -103,7 +106,7 @@ tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., d
 outp.print("** Ground state search")
 outp.set_group("ground_state_search")
 
-ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=100, stepSize=1e-2, observables=observables, outp=outp)
+ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=10, stepSize=1e-2, observables=observables, outp=outp)
 
 # Time evolution
 outp.print("** Time evolution")
