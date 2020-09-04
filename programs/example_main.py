@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import time
+import os
 
 import jVMC
 import jVMC.operator as op
@@ -31,7 +32,9 @@ else:
     # otherwise, set up default input dict
     inp = {}
     inp["general"] = {
-        "data_output" : "data.hdf5"
+        "working_directory": "./data/devel/",
+        "data_output" : "data.hdf5",
+        "append_data" : False
     }
     inp["system"] = {
         "L" : 4,
@@ -42,15 +45,41 @@ else:
     }
 
     inp["sampler"] = {
-        "type" : "MC",
+        "type" : "exact",
         "numSamples" : 50000,
-        "numChains" : 500
+        "numChains" : 500,
+        "num_thermalization_sweeps": 20,
+        "seed": 1234
     }
+    
+    inp["gs_search"] = {
+        "num_steps" : 10,
+        "init_regularizer" : 5
+    }
+    
+    inp["time_evol"] = {
+        "t_init": 0.,
+        "t_final": 1.,
+        "time_step": 1e-3,
+        "snr_tolerance": 5,
+        "svd_tolerance": 1e-6,
+        "stepper_tolerance": 1e-4
+    }
+
+
+wdir=inp["general"]["working_directory"]
+try:
+    os.makedirs(wdir)
+except OSError:
+    print ("Creation of the directory %s failed" % wdir)
+else:
+    print ("Successfully created the directory %s " % wdir)
+
 
 L = inp["system"]["L"]
 
 # Initialize output manager
-outp = OutputManager(inp["general"]["data_output"])
+outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
 rbm = jVMC.nets.CpxRBM.partial(numHidden=2,bias=False)
@@ -90,35 +119,40 @@ for l in range(L):
 sampler = None
 if inp["sampler"]["type"] == "MC":
     # Set up MCMC sampler
-    sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), jVMC.sampler.propose_spin_flip, [L],
+    sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip, [L],
                                         numChains=inp["sampler"]["numChains"],
                                         numSamples=inp["sampler"]["numSamples"],
-                                        thermalizationSweeps=25, sweepSteps=L )
+                                        thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],
+                                        sweepSteps=L )
 else:
     # Set up exact sampler
     sampler=jVMC.sampler.ExactSampler(L)
 
-#tdvpEquation = jVMC.tdvp.TDVP(mcSampler, snrTol=1)
-delta=5
-tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
+tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"], 
+                                       svdTol=inp["time_evol"]["svd_tolerance"],
+                                       rhsPrefactor=1., 
+                                       diagonalShift=inp["gs_search"]["init_regularizer"], makeReal='real')
 
 # Perform ground state search to get initial state
 outp.print("** Ground state search")
 outp.set_group("ground_state_search")
 
-ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=10, stepSize=1e-2, observables=observables, outp=outp)
+ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=inp["gs_search"]["num_steps"], stepSize=1e-2, observables=observables, outp=outp)
 
 # Time evolution
 outp.print("** Time evolution")
 outp.set_group("time_evolution")
 
 observables[0] = hamiltonian
-tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=1, svdTol=1e-6, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
+tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"], 
+                                       svdTol=inp["time_evol"]["svd_tolerance"],
+                                       rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-2)
+stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
 
-t=0
-tmax=1
+t=inp["time_evol"]["t_init"]
+tmax=inp["time_evol"]["t_final"]
+
 outp.start_timing("measure observables")
 obs, err = measure(observables, psi, sampler)
 outp.stop_timing("measure observables")
@@ -134,6 +168,8 @@ while t<tmax:
     psi.set_parameters(dp)
     t += dt
     outp.print( "   Time step size: dt = %f" % (dt) )
+    tdvpErr, tdvpRes = tdvpEquation.get_residuals()
+    outp.print( "   Residuals: tdvp_err = %.2e, solver_res = %.2e" % (tdvpErr, tdvpRes) )
 
     # Measure observables
     outp.start_timing("measure observables")
@@ -142,6 +178,8 @@ while t<tmax:
 
     # Write observables
     outp.write_observables(t, energy=obs[0], X=obs[1]/L, ZZ=obs[2:]/L)
+    # Write metadata
+    outp.write_metadata(t, tdvp_error=tdvpErr, tdvp_residual=tdvpRes)
 
     outp.print("    Energy = %f +/- %f" % (obs[0], err[0]))
 

@@ -35,41 +35,56 @@ class TDVP:
     def set_diagonal_shift(self, delta):
         self.diagonalShift = delta
 
+    
+    def _get_tdvp_error(self, update):
+
+        return jnp.abs(1. + jnp.real(update.dot(self.S0.dot(update)) - 2. * jnp.real( update.dot(self.F0) ) ) / self.ElocVar0)
+    
+
+    def get_residuals(self):
+
+        return self.tdvpError, self.solverResidual
+
+
     def get_tdvp_equation(self, Eloc, gradients, p=None):
             
-        ElocMean = mpi.global_mean(Eloc, p)
-        Eloc = subtract_helper(Eloc, ElocMean)
+        self.ElocMean = mpi.global_mean(Eloc, p)
+        self.ElocVar = jnp.real(mpi.global_variance(Eloc, p))
+        Eloc = subtract_helper(Eloc, self.ElocMean)
 
         gradientsMean = mpi.global_mean(gradients, p)
         gradients = subtract_helper(gradients, gradientsMean)
-
-        S = self.makeReal( mpi.global_covariance(gradients, p) )
         
         if p is None:
             
             # consider defining separate pmap'd function for this
-            EOdata = jax.pmap(lambda a, f, Eloc, grad: a(-f * jnp.multiply(Eloc[:,None], jnp.conj(grad))), 
-                                in_axes=(None, None, 0, 0, 0), static_broadcasted_argnums=(0,1))(
-                                    self.makeReal, self.rhsPrefactor, Eloc, gradients
+            EOdata = jax.pmap(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:,None], jnp.conj(grad)), 
+                                in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))(
+                                    self.rhsPrefactor, Eloc, gradients
                                 )
-
-            F = mpi.global_mean(EOdata)
+        
+            self.F0 = mpi.global_mean(EOdata)
 
         else:
 
             # consider defining separate pmap'd function for this
-            EOdata = jax.pmap(lambda a, f, p, Eloc, grad: a(-f * jnp.multiply((p*Eloc)[:,None], jnp.conj(grad))), 
-                                in_axes=(None, None, 0, 0, 0), static_broadcasted_argnums=(0,1))(
-                                    self.makeReal, self.rhsPrefactor, p, Eloc, gradients
+            EOdata = jax.pmap(lambda f, p, Eloc, grad: -f * jnp.multiply((p*Eloc)[:,None], jnp.conj(grad)), 
+                                in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))(
+                                    self.rhsPrefactor, p, Eloc, gradients
                                 )
             
-            F = mpi.global_sum(EOdata)
+            self.F0 = mpi.global_sum(EOdata)
 
             #work with complex matrix
             #np = gradients.shape[1]//2
             #EOdata = EOdata[:,:np]
             #F = jnp.sum(EOdata, axis=0)
             #S = jnp.matmul(jnp.conj(jnp.transpose(gradients[:,:np])), jnp.matmul(jnp.diag(p), gradients[:,:np]) )
+
+        F = self.makeReal( self.F0 )
+
+        self.S0 = mpi.global_covariance(gradients, p)
+        S = self.makeReal( self.S0 )
 
         if self.diagonalShift > 1e-10:
             S = S + jnp.diag(self.diagonalShift * jnp.diag(S))
@@ -112,7 +127,8 @@ class TDVP:
             regularizer = jnp.ones(len(self.invEv))
 
         update = jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
-        return update
+
+        return update, jnp.linalg.norm(S.dot(update)-F)/jnp.linalg.norm(F)
 
         #work with complex matrix
         #update = jnp.dot( self.V, (self.invEv * (regularizer * self.VtF)) )
@@ -156,10 +172,16 @@ class TDVP:
         stop_timing(outp, "compute gradients")
 
         start_timing(outp, "solve TDVP eqn.")
-        update=self.solve(Eloc, sampleGradients, p)
+        update, solverResidual = self.solve(Eloc, sampleGradients, p)
         stop_timing(outp, "solve TDVP eqn.")
         
         rhsArgs['psi'].set_parameters(tmpParameters)
+        
+        if "intStep" in rhsArgs:
+            if rhsArgs["intStep"] == 0:
+                self.ElocVar0 = self.ElocVar
+                self.tdvpError = self._get_tdvp_error(update)
+                self.solverResidual = solverResidual
 
         return update
 

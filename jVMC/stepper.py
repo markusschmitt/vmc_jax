@@ -11,7 +11,7 @@ class Euler:
 
     def step(self, t, f, yInitial, **rhsArgs):
 
-        dy = f(yInitial, t, **rhsArgs)
+        dy = f(yInitial, t, **rhsArgs, intStep=0)
 
         return yInitial + self.dt * dy, self.dt
 
@@ -35,19 +35,19 @@ class AdaptiveHeun:
         while fe < 1.:
         
             y = yInitial.copy()
-            k0 = f(y, t, **rhsArgs)
+            k0 = f(y, t, **rhsArgs, intStep=0)
             y += dt * k0
-            k1 = f(y, t + dt, **rhsArgs)
+            k1 = f(y, t + dt, **rhsArgs, intStep=1)
             dy0 = 0.5 * dt * (k0 + k1)
             
             # now with half step size
             y -= 0.5 * dt * k0
-            k10 = f(y, t + 0.5 * dt, **rhsArgs)
+            k10 = f(y, t + 0.5 * dt, **rhsArgs, intStep=2)
             dy1 = 0.25 * dt * (k0 + k10)
             y = yInitial + dy1
-            k01 = f(y, t + 0.5 * dt, **rhsArgs)
+            k01 = f(y, t + 0.5 * dt, **rhsArgs, intStep=3)
             y += 0.5 * dt * k01
-            k11 = f(y, t + dt, **rhsArgs)
+            k11 = f(y, t + dt, **rhsArgs, intStep=4)
             dy1 += 0.25 * dt * (k01 + k11)
 
             # compute deviation
