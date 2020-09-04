@@ -28,7 +28,7 @@ def measure(ops, psi, sampler, numSamples=None):
         Oloc = op.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
 
         if p is not None:
-            means.append( mpi.global_sum( jnp.array([jnp.dot(p, Oloc)]) ) )
+            means.append( mpi.global_mean(Oloc, p) )
             errors.append(0.0)
         else:
             means.append( mpi.global_mean(Oloc) )

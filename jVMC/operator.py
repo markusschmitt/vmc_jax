@@ -54,7 +54,9 @@ class Operator:
         self._find_nonzero_pmapd = jax.pmap(vmap(self._find_nonzero, in_axes=1))
         self._set_zero_to_zero_pmapd = jax.pmap(jax.vmap(self.set_zero_to_zero, in_axes=(1,0,0), out_axes=1), in_axes=(0,0,0))
         self._array_idx_pmapd = jax.pmap(jax.vmap(lambda data, idx: data[idx], in_axes=(1,0), out_axes=1), in_axes=(0,0))
-        self._get_O_loc_pmapd = jax.pmap(jax.vmap(self._get_O_loc, in_axes=(1,0,1), out_axes=1))
+        #self._get_O_loc_pmapd = jax.pmap(jax.vmap(self._get_O_loc, in_axes=(1,0,1), out_axes=1))
+        self._get_O_loc_pmapd = jax.pmap(self._get_O_loc)
+        self._flatten_pmapd = jax.pmap(lambda x: x.reshape(-1,*x.shape[2:]))
 
     def add(self,opDescr):
         self.ops.append(opDescr)
@@ -163,12 +165,13 @@ class Operator:
         self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)], self.numNonzero)
         self.sp = self._array_idx_pmapd(self.sp, idx[:,:,:jnp.max(self.numNonzero)])
         
-        return self.sp, self.matEl
+        return self._flatten_pmapd(self.sp), self.matEl
 
 
     def _get_O_loc(self, matEl, logPsiS, logPsiSP):
 
-        return jnp.sum(matEl * jnp.exp(logPsiSP-logPsiS), axis=0)
+        return jax.vmap(lambda x,y,z: jnp.sum(x * jnp.exp(z-y), axis=0), in_axes=(1,0,1), out_axes=1)(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
+        #return jnp.sum(matEl * jnp.exp(logPsiSP-logPsiS), axis=0)
 
 
     def get_O_loc(self,logPsiS,logPsiSP):

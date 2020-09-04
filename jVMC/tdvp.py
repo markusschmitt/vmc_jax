@@ -4,12 +4,18 @@ import numpy as np
 
 import jVMC.mpi_wrapper as mpi
 
+from functools import partial
+
 def realFun(x):
     return jnp.real(x)
 
 def imagFun(x):
     return 0.5 * ( x - jnp.conj(x) )
 
+
+@partial(jax.pmap, in_axes=(0,None))
+def subtract_helper(x,y):
+    return x-y
 
 class TDVP:
 
@@ -30,46 +36,34 @@ class TDVP:
         self.diagonalShift = delta
 
     def get_tdvp_equation(self, Eloc, gradients, p=None):
+            
+        ElocMean = mpi.global_mean(Eloc, p)
+        Eloc = subtract_helper(Eloc, ElocMean)
+
+        gradientsMean = mpi.global_mean(gradients, p)
+        gradients = subtract_helper(gradients, gradientsMean)
+
+        S = self.makeReal( mpi.global_covariance(gradients, p) )
         
         if p is None:
-            # Need MPI
-            Eloc -= mpi.global_mean(Eloc)
-            gradients -= mpi.global_mean(gradients)
             
-            EOdata = -self.rhsPrefactor * jnp.multiply(Eloc[:,None], jnp.conj(gradients))
-            EOdata = self.makeReal( EOdata )
+            # consider defining separate pmap'd function for this
+            EOdata = jax.pmap(lambda a, f, Eloc, grad: a(-f * jnp.multiply(Eloc[:,None], jnp.conj(grad))), 
+                                in_axes=(None, None, 0, 0, 0), static_broadcasted_argnums=(0,1))(
+                                    self.makeReal, self.rhsPrefactor, Eloc, gradients
+                                )
 
-            # Need MPI
             F = mpi.global_mean(EOdata)
-            S = self.makeReal( 
-                    mpi.global_mean(
-                        jnp.expand_dims(
-                            jnp.matmul(jnp.conj(jnp.transpose(gradients)), gradients),
-                            axis=0
-                        )
-                    )
-                )
 
         else:
-            # Need MPI
-            Eloc -= mpi.global_sum( jnp.array([jnp.dot(p, Eloc)]) )
-            gradients -= mpi.global_sum( jnp.expand_dims(jnp.dot(p,gradients), axis=0) )
 
-            EOdata = -self.rhsPrefactor * jnp.multiply((p*Eloc)[:,None], jnp.conj(gradients))
-            EOdata = self.makeReal( EOdata )
+            # consider defining separate pmap'd function for this
+            EOdata = jax.pmap(lambda a, f, p, Eloc, grad: a(-f * jnp.multiply((p*Eloc)[:,None], jnp.conj(grad))), 
+                                in_axes=(None, None, 0, 0, 0), static_broadcasted_argnums=(0,1))(
+                                    self.makeReal, self.rhsPrefactor, p, Eloc, gradients
+                                )
             
-            # Need MPI
-            #F = jnp.sum(EOdata, axis=0)
             F = mpi.global_sum(EOdata)
-            #S = self.makeReal( jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ) )
-            S = self.makeReal(
-                    mpi.global_sum( 
-                        jnp.expand_dims(
-                            jnp.matmul(jnp.conj(jnp.transpose(gradients)), jnp.matmul(jnp.diag(p), gradients) ),
-                            axis=0
-                        )
-                    )
-                )
 
             #work with complex matrix
             #np = gradients.shape[1]//2
@@ -93,12 +87,11 @@ class TDVP:
         self.ev, self.V = jnp.linalg.eigh(S)
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
-        EOdata = jnp.matmul(EOdata, jnp.conj(self.V))
-        # Need MPI
-        # self.rhoVar = jnp.var(EOdata, axis=0)
+        # consider defining separate pmap'd function for this
+        EOdata = jax.pmap(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0,None))(EOdata, self.V)
         self.rhoVar = mpi.global_variance(EOdata)
 
-        self.snr = jnp.sqrt( jnp.abs( EOdata.shape[0] / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.) ) )
+        self.snr = jnp.sqrt( jnp.abs( mpi.globNumSamples / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.) ) )
 
 
     def solve(self, Eloc, gradients, p=None):

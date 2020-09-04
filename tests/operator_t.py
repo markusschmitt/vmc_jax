@@ -35,7 +35,7 @@ class TestOperator(unittest.TestCase):
         sp,matEl=h.get_s_primes(s)
 
         logPsi=jax.pmap(lambda s: jnp.ones(s.shape[0]))(s)
-        logPsiSP=jax.pmap(lambda sp: jnp.ones((sp.shape[0], sp.shape[1])))(sp) 
+        logPsiSP=jax.pmap(lambda sp: jnp.ones((sp.shape[0],)))(sp) 
 
         tmp = h.get_O_loc(logPsi,logPsiSP)
 

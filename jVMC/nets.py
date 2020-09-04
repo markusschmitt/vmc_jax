@@ -83,7 +83,7 @@ class CNN(nn.Module):
             x = jnp.pad(x, pads, 'wrap')
             x = actFun( nn.Conv(x, features=c, kernel_size=F, strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
 
-        nrm = jnp.sqrt( jnp.prod(x.shape[reduceDims[-1]:]) )
+        nrm = jnp.sqrt( jnp.prod(jnp.array(x.shape[reduceDims[-1]:])) )
         
         return jnp.sum(x, axis=reduceDims) / nrm
 

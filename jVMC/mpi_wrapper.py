@@ -80,8 +80,16 @@ def global_sum(data):
 
     return jnp.array(res)
 
+@partial(jax.pmap, in_axes=(0,0))
+def mean_helper(data, p):
 
-def global_mean(data):
+    return jnp.expand_dims(jnp.dot(p, data), axis=0)
+
+
+def global_mean(data, p=None):
+
+    if p is not None:
+        return global_sum(mean_helper(data, p))
 
     global globNumSamples
 
@@ -93,7 +101,7 @@ def global_variance(data):
     mean = global_mean(data)
 
     # Compute sum locally
-    localSum = np.array( _sum_sq_pmapd(data,mean) )
+    localSum = np.array( _sum_sq_pmapd(data,mean)[0] )
     
     # Allocate memory for result
     res = np.empty_like(localSum, dtype=localSum.dtype)
@@ -104,6 +112,28 @@ def global_variance(data):
 
     return jnp.array(res) / globNumSamples
 
+
+@partial(jax.pmap, in_axes=(0,0))
+def cov_helper_with_p(data, p):
+    return jnp.expand_dims(
+                jnp.matmul( jnp.conj(jnp.transpose(data)), jnp.multiply(p[:,None],data) ),
+                axis=0
+            )
+
+@partial(jax.pmap)
+def cov_helper_without_p(data):
+    return jnp.expand_dims(
+                jnp.matmul( jnp.conj(jnp.transpose(data)), data ),
+                axis=0
+            )
+
+def global_covariance(data, p=None):
+
+    if p is not None:
+
+        return global_sum(cov_helper_with_p(data, p))
+
+    return global_mean(cov_helper_without_p(data))
 
 
 if __name__ == "__main__":
