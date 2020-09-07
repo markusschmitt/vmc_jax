@@ -44,6 +44,16 @@ class TDVP:
     def get_residuals(self):
 
         return self.tdvpError, self.solverResidual
+    
+
+    def get_snr(self):
+
+        return self.snr0
+    
+
+    def get_spectrum(self):
+
+        return self.ev0
 
 
     def get_tdvp_equation(self, Eloc, gradients, p=None):
@@ -182,6 +192,8 @@ class TDVP:
                 self.ElocVar0 = self.ElocVar
                 self.tdvpError = self._get_tdvp_error(update)
                 self.solverResidual = solverResidual
+                self.snr0 = self.snr
+                self.ev0 = self.ev
 
         return update
 

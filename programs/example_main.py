@@ -179,7 +179,9 @@ while t<tmax:
     # Write observables
     outp.write_observables(t, energy=obs[0], X=obs[1]/L, ZZ=obs[2:]/L)
     # Write metadata
-    outp.write_metadata(t, tdvp_error=tdvpErr, tdvp_residual=tdvpRes)
+    outp.write_metadata(t, tdvp_error=tdvpErr, tdvp_residual=tdvpRes, SNR=tdvpEquation.get_snr(), spectrum=tdvpEquation.get_spectrum())
+    # Write network parameters
+    outp.write_network_checkpoint(t, psi.get_parameters())
 
     outp.print("    Energy = %f +/- %f" % (obs[0], err[0]))
 

@@ -126,7 +126,7 @@ class OutputManager:
                     newLen = len(f[self.currentGroup+"/observables/"+key+"/mean"]) + 1
                     f[self.currentGroup+"/observables/"+key+"/mean"].resize((newLen,)+obs.shape)
                     f[self.currentGroup+"/observables/"+key+"/mean"][-1] = obs
-        
+
 
     def write_metadata(self, time, **kwargs):
 
@@ -155,6 +155,36 @@ class OutputManager:
                     newLen = len(f[self.currentGroup+"/"+groupname+"/"+key]) + 1
                     f[self.currentGroup+"/"+groupname+"/"+key].resize((newLen,)+value.shape)
                     f[self.currentGroup+"/"+groupname+"/"+key][-1] = value
+ 
+
+    def write_network_checkpoint(self, time, weights):
+
+        if mpi.rank == 0:                
+            
+            groupname="network_checkpoints"
+
+            with h5py.File(self.fn, "a") as f:
+                
+                if not groupname in f[self.currentGroup]:
+                    f.create_group(self.currentGroup+"/"+groupname)
+
+                if not "times" in f[self.currentGroup+"/"+groupname]:
+                    f.create_dataset(self.currentGroup+"/"+groupname+"/times", (0,), maxshape=(None,), dtype='f8', chunks=True)
+                
+                newLen = len(f[self.currentGroup+"/"+groupname+"/times"]) + 1
+                f[self.currentGroup+"/"+groupname+"/times"].resize((newLen,))
+                f[self.currentGroup+"/"+groupname+"/times"][-1] = time
+
+                key = "checkpoints"
+                value = weights
+
+                if not key in f[self.currentGroup+"/"+groupname]:
+
+                    f.create_dataset(self.currentGroup+"/"+groupname+"/"+key, (0,)+value.shape, maxshape=(None,)+value.shape, dtype='f8', chunks=True)
+
+                newLen = len(f[self.currentGroup+"/"+groupname+"/"+key]) + 1
+                f[self.currentGroup+"/"+groupname+"/"+key].resize((newLen,)+value.shape)
+                f[self.currentGroup+"/"+groupname+"/"+key][-1] = value
 
 
     def start_timing(self, name):
