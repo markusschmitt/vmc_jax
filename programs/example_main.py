@@ -15,6 +15,7 @@ import numpy as np
 
 import time
 import os
+import json
 
 import jVMC
 import jVMC.operator as op
@@ -82,7 +83,7 @@ L = inp["system"]["L"]
 outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
-rbm = jVMC.nets.CpxRBM.partial(numHidden=2,bias=False)
+rbm = jVMC.nets.CpxRBM.partial(numHidden=10,bias=False)
 _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,inp["system"]["L"])])
 rbmModel = nn.Model(rbm,params)
 
@@ -94,8 +95,8 @@ rbm2 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
 _, params2 = rbm2.init_by_shape(random.PRNGKey(321),[(1,inp["system"]["L"])])
 rbmModel2 = nn.Model(rbm2,params2)
 
-#psi = jVMC.vqs.NQS(rbmModel)
-psi = jVMC.vqs.NQS(rbmModel1, rbmModel2)
+psi = jVMC.vqs.NQS(rbmModel)
+#psi = jVMC.vqs.NQS(rbmModel1, rbmModel2)
 
 # Set up hamiltonian for ground state search
 hamiltonianGS = op.Operator()
