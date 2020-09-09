@@ -21,8 +21,61 @@ import jVMC
 import jVMC.operator as op
 from jVMC.util import measure, ground_state_search, OutputManager
 import jVMC.mpi_wrapper as mpi
+import jVMC.activation_functions as act_funs
 
 from functools import partial
+
+
+def init_net(descr, dims, seed=0):
+
+    def get_activation_functions(actFuns):
+
+        return [act_funs.activationFunctions[fn] for fn in actFuns] 
+   
+ 
+    netTypesReal = {
+        "RBM" : (jVMC.nets.RBM, (1,)+dims),
+        "FFN" : (jVMC.nets.FFN, (1,)+dims),
+        "CNN" : (jVMC.nets.CNN, dims),
+        "RNN" : (jVMC.nets.FFN, (1,)+dims),
+    }
+    netTypesCpx = {
+        "CpxRBM" : (jVMC.nets.CpxRBM, (1,)+dims),
+        "CpxCNN" : (jVMC.nets.CpxCNN, dims),
+    }
+
+
+    def get_net(descr, dims, seed, netTypes=None):
+
+        net = netTypes[descr["type"]][0].partial(**descr["parameters"])
+        _, params = net.init_by_shape(random.PRNGKey(seed),[netTypes[descr["type"]][1]])
+        return nn.Model(net,params)
+
+    get_real_net=partial(get_net, netTypes=netTypesReal)
+    get_cpx_net=partial(get_net, netTypes=netTypesCpx)
+
+
+    if "actFun" in descr["net1"]["parameters"]:
+
+        descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
+
+    if not "net2" in descr:
+
+        model = get_cpx_net(descr["net1"], dims, seed)
+    
+        return jVMC.vqs.NQS(model)
+
+    else:
+
+        if "actFun" in descr["net2"]["parameters"]:
+
+            descr["net2"]["parameters"]["actFun"] = get_activation_functions(descr["net2"]["parameters"]["actFun"])
+        
+        model1 = get_real_net(descr["net1"], dims, seed)
+        model2 = get_real_net(descr["net2"], dims, seed)
+    
+        return jVMC.vqs.NQS(model1, model2)
+
 
 inp = None
 if len(sys.argv) > 1:
@@ -83,20 +136,23 @@ L = inp["system"]["L"]
 outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
-rbm = jVMC.nets.CpxRBM.partial(numHidden=10,bias=False)
-_, params = rbm.init_by_shape(random.PRNGKey(0),[(1,inp["system"]["L"])])
-rbmModel = nn.Model(rbm,params)
+##rbm = jVMC.nets.CpxRBM.partial(numHidden=10,bias=False)
+#rbm = jVMC.nets.CpxRBM.partial(**inp["network"]["parameters"])
+#_, params = rbm.init_by_shape(random.PRNGKey(0),[(1,inp["system"]["L"])])
+#rbmModel = nn.Model(rbm,params)
+#
+#rbm1 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
+#_, params1 = rbm1.init_by_shape(random.PRNGKey(123),[(1,inp["system"]["L"])])
+#rbmModel1 = nn.Model(rbm1,params1)
+##rbm2 = jVMC.nets.FFN.partial(layers=[5,5],bias=False)
+#rbm2 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
+#_, params2 = rbm2.init_by_shape(random.PRNGKey(321),[(1,inp["system"]["L"])])
+#rbmModel2 = nn.Model(rbm2,params2)
+#
+#psi = jVMC.vqs.NQS(rbmModel)
+##psi = jVMC.vqs.NQS(rbmModel1, rbmModel2)
 
-rbm1 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
-_, params1 = rbm1.init_by_shape(random.PRNGKey(123),[(1,inp["system"]["L"])])
-rbmModel1 = nn.Model(rbm1,params1)
-#rbm2 = jVMC.nets.FFN.partial(layers=[5,5],bias=False)
-rbm2 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
-_, params2 = rbm2.init_by_shape(random.PRNGKey(321),[(1,inp["system"]["L"])])
-rbmModel2 = nn.Model(rbm2,params2)
-
-psi = jVMC.vqs.NQS(rbmModel)
-#psi = jVMC.vqs.NQS(rbmModel1, rbmModel2)
+psi = init_net(inp["network"], (L,))
 
 # Set up hamiltonian for ground state search
 hamiltonianGS = op.Operator()

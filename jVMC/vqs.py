@@ -9,6 +9,7 @@ from jax import jit,grad,vmap
 from jax import numpy as jnp
 from jax import random
 from jax.tree_util import tree_flatten, tree_unflatten
+#from jax.flatten_util import ravel_pytree
 import flax
 from flax import nn
 import numpy as np
@@ -20,7 +21,7 @@ from jVMC.nets import RBM
 from functools import partial
 
 class NQS:
-    def __init__(self, logModNet, phaseNet=None):
+    def __init__(self, logModNet, phaseNet=None, batchSize=1000):
         # The net arguments have to be instances of flax.nn.Model
         self.realNets = False
         if phaseNet is None:
@@ -44,6 +45,8 @@ class NQS:
         if callable(getattr(logModNet, 'sample', None)):
             self._isGenerator = True
 
+        self.batchSize = batchSize
+
         # Need to keep handles of jit'd functions to avoid recompilation
         #self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
         self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
@@ -51,8 +54,9 @@ class NQS:
         self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
         self._get_gradients_net1_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
         self._get_gradients_net2_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
-        self._append_gradients_holo = jax.pmap(lambda x: jnp.concatenate((x, 1.j*x), axis=1))
-        self._append_gradients = jax.pmap(lambda x,y: jnp.concatenate((x, 1.j*y), axis=1))
+        self._append_gradients_holo = jax.pmap(lambda x,n: jnp.concatenate((x[:n], 1.j*x[:n]), axis=1), in_axes=(0,None), static_broadcasted_argnums=1)
+        self._append_gradients = jax.pmap(lambda x,y,n: jnp.concatenate((x[:n,:], 1.j*y[:n,:]), axis=1), in_axes=(0,0,None), static_broadcasted_argnums=2)
+        self._create_batches_pmapd = jax.pmap(self._create_batches, in_axes=(0,None), static_broadcasted_argnums=1)
 
     # **  end def __init__
 
@@ -91,30 +95,44 @@ class NQS:
 
     def _get_gradients(self, net, s):
         
-        gradients, _ = \
-                tree_flatten(
-                    jax.tree_util.tree_map( lambda x: jnp.reshape(x, (s.shape[0],-1)), 
-                        vmap(grad(lambda x, y: jnp.real(x(y))), in_axes=(None, 0))(net, s)
+        def scan_fun(carry,configs):
+            g, _ = tree_flatten(
+                        jax.tree_util.tree_map( lambda x: jnp.reshape(x, (configs.shape[0],-1)), 
+                            vmap(grad(lambda x, y: jnp.real(x(y))), in_axes=(None, 0))(net, configs)
+                        )
                     )
-                )
 
-        return jnp.concatenate(gradients, axis=1)
+            return None, jnp.concatenate(g, axis=1)
+
+        _, gradients = jax.lax.scan(scan_fun, None, s)
+
+        return gradients.reshape((gradients.shape[0]*gradients.shape[1],-1))
+
+
+    def _create_batches(self, s, batchSize):
+
+        originalSize = s.shape[0]
+        append=batchSize*((s.shape[0]+batchSize-1)//batchSize)-s.shape[0]
+        pads=[(0,append),] + [(0,0)]*(len(s.shape)-1)
+        
+        return jnp.pad(s, pads).reshape((-1,batchSize)+s.shape[1:]), originalSize
 
 
     def gradients(self, s):
 
+        # Form batches
+        s, originalSize = self._create_batches_pmapd(s,self.batchSize)
+
         if self.realNets: # FOR REAL NETS
-            
             gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s)
             gradOut2 = self._get_gradients_net2_pmapd(self.net[1], s)
-
-            return self._append_gradients(gradOut1, gradOut2)
+            return self._append_gradients(gradOut1, gradOut2, originalSize[0])
 
         else:             # FOR COMPLEX NET
 
             gradOut = self._get_gradients_net1_pmapd(self.net, s)
 
-            return self._append_gradients_holo(gradOut)
+            return self._append_gradients_holo(gradOut, originalSize[0])
 
     # **  end def gradients
 

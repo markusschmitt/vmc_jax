@@ -6,3 +6,4 @@ from . import sampler
 from . import stepper
 from . import util
 from . import vqs
+from . import activation_functions

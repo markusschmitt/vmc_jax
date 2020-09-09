@@ -44,17 +44,17 @@ class RBM(nn.Module):
 
 class FFN(nn.Module):
 
-    def apply(self, s, layers=[10], bias=False, actFun=jax.nn.elu):
+    def apply(self, s, layers=[10], bias=False, actFun=[jax.nn.elu,]):
 
         s = 2*s-1
         for l in layers:
-            s = actFun(
+            s = actFun[0](
                     nn.Dense(s, features=l, bias=bias, dtype=global_defs.tReal, 
                                 kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
                                 bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
                 )
 
-        return jnp.sum(actFun( nn.Dense(s, features=1, bias=bias, dtype=global_defs.tReal,
+        return jnp.sum(actFun[0]( nn.Dense(s, features=1, bias=bias, dtype=global_defs.tReal,
                                 kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
                                 bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
                      ))
@@ -73,6 +73,9 @@ class CNN(nn.Module):
             pads.append((0,f-1))
         pads.append((0,0))
 
+#        for l in range(len(actFun),len(channels)):
+#            actFun.append(actFun[-1])
+
         # List of axes that will be summed for symmetrization
         reduceDims=tuple([-i-1 for i in range(len(strides)+2)])
 
@@ -90,9 +93,40 @@ class CNN(nn.Module):
 # ** end class CNN
 
 
+class CpxCNN(nn.Module):
+
+    def apply(self, x, F=(8,), channels=[10], strides=[1], actFun=[nn.elu,], bias=True):
+       
+        # Set up padding for periodic boundary conditions 
+        # Padding size must be 1 - filter diameter
+        pads=[(0,0)]
+        for f in F:
+            pads.append((0,f-1))
+        pads.append((0,0))
+
+        for l in range(len(actFun),len(channels)):
+            actFun.append(actFun[-1])
+
+        # List of axes that will be summed for symmetrization
+        reduceDims=tuple([-i-1 for i in range(len(strides)+2)])
+
+        # Add feature dimension
+        #x = jnp.expand_dims(2*x-1, axis=-1)
+        x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
+        for c,f in zip(channels, actFun):
+            x = jnp.pad(x, pads, 'wrap')
+            x = f( nn.Conv(x, features=c, kernel_size=F, strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tCpx) )
+
+        nrm = jnp.sqrt( jnp.prod(jnp.array(x.shape[reduceDims[-1]:])) )
+        
+        return jnp.sum(x, axis=reduceDims) / nrm
+
+# ** end class CNN
+
+
 class RNN(nn.Module):
 
-    def apply(self, x, L=10, units=[10], inputDim=2, actFun=nn.elu, initScale=1.0):
+    def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0):
 
         initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
         initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
@@ -112,7 +146,7 @@ class RNN(nn.Module):
         state = jnp.zeros((units[0]))
 
         def rnn_cell(carry, x):
-            newCarry = actFun(cellCarry(carry[0]) + cellIn(carry[1]))
+            newCarry = actFun[0](cellCarry(carry[0]) + cellIn(carry[1]))
             prob = nn.softmax(outputDense(newCarry))
             prob = jnp.log( jnp.sum( prob * x, axis=-1 ) )
             return (newCarry, x), prob
@@ -123,7 +157,7 @@ class RNN(nn.Module):
 
 
     @nn.module_method
-    def sample(self,batchSize,key,L,units,inputDim=2,actFun=nn.elu, initScale=1.0):
+    def sample(self,batchSize,key,L,units,inputDim=2,actFun=[nn.elu,], initScale=1.0):
 
         initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
         initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
@@ -145,7 +179,7 @@ class RNN(nn.Module):
         state = jnp.zeros((batchSize, units[0]))
 
         def rnn_cell(carry, x):
-            newCarry = actFun( cellCarry(carry[0]) + cellIn(carry[1]) )
+            newCarry = actFun[0]( cellCarry(carry[0]) + cellIn(carry[1]) )
             logits = outputDense(newCarry)
             sampleOut = jax.random.categorical( x, logits )
             sample = jax.nn.one_hot( sampleOut, inputDim )
