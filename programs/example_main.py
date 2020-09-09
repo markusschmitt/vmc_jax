@@ -34,21 +34,21 @@ def init_net(descr, dims, seed=0):
    
  
     netTypesReal = {
-        "RBM" : (jVMC.nets.RBM, (1,)+dims),
-        "FFN" : (jVMC.nets.FFN, (1,)+dims),
-        "CNN" : (jVMC.nets.CNN, dims),
-        "RNN" : (jVMC.nets.FFN, (1,)+dims),
+        "RBM" : jVMC.nets.RBM,
+        "FFN" : jVMC.nets.FFN,
+        "CNN" : jVMC.nets.CNN,
+        "RNN" : jVMC.nets.RNN,
     }
     netTypesCpx = {
-        "CpxRBM" : (jVMC.nets.CpxRBM, (1,)+dims),
-        "CpxCNN" : (jVMC.nets.CpxCNN, dims),
+        "CpxRBM" : jVMC.nets.CpxRBM,
+        "CpxCNN" : jVMC.nets.CpxCNN,
     }
 
 
     def get_net(descr, dims, seed, netTypes=None):
 
-        net = netTypes[descr["type"]][0].partial(**descr["parameters"])
-        _, params = net.init_by_shape(random.PRNGKey(seed),[netTypes[descr["type"]][1]])
+        net = netTypes[descr["type"]].partial(**descr["parameters"])
+        _, params = net.init_by_shape(random.PRNGKey(seed),[dims])
         return nn.Model(net,params)
 
     get_real_net=partial(get_net, netTypes=netTypesReal)
@@ -73,7 +73,7 @@ def init_net(descr, dims, seed=0):
         
         model1 = get_real_net(descr["net1"], dims, seed)
         model2 = get_real_net(descr["net2"], dims, seed)
-    
+
         return jVMC.vqs.NQS(model1, model2)
 
 
@@ -136,23 +136,10 @@ L = inp["system"]["L"]
 outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
-##rbm = jVMC.nets.CpxRBM.partial(numHidden=10,bias=False)
-#rbm = jVMC.nets.CpxRBM.partial(**inp["network"]["parameters"])
-#_, params = rbm.init_by_shape(random.PRNGKey(0),[(1,inp["system"]["L"])])
-#rbmModel = nn.Model(rbm,params)
-#
-#rbm1 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
-#_, params1 = rbm1.init_by_shape(random.PRNGKey(123),[(1,inp["system"]["L"])])
-#rbmModel1 = nn.Model(rbm1,params1)
-##rbm2 = jVMC.nets.FFN.partial(layers=[5,5],bias=False)
-#rbm2 = jVMC.nets.RBM.partial(numHidden=6,bias=False)
-#_, params2 = rbm2.init_by_shape(random.PRNGKey(321),[(1,inp["system"]["L"])])
-#rbmModel2 = nn.Model(rbm2,params2)
-#
-#psi = jVMC.vqs.NQS(rbmModel)
-##psi = jVMC.vqs.NQS(rbmModel1, rbmModel2)
-
 psi = init_net(inp["network"], (L,))
+
+outp.print("** Network properties")
+outp.print("    Number of parameters: %d" % (len(psi.get_parameters())))
 
 # Set up hamiltonian for ground state search
 hamiltonianGS = op.Operator()

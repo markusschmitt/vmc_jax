@@ -44,8 +44,8 @@ for i in range(timingReps):
 print("  Avg. time elapsed (jit'd, %d repetitions): %f seconds" % (timingReps, t/timingReps))
 
 logPsi = jax.random.normal(jax.random.PRNGKey(0), shape=(jax.device_count(),states.shape[1])) + 1.j * jax.random.normal(jax.random.PRNGKey(1), shape=(jax.device_count(),states.shape[1]))
-logPsip = jax.random.normal(jax.random.PRNGKey(2), shape=(jax.device_count(),sp.shape[1],sp.shape[2]))\
-          + 1.j * jax.random.normal(jax.random.PRNGKey(3), shape=(jax.device_count(),sp.shape[1],sp.shape[2]))
+logPsip = jax.random.normal(jax.random.PRNGKey(2), shape=(jax.device_count(),sp.shape[1]))\
+          + 1.j * jax.random.normal(jax.random.PRNGKey(3), shape=(jax.device_count(),sp.shape[1]))
 
 print("* Compute local energy")
 

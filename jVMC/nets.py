@@ -45,16 +45,19 @@ class RBM(nn.Module):
 class FFN(nn.Module):
 
     def apply(self, s, layers=[10], bias=False, actFun=[jax.nn.elu,]):
+        
+        for l in range(len(actFun),len(layers)+1):
+            actFun.append(actFun[-1])
 
         s = 2*s-1
-        for l in layers:
-            s = actFun[0](
+        for l,fun in zip(layers,actFun[:-1]):
+            s = fun(
                     nn.Dense(s, features=l, bias=bias, dtype=global_defs.tReal, 
                                 kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
                                 bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
                 )
 
-        return jnp.sum(actFun[0]( nn.Dense(s, features=1, bias=bias, dtype=global_defs.tReal,
+        return jnp.sum(actFun[-1]( nn.Dense(s, features=1, bias=bias, dtype=global_defs.tReal,
                                 kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
                                 bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
                      ))
@@ -64,7 +67,7 @@ class FFN(nn.Module):
 
 class CNN(nn.Module):
 
-    def apply(self, x, F=(8,), channels=[10], strides=[1], actFun=nn.elu, bias=True):
+    def apply(self, x, F=[8,], channels=[10], strides=[1], actFun=[nn.elu], bias=True):
        
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter
@@ -73,8 +76,8 @@ class CNN(nn.Module):
             pads.append((0,f-1))
         pads.append((0,0))
 
-#        for l in range(len(actFun),len(channels)):
-#            actFun.append(actFun[-1])
+        for l in range(len(actFun),len(channels)):
+            actFun.append(actFun[-1])
 
         # List of axes that will be summed for symmetrization
         reduceDims=tuple([-i-1 for i in range(len(strides)+2)])
@@ -82,9 +85,9 @@ class CNN(nn.Module):
         # Add feature dimension
         #x = jnp.expand_dims(2*x-1, axis=-1)
         x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
-        for c in channels:
+        for c,fun in zip(channels,actFun):
             x = jnp.pad(x, pads, 'wrap')
-            x = actFun( nn.Conv(x, features=c, kernel_size=F, strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
+            x = fun( nn.Conv(x, features=c, kernel_size=tuple(F), strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
 
         nrm = jnp.sqrt( jnp.prod(jnp.array(x.shape[reduceDims[-1]:])) )
         
