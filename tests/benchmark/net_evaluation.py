@@ -36,7 +36,7 @@ def time_net_eval(states, timingReps, get_net):
 def time_net_gradients(states, timingReps, get_net):
     
     model = get_net()
-    psi = NQS(model)
+    psi = NQS(model, batchSize=states.shape[1])
 
     t0 = time.perf_counter()
     psi.gradients(states).block_until_ready()
@@ -121,6 +121,7 @@ def get_2d_cnn(L):
     return nn.Model(cnn2D,params)
 
 Ls=[10,20]
+Ls=[10]
 for numStates in stateNums:
     for L in Ls:
         print("    > number of states: %d, L = %d" % (numStates, L))
