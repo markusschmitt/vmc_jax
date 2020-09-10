@@ -1,4 +1,5 @@
 import jax
+import jax.numpy as jnp
 from flax import nn
 
 def square(x):
@@ -9,7 +10,11 @@ def poly6(x):
     return ((0.022222222 * x -0.083333333) * x + 0.5) * x
 
 def poly5(x):
-    return jax.grad(poly6)(x) 
+    xsq = x**2
+    return ((0.133333333 * xsq - 0.333333333) * xsq + 1.) * x
+
+def logCosh(x):
+    return jnp.log(jnp.cosh(x))
 
 activationFunctions = {
     "square" : square ,

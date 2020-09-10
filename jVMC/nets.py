@@ -5,6 +5,7 @@ import numpy as np
 import jax.numpy as jnp
 
 import jVMC.global_defs as global_defs
+import jVMC.activation_functions as act_funs
 
 from functools import partial
 
@@ -98,7 +99,7 @@ class CNN(nn.Module):
 
 class CpxCNN(nn.Module):
 
-    def apply(self, x, F=(8,), channels=[10], strides=[1], actFun=[nn.elu,], bias=True):
+    def apply(self, x, F=(8,), channels=[10], strides=[1], actFun=[act_funs.poly6,], bias=True):
        
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter

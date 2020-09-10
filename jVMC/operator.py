@@ -171,7 +171,6 @@ class Operator:
     def _get_O_loc(self, matEl, logPsiS, logPsiSP):
 
         return jax.vmap(lambda x,y,z: jnp.sum(x * jnp.exp(z-y), axis=0), in_axes=(1,0,1), out_axes=1)(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
-        #return jnp.sum(matEl * jnp.exp(logPsiSP-logPsiS), axis=0)
 
 
     def get_O_loc(self,logPsiS,logPsiSP):
