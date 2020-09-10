@@ -56,6 +56,16 @@ class TDVP:
         return self.ev0
 
 
+    def get_energy_variance(self):
+
+        return self.ElocVar0
+
+
+    def get_energy_mean(self):
+
+        return jnp.real(self.ElocMean0)
+
+
     def get_tdvp_equation(self, Eloc, gradients, p=None):
             
         self.ElocMean = mpi.global_mean(Eloc, p)
@@ -189,6 +199,7 @@ class TDVP:
         
         if "intStep" in rhsArgs:
             if rhsArgs["intStep"] == 0:
+                self.ElocMean0 = self.ElocMean
                 self.ElocVar0 = self.ElocVar
                 self.tdvpError = self._get_tdvp_error(update)
                 self.solverResidual = solverResidual

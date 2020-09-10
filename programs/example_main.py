@@ -63,7 +63,7 @@ def init_net(descr, dims, seed=0):
 
         model = get_cpx_net(descr["net1"], dims, seed)
     
-        return jVMC.vqs.NQS(model)
+        return jVMC.vqs.NQS(model, batchSize=descr["gradient_batch_size"])
 
     else:
 
@@ -74,7 +74,7 @@ def init_net(descr, dims, seed=0):
         model1 = get_real_net(descr["net1"], dims, seed)
         model2 = get_real_net(descr["net2"], dims, seed)
 
-        return jVMC.vqs.NQS(model1, model2)
+        return jVMC.vqs.NQS(model1, model2, batchSize=descr["gradient_batch_size"])
 
 
 inp = None
@@ -154,11 +154,15 @@ for l in range(L):
     hamiltonian.add( op.scal_opstr( inp["system"]["hx"], ( op.Sx(l), ) ) )
 
 # Set up observables
-observables = [hamiltonianGS, op.Operator(), op.Operator(), op.Operator()]
+observables = {
+    "energy" : hamiltonianGS,
+    "X" : op.Operator(),
+    "ZZ" : [op.Operator(), op.Operator()]
+}
 for l in range(L):
-    observables[1].add( ( op.Sx(l), ) )
-    observables[2].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
-    observables[3].add( ( op.Sz(l), op.Sz((l+2)%L) ) )
+    observables["X"].add( ( op.Sx(l), ) )
+    observables["ZZ"][0].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
+    observables["ZZ"][1].add( ( op.Sz(l), op.Sz((l+2)%L) ) )
 
 sampler = None
 if inp["sampler"]["type"] == "MC":
@@ -181,13 +185,15 @@ tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
 outp.print("** Ground state search")
 outp.set_group("ground_state_search")
 
-ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler, numSteps=inp["gs_search"]["num_steps"], stepSize=1e-2, observables=observables, outp=outp)
+ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler,
+                    numSteps=inp["gs_search"]["num_steps"], varianceTol=inp["gs_search"]["convergence_variance"]*L**2,
+                    stepSize=1e-2, observables=observables, outp=outp)
 
 # Time evolution
 outp.print("** Time evolution")
 outp.set_group("time_evolution")
 
-observables[0] = hamiltonian
+observables["energy"] = hamiltonian
 tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"], 
                                        svdTol=inp["time_evol"]["svd_tolerance"],
                                        rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
@@ -198,10 +204,10 @@ t=inp["time_evol"]["t_init"]
 tmax=inp["time_evol"]["t_final"]
 
 outp.start_timing("measure observables")
-obs, err = measure(observables, psi, sampler)
+obs = measure(observables, psi, sampler)
 outp.stop_timing("measure observables")
 
-outp.write_observables(t, energy=obs[0], X=obs[1]/L, ZZ=obs[2:]/L)
+outp.write_observables(t, **obs)
 
 while t<tmax:
     tic = time.perf_counter()
@@ -217,17 +223,17 @@ while t<tmax:
 
     # Measure observables
     outp.start_timing("measure observables")
-    obs, err = measure(observables, psi, sampler)
+    obs = measure(observables, psi, sampler)
     outp.stop_timing("measure observables")
 
     # Write observables
-    outp.write_observables(t, energy=obs[0], X=obs[1]/L, ZZ=obs[2:]/L)
+    outp.write_observables(t, **obs)
     # Write metadata
     outp.write_metadata(t, tdvp_error=tdvpErr, tdvp_residual=tdvpRes, SNR=tdvpEquation.get_snr(), spectrum=tdvpEquation.get_spectrum())
     # Write network parameters
     outp.write_network_checkpoint(t, psi.get_parameters())
 
-    outp.print("    Energy = %f +/- %f" % (obs[0], err[0]))
+    outp.print("    Energy = %f +/- %f" % (obs["energy"]["mean"], obs["energy"]["MC_error"]))
 
     outp.print_timings(indent="   ")
 

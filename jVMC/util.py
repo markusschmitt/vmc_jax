@@ -13,31 +13,50 @@ import time
 import jVMC.stepper as jVMCstepper
 import jVMC.mpi_wrapper as mpi
 
-def measure(ops, psi, sampler, numSamples=None):
+import collections
+
+def get_iterable(x):
+    if isinstance(x, collections.Iterable):
+        return x
+    else:
+        return (x,)
+
+def measure(observables, psi, sampler, numSamples=None):
     
     # Get sample
     sampleConfigs, sampleLogPsi, p =  sampler.sample( psi, numSamples )
 
-    means = []
-    errors = []
+    result = {}
     
-    for op in ops:
+    for name, ops in observables.items():
 
-        sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs)
-        sampleLogPsiOffd = psi(sampleOffdConfigs)
-        Oloc = op.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
+        tmpMeans = []
+        tmpVariances = []
+        tmpErrors = []
 
-        if p is not None:
-            means.append( mpi.global_mean(Oloc, p) )
-            errors.append(0.0)
-        else:
-            means.append( mpi.global_mean(Oloc) )
-            errors.append( mpi.global_variance(Oloc) / jnp.sqrt(sampler.get_last_number_of_samples()) )
+        for op in get_iterable(ops):
+            sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs)
+            sampleLogPsiOffd = psi(sampleOffdConfigs)
+            Oloc = op.get_O_loc(sampleLogPsi,sampleLogPsiOffd)
 
-    return jnp.real(jnp.array(means)), jnp.real(jnp.array(errors))
+            if p is not None:
+                tmpMeans.append( mpi.global_mean(Oloc, p) )
+                tmpVariances.append( mpi.global_variance(Oloc, p) )
+                tmpErrors.append( 0. )
+            else:
+                tmpMeans.append( mpi.global_mean(Oloc) )
+                tmpVariances.append( mpi.global_variance(Oloc) )
+                tmpErrors.append( tmpVariances[-1] / jnp.sqrt(sampler.get_last_number_of_samples()) )
+
+        result[name] = {}
+        result[name]["mean"] = jnp.real(jnp.array(tmpMeans))
+        result[name]["variance"] = jnp.real(jnp.array(tmpVariances))
+        result[name]["MC_error"] = jnp.real(jnp.array(tmpErrors))
+
+    return result 
 
 
-def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, stepSize=1e-2, observables=None, outp=None):
+def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceTol=1e-10, stepSize=1e-2, observables=None, outp=None):
 
     delta = tdvpEquation.diagonalShift
 
@@ -46,10 +65,12 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, stepSize=
     n=0
     if outp is not None:
         if observables is not None:
-            obs, err = measure(observables, psi, sampler)
-            outp.print("{0:d} {1:.6f} {2:.6f} {3:.6f}".format(n, obs[0], obs[1], obs[2]))
+            obs = measure(observables, psi, sampler)
+            outp.write_observables(n, **obs)
 
-    while n<numSteps:
+    varE = 1.0
+
+    while n<numSteps and varE>varianceTol:
 
         tic = time.perf_counter()
     
@@ -57,15 +78,20 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, stepSize=
         psi.set_parameters(dp)
         n += 1
 
+        varE = tdvpEquation.get_energy_variance()
+        print(varE)
+
         if outp is not None:
             if observables is not None:
-                obs, err = measure(observables, psi, sampler)
-                outp.print("{0:d} {1:.6f} {2:.6f} {3:.6f}".format(n, obs[0], obs[1], obs[2]))
+                obs = measure(observables, psi, sampler)
+                outp.write_observables(n, **obs)
 
         delta=0.95*delta
         tdvpEquation.set_diagonal_shift(delta)
 
         if outp is not None:
+            outp.print("   Energy mean: %f" % (tdvpEquation.get_energy_mean()) )
+            outp.print("   Energy variance: %f" % (varE) )
             outp.print("   == Time for step: %fs" % (time.perf_counter() - tic) )
 
 import h5py
@@ -116,16 +142,23 @@ class OutputManager:
                 f[self.currentGroup+"/observables/times"].resize((newLen,))
                 f[self.currentGroup+"/observables/times"][-1] = time
 
-                for key, obs in kwargs.items():
+                for key, obsDict in kwargs.items():
 
-                    if not key in f[self.currentGroup+"/observables"]:
+                    for name, value in obsDict.items():
 
-                        f.create_dataset(self.currentGroup+"/observables/"+key+"/mean", (0,)+obs.shape, maxshape=(None,)+obs.shape, dtype='f8', chunks=True)
-                        f.create_dataset(self.currentGroup+"/observables/"+key+"/variance", (0,)+obs.shape, maxshape=(None,)+obs.shape, dtype='f8', chunks=True)
+                        datasetName = self.currentGroup+"/observables/"+key+"/"+name
 
-                    newLen = len(f[self.currentGroup+"/observables/"+key+"/mean"]) + 1
-                    f[self.currentGroup+"/observables/"+key+"/mean"].resize((newLen,)+obs.shape)
-                    f[self.currentGroup+"/observables/"+key+"/mean"][-1] = obs
+                        if not key in f[self.currentGroup+"/observables"]:
+
+                            f.create_group(self.currentGroup+"/observables/"+key)
+
+                        if not name in f[self.currentGroup+"/observables/"+key]:
+
+                            f.create_dataset(datasetName, (0,)+value.shape, maxshape=(None,)+value.shape, dtype='f8', chunks=True)
+
+                        newLen = len(f[datasetName]) + 1
+                        f[datasetName].resize((newLen,)+value.shape)
+                        f[datasetName][-1] = value
 
 
     def write_metadata(self, time, **kwargs):
