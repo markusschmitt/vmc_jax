@@ -157,12 +157,12 @@ for l in range(L):
 observables = {
     "energy" : hamiltonianGS,
     "X" : op.Operator(),
-    "ZZ" : [op.Operator(), op.Operator()]
+    "ZZ" : [op.Operator() for d in range((L+1)//2)]
 }
 for l in range(L):
-    observables["X"].add( ( op.Sx(l), ) )
-    observables["ZZ"][0].add( ( op.Sz(l), op.Sz((l+1)%L) ) )
-    observables["ZZ"][1].add( ( op.Sz(l), op.Sz((l+2)%L) ) )
+    observables["X"].add( op.scal_opstr( 1./L, ( op.Sx(l), ) ) )
+    for d in range((L+1)//2):
+        observables["ZZ"][d].add( op.scal_opstr( 1./L, ( op.Sz(l), op.Sz((l+d)%L ) ) ) )
 
 sampler = None
 if inp["sampler"]["type"] == "MC":

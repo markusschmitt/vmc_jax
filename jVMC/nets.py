@@ -100,7 +100,9 @@ class CNN(nn.Module):
 class CpxCNN(nn.Module):
 
     def apply(self, x, F=[8], channels=[10], strides=[1], actFun=[act_funs.poly6,], bias=True):
-       
+      
+        initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+ 
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter
         pads=[(0,0)]
@@ -119,7 +121,10 @@ class CpxCNN(nn.Module):
         x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
         for c,f in zip(channels, actFun):
             x = jnp.pad(x, pads, 'wrap')
-            x = f( nn.Conv(x, features=c, kernel_size=tuple(F), strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tCpx) )
+            x = f( nn.Conv(x, features=c, kernel_size=tuple(F),
+                           strides=strides, padding=[(0,0)]*len(strides),
+                           bias=bias, dtype=global_defs.tCpx,
+                           kernel_init=initFunction) )
 
         nrm = jnp.sqrt( jnp.prod(jnp.array(x.shape[reduceDims[-1]:])) )
         

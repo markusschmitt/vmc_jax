@@ -79,7 +79,6 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
         n += 1
 
         varE = tdvpEquation.get_energy_variance()
-        print(varE)
 
         if outp is not None:
             if observables is not None:
