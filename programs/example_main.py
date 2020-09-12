@@ -162,7 +162,7 @@ observables = {
 for l in range(L):
     observables["X"].add( op.scal_opstr( 1./L, ( op.Sx(l), ) ) )
     for d in range((L+1)//2):
-        observables["ZZ"][d].add( op.scal_opstr( 1./L, ( op.Sz(l), op.Sz((l+d)%L ) ) ) )
+        observables["ZZ"][d].add( op.scal_opstr( 1./L, ( op.Sz(l), op.Sz((l+d+1)%L ) ) ) )
 
 sampler = None
 if inp["sampler"]["type"] == "MC":
