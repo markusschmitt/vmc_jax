@@ -79,7 +79,6 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
         n += 1
 
         varE = tdvpEquation.get_energy_variance()
-        print(varE)
 
         if outp is not None:
             if observables is not None:
@@ -90,6 +89,7 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
         tdvpEquation.set_diagonal_shift(delta)
 
         if outp is not None:
+            outp.print(" STEP %d" % (n) )
             outp.print("   Energy mean: %f" % (tdvpEquation.get_energy_mean()) )
             outp.print("   Energy variance: %f" % (varE) )
             outp.print("   == Time for step: %fs" % (time.perf_counter() - tic) )

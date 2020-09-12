@@ -63,9 +63,9 @@ class MCMCSampler:
 
         if net.is_generator:
 
-            configs, logPsi = self._get_samples_gen(net, numSamples)
+            configs = self._get_samples_gen(net, numSamples)
 
-            return configs, logPsi, None
+            return configs, net(configs), None
 
 
         configs, logPsi = self._get_samples_mcmc(net, numSamples)

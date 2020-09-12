@@ -193,6 +193,6 @@ class RNN(nn.Module):
         keys = jax.random.split(key,L)
         _, res = jax.lax.scan( rnn_cell, (state, jnp.zeros((batchSize,inputDim))), keys )
 
-        return jnp.transpose( res[1] ), 0.5 * jnp.sum(res[0], axis=0)
+        return jnp.transpose( res[1] )#, 0.5 * jnp.sum(res[0], axis=0)
 
 # ** end class RNN
