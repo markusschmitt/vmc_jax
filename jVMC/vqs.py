@@ -262,7 +262,7 @@ class NQS:
         if self._isGenerator:
             #samples, logP = self.net[0].sample(numSamples, key)
             samples, logP = jax.pmap(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
-            return samples, logP
+            return samples, self(samples)
 
         return 0
     
