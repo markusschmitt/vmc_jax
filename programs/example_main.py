@@ -157,10 +157,12 @@ for l in range(L):
 observables = {
     "energy" : hamiltonianGS,
     "X" : op.Operator(),
+    "Z" : op.Operator(),
     "ZZ" : [op.Operator() for d in range((L+1)//2)]
 }
 for l in range(L):
     observables["X"].add( op.scal_opstr( 1./L, ( op.Sx(l), ) ) )
+    observables["Z"].add( op.scal_opstr( 1./L, ( op.Sz(l), ) ) )
     for d in range((L+1)//2):
         observables["ZZ"][d].add( op.scal_opstr( 1./L, ( op.Sz(l), op.Sz((l+d+1)%L ) ) ) )
 
