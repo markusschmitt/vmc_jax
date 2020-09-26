@@ -14,6 +14,9 @@ from functools import partial
 
 import time
 
+import jVMC.global_defs as global_defs
+
+
 def propose_spin_flip(key, s, info):
     idx = random.randint(key,(1,),0,s.size)[0]
     idx = jnp.unravel_index(idx, s.shape)
@@ -25,24 +28,30 @@ class MCMCSampler:
 
     def __init__(self, key, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
                     numSamples=100, thermalizationSweeps=10, sweepSteps=10):
-        stateShape = [jax.device_count(), numChains]
-        for s in sampleShape:
-            stateShape.append(s)
-        self.states=jax.pmap(lambda x: x)(jnp.zeros(stateShape, dtype=np.int32)).block_until_ready()
+        #stateShape = [jax.device_count(), numChains]
+        #for s in sampleShape:
+        #    stateShape.append(s)
+        #self.states=jax.pmap(lambda x: x)(jnp.zeros(stateShape, dtype=np.int32)).block_until_ready()
+        stateShape = (numChains,) + sampleShape
+        if global_defs.usePmap:
+            stateShape = (global_defs.device_count(),) + stateShape
+        self.states=jnp.zeros(stateShape, dtype=np.int32)
 
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        self.key = jax.random.split(key, jax.device_count())
+        self.key = key
+        if global_defs.usePmap:
+            self.key = jax.random.split(self.key, global_defs.device_count())
         self.thermalizationSweeps = thermalizationSweeps
         self.sweepSteps = sweepSteps
         self.numSamples = numSamples
         
         self.numChains = numChains
 
-        # pmap'd member functions
-        self._get_samples_pmapd = {} # will hold a pmap'd function for each number of samples
-        self._get_samples_gen_pmapd = {} # will hold a pmap'd function for each number of samples
+        # jit'd member functions
+        self._get_samples_jitd = {} # will hold a jit'd function for each number of samples
+        self._get_samples_gen_jitd = {} # will hold a jit'd function for each number of samples
 
 
     def set_number_of_samples(self, N):
@@ -75,17 +84,30 @@ class MCMCSampler:
 
     def _get_samples_gen(self, net, numSamples):
         
-        numSamples = mpi.distribute_sampling(numSamples, localDevices=jax.device_count())
+        def dc():
+            if global_defs.usePmap:
+                return global_defs.device_count()
+            return 1
+        
+        numSamples = mpi.distribute_sampling(numSamples, localDevices=dc())
         numSamplesStr = str(numSamples)
 
         # check whether _get_samples is already compiled for given number of samples
-        if not numSamplesStr in self._get_samples_gen_pmapd:
-            self._get_samples_gen_pmapd[numSamplesStr] = jax.pmap(lambda x,y,z: x.sample(y,z), static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
+        if not numSamplesStr in self._get_samples_gen_jitd:
+            if global_defs.usePmap:
+                self._get_samples_gen_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(lambda x,y,z: x.sample(y,z), static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
+            else:
+                self._get_samples_gen_jitd[numSamplesStr] = global_defs.jit_for_my_device(lambda x,y,z: x.sample(y,z), static_argnums=(1,))
 
-        tmpKey = random.split(self.key[0], 2*jax.device_count())
-        self.key = tmpKey[:jax.device_count()]
+        tmpKey = None
+        if global_defs.usePmap:
+            tmpKey = random.split(self.key[0], 2*global_defs.device_count())
+            self.key = tmpKey[:global_defs.device_count()]
+            tmpKey = tmpKey[global_defs.device_count():]
+        else:
+            tmpKey, self.key = random.split(self.key)
 
-        return self._get_samples_gen_pmapd[numSamplesStr](net.get_sampler_net(), numSamples, tmpKey[jax.device_count():])
+        return self._get_samples_gen_jitd[numSamplesStr](net.get_sampler_net(), numSamples, tmpKey)
 
 
     def _get_samples_mcmc(self, net, numSamples):
@@ -93,20 +115,30 @@ class MCMCSampler:
         # Initialize sampling stuff
         self._mc_init(net)
         
-        numSamples = mpi.distribute_sampling(numSamples, localDevices=jax.device_count(), numChainsPerDevice=self.numChains)
+        def dc():
+            if global_defs.usePmap:
+                return global_defs.device_count()
+            return 1
+
+        numSamples = mpi.distribute_sampling(numSamples, localDevices=dc(), numChainsPerDevice=self.numChains)
         numSamplesStr = str(numSamples)
 
         # check whether _get_samples is already compiled for given number of samples
-        if not numSamplesStr in self._get_samples_pmapd:
-            self._get_samples_pmapd[numSamplesStr] = jax.pmap(partial(self._get_samples, sweepFunction=self._sweep),
-                                                                static_broadcasted_argnums=(1,2,3,9),
-                                                                in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None))
+        if not numSamplesStr in self._get_samples_jitd:
+            if global_defs.usePmap:
+                self._get_samples_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(partial(self._get_samples, sweepFunction=self._sweep),
+                                                                    static_broadcasted_argnums=(1,2,3,9),
+                                                                    in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None))
+            else:
+                self._get_samples_jitd[numSamplesStr] = global_defs.jit_for_my_device(partial(self._get_samples, sweepFunction=self._sweep),
+                                                                    static_argnums=(1,2,3,9))
 
         (self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted), configs =\
-            self._get_samples_pmapd[numSamplesStr](net.get_sampler_net(), numSamples, self.thermalizationSweeps, self.sweepSteps,
+            self._get_samples_jitd[numSamplesStr](net.get_sampler_net(), numSamples, self.thermalizationSweeps, self.sweepSteps,
                                                     self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted,
                                                     self.updateProposer, self.updateProposerArg)
 
+        #return configs, None
         return configs, net(configs)
 
 
@@ -170,8 +202,12 @@ class MCMCSampler:
         # Initialize logPsiSq
         self.logPsiSq = 2. * net.real_coefficients(self.states)
 
-        self.numProposed = jnp.zeros((jax.device_count(),1), dtype=np.int64)
-        self.numAccepted = jnp.zeros((jax.device_count(),1), dtype=np.int64)
+        shape = (1,)
+        if global_defs.usePmap:
+            shape = (global_defs.device_count(),) + shape
+ 
+        self.numProposed = jnp.zeros(shape, dtype=np.int64)
+        self.numAccepted = jnp.zeros(shape, dtype=np.int64)
 
 
     def acceptance_ratio(self):
@@ -192,10 +228,15 @@ class ExactSampler:
         self.N = jnp.prod(jnp.asarray(sampleShape))
         self.sampleShape = sampleShape
 
-        # pmap'd member functions
-        self._get_basis_pmapd = jax.pmap(self._get_basis, in_axes=(0, 0))
-        self._compute_probabilities_pmapd = jax.pmap(self._compute_probabilities, in_axes=(0, None, 0))
-        self._normalize_pmapd = jax.pmap(self._normalize, in_axes=(0, None))
+        # jit'd member functions
+        if global_defs.usePmap:
+            self._get_basis_pmapd = global_defs.pmap_for_my_devices(self._get_basis, in_axes=(0, 0))
+            self._compute_probabilities_pmapd = global_defs.pmap_for_my_devices(self._compute_probabilities, in_axes=(0, None, 0))
+            self._normalize_pmapd = global_defs.pmap_for_my_devices(self._normalize, in_axes=(0, None))
+        else:
+            self._get_basis_pmapd = global_defs.jit_for_my_device(self._get_basis)
+            self._compute_probabilities_pmapd = global_defs.jit_for_my_device(self._compute_probabilities)
+            self._normalize_pmapd = global_defs.jit_for_my_device(self._normalize)
 
         self.get_basis()
 
@@ -207,14 +248,23 @@ class ExactSampler:
         myNumStates = mpi.distribute_sampling(2**self.N)
         myFirstState = mpi.first_sample_id()
 
-        self.numStatesPerDevice = [(myNumStates + jax.device_count() - 1) // jax.device_count()] * jax.device_count()
-        self.numStatesPerDevice[-1] += myNumStates - jax.device_count() * self.numStatesPerDevice[0]
+        deviceCount = global_defs.device_count()
+        if not global_defs.usePmap:
+            deviceCount = 1
+
+        self.numStatesPerDevice = [(myNumStates + deviceCount - 1) // deviceCount] * deviceCount
+        self.numStatesPerDevice[-1] += myNumStates - deviceCount * self.numStatesPerDevice[0]
         self.numStatesPerDevice = jnp.array(self.numStatesPerDevice)
 
-        totalNumStates = jax.device_count() * self.numStatesPerDevice[0]
+        totalNumStates = deviceCount * self.numStatesPerDevice[0]
+        
+        if not global_defs.usePmap:
+            self.numStatesPerDevice = self.numStatesPerDevice[0]
 
-        intReps = jnp.arange(myFirstState, myFirstState + totalNumStates).reshape((jax.device_count(), -1))
-        self.basis = jnp.zeros((intReps.shape[0], intReps.shape[1], self.N), dtype=np.int32)
+        intReps = jnp.arange(myFirstState, myFirstState + totalNumStates)
+        if global_defs.usePmap:
+            intReps = intReps.reshape((global_defs.device_count(), -1))
+        self.basis = jnp.zeros(intReps.shape + (self.N,), dtype=np.int32)
         self.basis = self._get_basis_pmapd(self.basis, intReps)
 
 
@@ -277,7 +327,7 @@ if __name__ == "__main__":
     from flax import nn
 
     L=128
-    sampler = MCMCSampler(random.PRNGKey(123), propose_spin_flip, [L], numChains=500, sweepSteps=128)
+    sampler = MCMCSampler(random.PRNGKey(123), propose_spin_flip, (L,), numChains=500, sweepSteps=128)
     #sampler = ExactSampler((L,))
 
     rbm = nets.CpxRBM.partial(numHidden=128,bias=True)
@@ -287,6 +337,9 @@ if __name__ == "__main__":
     tic=time.perf_counter()
     configs, logspi, p = sampler.sample(psiC, numSamples=100000)
     #configs, logpsi, p = sampler.sample(psiC, numSamples=10)
+
+    print(configs.shape)
+    exit()
 
     configs.block_until_ready()
     print("total time:", time.perf_counter()-tic)

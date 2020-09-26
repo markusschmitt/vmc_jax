@@ -9,16 +9,20 @@ from jax import jit,grad,vmap
 from jax import numpy as jnp
 from jax import random
 from jax.tree_util import tree_flatten, tree_unflatten
-#from jax.flatten_util import ravel_pytree
+from jax.flatten_util import ravel_pytree
 import flax
 from flax import nn
 import numpy as np
 
+import jVMC
 import jVMC.global_defs as global_defs
 from jVMC.nets import CpxRBM
 from jVMC.nets import RBM
+import jVMC.mpi_wrapper as mpi
 
 from functools import partial
+
+import time
 
 class NQS:
     def __init__(self, logModNet, phaseNet=None, batchSize=1000):
@@ -48,15 +52,27 @@ class NQS:
         self.batchSize = batchSize
 
         # Need to keep handles of jit'd functions to avoid recompilation
-        #self.evalJitdNet1 = jit(vmap(self._eval, in_axes=(None, 0)))
-        self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
-        self.evalJitdNet2 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
-        self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
-        self._get_gradients_net1_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
-        self._get_gradients_net2_pmapd = jax.pmap(self._get_gradients, in_axes=(None,0))
-        self._append_gradients_holo = jax.pmap(lambda x,n: jnp.concatenate((x[:n], 1.j*x[:n]), axis=1), in_axes=(0,None), static_broadcasted_argnums=1)
-        self._append_gradients = jax.pmap(lambda x,y,n: jnp.concatenate((x[:n,:], 1.j*y[:n,:]), axis=1), in_axes=(0,0,None), static_broadcasted_argnums=2)
-        self._create_batches_pmapd = jax.pmap(self._create_batches, in_axes=(0,None), static_broadcasted_argnums=1)
+        if global_defs.usePmap:
+            #self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+            #self.evalJitdNet2 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+            #self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
+            self.evalJitdNet1 = global_defs.pmap_for_my_devices(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+            self.evalJitdNet2 = global_defs.pmap_for_my_devices(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
+            self.evalJitdReal = global_defs.pmap_for_my_devices(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
+            self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None,0,None), static_broadcasted_argnums=(2,))
+            self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None,0,None), static_broadcasted_argnums=(2,))
+            self._append_gradients = global_defs.pmap_for_my_devices(lambda x,y: jnp.concatenate((x[:,:], 1.j*y[:,:]), axis=1), in_axes=(0,0))
+            self._create_batches_pmapd = global_defs.pmap_for_my_devices(self._create_batches, in_axes=(0,None), static_broadcasted_argnums=1)
+            self._sample_jitd = global_defs.pmap_for_my_devices(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
+        else:
+            self.evalJitdNet1 = global_defs.jit_for_my_device(vmap(self._eval, in_axes=(None, 0)))
+            self.evalJitdNet2 = global_defs.jit_for_my_device(vmap(self._eval, in_axes=(None, 0)))
+            self.evalJitdReal = global_defs.jit_for_my_device(vmap(self._eval_real, in_axes=(None, 0)))
+            self._get_gradients_net1_pmapd = global_defs.jit_for_my_device(self._get_gradients, static_argnums=(2,))
+            self._get_gradients_net2_pmapd = global_defs.jit_for_my_device(self._get_gradients, static_argnums=(2,))
+            self._append_gradients = global_defs.jit_for_my_device(lambda x,y: jnp.concatenate((x[:,:], 1.j*y[:,:]), axis=1))
+            self._create_batches_pmapd = global_defs.jit_for_my_device(self._create_batches, static_argnums=1)
+            self._sample_jitd = global_defs.jit_for_my_device(self._sample, static_argnums=(1,))
 
     # **  end def __init__
 
@@ -93,20 +109,42 @@ class NQS:
     # **  end def get_sampler_net
 
 
-    def _get_gradients(self, net, s):
+    def _get_gradients(self, net, s, batchSize):
         
-        def scan_fun(carry,configs):
-            g, _ = tree_flatten(
-                        jax.tree_util.tree_map( lambda x: jnp.reshape(x, (configs.shape[0],-1)), 
-                            vmap(grad(lambda x, y: jnp.real(x(y))), in_axes=(None, 0))(net, configs)
-                        )
-                    )
+        def create_batches(s, b):
 
-            return None, jnp.concatenate(g, axis=1)
+            append=b*((s.shape[0]+b-1)//b)-s.shape[0]
+            pads=[(0,append),] + [(0,0)]*(len(s.shape)-1)
+        
+            return [a for a in jnp.pad(s, pads).reshape((-1,b)+s.shape[1:])]
 
-        _, gradients = jax.lax.scan(scan_fun, None, s)
+        def flat_gradient(fun, arg):
+            g = grad(lambda x, y: jnp.real(x(y)))(fun,arg)
+            #return ravel_pytree(g)[0]
+            g = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), g))[0]
+            return jnp.concatenate(g)
 
-        return gradients.reshape((gradients.shape[0]*gradients.shape[1],-1))
+        sb = create_batches(s, batchSize)
+   
+        g = jax.tree_util.tree_map( lambda x: jax.vmap(flat_gradient, in_axes=(None,0))(net,x) , sb)
+
+        g = jnp.concatenate(g, axis=0)
+
+        return g[:s.shape[0]]
+
+        #def scan_fun(carry,configs):
+        #    g, _ = tree_flatten(
+        #                jax.tree_util.tree_map( lambda x: jnp.reshape(x, (configs.shape[0],-1)), 
+        #                    vmap(grad(lambda x, y: jnp.real(x(y))), in_axes=(None, 0))(net, configs)
+        #                )
+        #            )
+
+        #    return None, jnp.concatenate(g, axis=1)
+        #    #return None, g
+
+        #_, gradients = jax.lax.scan(scan_fun, None, s)
+
+        #return gradients.reshape((gradients.shape[0]*gradients.shape[1],-1))
 
 
     def _create_batches(self, s, batchSize):
@@ -115,24 +153,27 @@ class NQS:
         append=batchSize*((s.shape[0]+batchSize-1)//batchSize)-s.shape[0]
         pads=[(0,append),] + [(0,0)]*(len(s.shape)-1)
         
-        return jnp.pad(s, pads).reshape((-1,batchSize)+s.shape[1:]), originalSize
+        #return jnp.pad(s, pads).reshape((-1,batchSize)+s.shape[1:]), originalSize
+        return [a for a in jnp.pad(s, pads).reshape((-1,batchSize)+s.shape[1:])], originalSize
 
 
     def gradients(self, s):
 
         # Form batches
-        s, originalSize = self._create_batches_pmapd(s,self.batchSize)
+        #s, originalSize = self._create_batches_pmapd(s,self.batchSize)
 
         if self.realNets: # FOR REAL NETS
-            gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s)
-            gradOut2 = self._get_gradients_net2_pmapd(self.net[1], s)
-            return self._append_gradients(gradOut1, gradOut2, originalSize[0])
+            gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s, self.batchSize)
+            gradOut2 = self._get_gradients_net2_pmapd(self.net[1], s, self.batchSize)
+            #return self._append_gradients(gradOut1, gradOut2, originalSize[0])
+            return self._append_gradients(gradOut1, gradOut2)
 
         else:             # FOR COMPLEX NET
 
-            gradOut = self._get_gradients_net1_pmapd(self.net, s)
-
-            return self._append_gradients_holo(gradOut, originalSize[0])
+            gradOut = self._get_gradients_net1_pmapd(self.net, s, self.batchSize)
+            return self._append_gradients(gradOut, gradOut)
+            #gradOut = self._get_gradients_net1_pmapd(self.net, s)
+            #return self._append_gradients_holo(gradOut, originalSize[0])
 
     # **  end def gradients
 
@@ -260,8 +301,8 @@ class NQS:
     def sample(self, numSamples, key):
 
         if self._isGenerator:
-            #samples, logP = self.net[0].sample(numSamples, key)
-            samples, logP = jax.pmap(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
+            #samples, logP = jax.pmap(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
+            samples, logP = self._sample_jitd(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
             return samples, self(samples)
 
         return 0
@@ -340,6 +381,8 @@ flax.serialization.register_serialization_state(NQS, nqs_to_state_dict, nqs_from
 
 
 if __name__ == '__main__':
+    global_defs.set_pmap_devices(jax.devices()[:2])
+
     rbm = CpxRBM.partial(numHidden=2,bias=True)
     _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
     rbmModel = nn.Model(rbm,params)
@@ -347,14 +390,22 @@ if __name__ == '__main__':
     print("** Complex net **")
     psiC = NQS(rbmModel)
 
-    s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
+    shape = (2,3)
+    if global_defs.usePmap:
+        #shape = (jax.device_count(),) + shape
+        shape = (jVMC.global_defs.myDeviceCount,) + shape
 
-    #print(psiC(s))
+    s = jnp.zeros(shape, dtype=np.int32)
 
-    s = jnp.zeros((jax.device_count(), 2,3), dtype=np.int32)
+    res = psiC(s)
+    print(res.shape)
+    print(res[1].device_buffer.device())
+
+    s = jnp.zeros(shape, dtype=np.int32)
     G = psiC.gradients(s)
 
-    print(G)
+    print(G.shape)
+    exit()
     psiC.update_parameters(jnp.real(G[0][0]))
     
     a,b=tree_flatten(psiC)

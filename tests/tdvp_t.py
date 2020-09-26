@@ -16,6 +16,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 import jVMC
+import jVMC.global_defs as global_defs
 import jVMC.stepper as jVMCstepper
 import jVMC.nets as nets
 from jVMC.vqs import NQS
@@ -55,9 +56,9 @@ class TestGsSearch(unittest.TestCase):
             # Perform ground state search to get initial state
             ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=2e-2)
                 
-            obs, _ = measure([hamiltonianGS], psi, exactSampler)
+            obs = measure({"energy":hamiltonianGS}, psi, exactSampler)
             
-            self.assertTrue( jnp.max( jnp.abs( ( obs[0] - exE ) / exE) ) < 1e-3 )
+            self.assertTrue( jnp.max( jnp.abs( ( obs['energy']['mean'] - exE ) / exE) ) < 1e-3 )
 
 
 class TestTimeEvolution(unittest.TestCase):
@@ -102,15 +103,15 @@ class TestTimeEvolution(unittest.TestCase):
         obs=[]
         times=[]
         times.append(t)
-        newMeas, _ = measure([hamiltonian, ZZ], psi, exactSampler)
-        obs.append(newMeas)
+        newMeas = measure({'E':hamiltonian, 'ZZ':ZZ}, psi, exactSampler)
+        obs.append([newMeas['E']['mean'], newMeas['ZZ']['mean']])
         while t<0.5:
             dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=hamiltonian, psi=psi, numSamples=0)
             psi.set_parameters(dp)
             t += dt
             times.append(t)
-            newMeas, _ = measure([hamiltonian, ZZ], psi, exactSampler)
-            obs.append(newMeas)
+            newMeas = measure({'E':hamiltonian, 'ZZ':ZZ}, psi, exactSampler)
+            obs.append([newMeas['E']['mean'], newMeas['ZZ']['mean']])
 
         obs = np.array(jnp.asarray(obs))
 
@@ -119,7 +120,7 @@ class TestTimeEvolution(unittest.TestCase):
         self.assertTrue( np.max(obs[:,0]) < 1e-3 )
 
         # Check observable dynamics
-        zz = interp1d(np.array(times), obs[:,1])
+        zz = interp1d(np.array(times), obs[:,1,0])
         refTimes = np.arange(0,0.5,0.05)
         netZZ=zz(refTimes)
         refZZ = np.array(

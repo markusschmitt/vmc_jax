@@ -19,6 +19,8 @@ import jVMC.nets as nets
 from jVMC.vqs import NQS
 import jVMC.sampler as sampler
 
+import jVMC.global_defs as global_defs
+
 import time
 
 def state_to_int(s):
@@ -61,9 +63,14 @@ class TestMCMC(unittest.TestCase):
         # Get samples from MCMC sampler
         numSamples=500000
         smc, _, _ = mcSampler.sample(psi, numSamples=numSamples)
-    
+
+        if global_defs.usePmap:
+            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        
+        self.assertTrue( smc.shape[0] >= numSamples )
+
         # Compute histogram of sampled configurations
-        smcInt = jax.vmap(state_to_int)(smc.reshape((smc.shape[0]*smc.shape[1], -1)))
+        smcInt = jax.vmap(state_to_int)(smc)
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
         
         # Compare histogram to exact probabilities
@@ -95,11 +102,16 @@ class TestMCMC(unittest.TestCase):
 
         numSamples=500000
         smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
-        
-        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc))-p) ) < 1e-12 )
+
+        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
+    
+        if global_defs.usePmap:
+            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+       
+        self.assertTrue( smc.shape[0] >= numSamples )
         
         # Compute histogram of sampled configurations
-        smcInt = jax.vmap(state_to_int)(smc.reshape((smc.shape[0]*smc.shape[1],-1)))
+        smcInt = jax.vmap(state_to_int)(smc)
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
 
         self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )

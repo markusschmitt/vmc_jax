@@ -2,9 +2,13 @@ import sys
 # Find jVMC package
 sys.path.append(sys.path[0]+"/..")
 
+import os
+
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
+
+#print(" rank %d"%(rank), jax.devices())
 
 import jax.random as random
 import flax
@@ -14,7 +18,6 @@ import jax.numpy as jnp
 import numpy as np
 
 import time
-import os
 import json
 
 import jVMC
@@ -22,6 +25,7 @@ import jVMC.operator as op
 from jVMC.util import measure, ground_state_search, OutputManager
 import jVMC.mpi_wrapper as mpi
 import jVMC.activation_functions as act_funs
+import jVMC.global_defs as global_defs
 
 from functools import partial
 
@@ -122,13 +126,16 @@ else:
 
 
 wdir=inp["general"]["working_directory"]
-try:
-    os.makedirs(wdir)
-except OSError:
-    print ("Creation of the directory %s failed" % wdir)
-else:
-    print ("Successfully created the directory %s " % wdir)
+if mpi.rank == 0:
+    try:
+        os.makedirs(wdir)
+    except OSError:
+        print ("Creation of the directory %s failed" % wdir)
+    else:
+        print ("Successfully created the directory %s " % wdir)
 
+global_defs.set_pmap_devices(jax.devices()[mpi.rank % jax.device_count()])
+print(" -> Rank %d working with device %s" % (mpi.rank, global_defs.devices()), flush=True)
 
 L = inp["system"]["L"]
 
@@ -169,7 +176,7 @@ for l in range(L):
 sampler = None
 if inp["sampler"]["type"] == "MC":
     # Set up MCMC sampler
-    sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip, [L],
+    sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip, (L,),
                                         numChains=inp["sampler"]["numChains"],
                                         numSamples=inp["sampler"]["numSamples"],
                                         thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],

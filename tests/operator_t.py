@@ -16,15 +16,21 @@ import numpy as np
 
 import jVMC
 import jVMC.operator as op
+import jVMC.global_defs as global_defs
 
+def get_shape(shape):
+    if global_defs.usePmap:
+        return (global_defs.device_count(),) + shape
+    return shape
 
 class TestOperator(unittest.TestCase):
 
     def test_nonzeros(self):
+        
         L=4
         lDim=2
         key = random.PRNGKey(3)
-        s = random.randint(key, (24,L), 0, 2, dtype=np.int32).reshape((jax.local_device_count(), -1, L))
+        s = random.randint(key, (24,L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L)))
 
         h=op.Operator()
 
@@ -34,12 +40,12 @@ class TestOperator(unittest.TestCase):
 
         sp,matEl=h.get_s_primes(s)
 
-        logPsi=jax.pmap(lambda s: jnp.ones(s.shape[0]))(s)
-        logPsiSP=jax.pmap(lambda sp: jnp.ones((sp.shape[0],)))(sp) 
+        logPsi=jnp.ones(s.shape[:-1])
+        logPsiSP=jnp.ones(sp.shape[:-1])
 
         tmp = h.get_O_loc(logPsi,logPsiSP)
 
-        self.assertTrue( jnp.sum(jnp.abs( tmp - 2. * jnp.sum(-(s[:,:,:3]-1), axis=-1) )) < 1e-7 )
+        self.assertTrue( jnp.sum(jnp.abs( tmp - 2. * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
 
 if __name__ == "__main__":

@@ -74,7 +74,7 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
 
         tic = time.perf_counter()
     
-        dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=ham, psi=psi, numSamples=None)
+        dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=ham, psi=psi, numSamples=None, outp=outp)
         psi.set_parameters(dp)
         n += 1
 
@@ -92,6 +92,7 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
             outp.print(" STEP %d" % (n) )
             outp.print("   Energy mean: %f" % (tdvpEquation.get_energy_mean()) )
             outp.print("   Energy variance: %f" % (varE) )
+            outp.print_timings(indent="   ")
             outp.print("   == Time for step: %fs" % (time.perf_counter() - tic) )
 
 import h5py
@@ -240,6 +241,17 @@ class OutputManager:
         self.timings[name]["total"] += elapsed
         self.timings[name]["newest"] = elapsed
         self.timings[name]["count"] += 1
+    
+    
+    def add_timing(self, name, elapsed):
+        
+        if not name in self.timings:
+            self.timings[name] = {"total": 0.0, "last_total": 0.0, "newest": 0.0, "count": 0, "init": 0.0}
+
+        self.timings[name]["total"] += elapsed
+        self.timings[name]["newest"] = elapsed
+        self.timings[name]["count"] += 1
+
 
     def print_timings(self, indent=""):
 

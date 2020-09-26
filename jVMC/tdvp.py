@@ -3,8 +3,11 @@ import jax.numpy as jnp
 import numpy as np
 
 import jVMC.mpi_wrapper as mpi
+import jVMC.global_defs as global_defs
 
 from functools import partial
+
+import time
 
 def realFun(x):
     return jnp.real(x)
@@ -13,9 +16,9 @@ def imagFun(x):
     return 0.5 * ( x - jnp.conj(x) )
 
 
-@partial(jax.pmap, in_axes=(0,None))
-def subtract_helper(x,y):
-    return x-y
+#@partial(jax.pmap, in_axes=(0,None))
+#def subtract_helper(x,y):
+#    return x-y
 
 class TDVP:
 
@@ -30,6 +33,23 @@ class TDVP:
         self.makeReal = realFun
         if makeReal == 'imag':
             self.makeReal = imagFun
+
+        if global_defs.usePmap:
+            self.subtract_helper_Eloc = global_defs.pmap_for_my_devices(lambda x,y: x-y, in_axes=(0,None))
+            self.subtract_helper_grad = global_defs.pmap_for_my_devices(lambda x,y: x-y, in_axes=(0,None))
+            self.get_EO = global_defs.pmap_for_my_devices(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:,None], jnp.conj(grad)), 
+                                                        in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
+            self.get_EO_p = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p*Eloc)[:,None], jnp.conj(grad)), 
+                                                        in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
+            self.transform_EO = global_defs.pmap_for_my_devices(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0,None))
+        else:
+            self.subtract_helper_Eloc = global_defs.jit_for_my_device(lambda x,y: x-y)
+            self.subtract_helper_grad = global_defs.jit_for_my_device(lambda x,y: x-y)
+            self.get_EO = global_defs.jit_for_my_device(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:,None], jnp.conj(grad)), 
+                                                        static_argnums=(0))
+            self.get_EO_p = global_defs.jit_for_my_device(lambda f, p, Eloc, grad: -f * jnp.multiply((p*Eloc)[:,None], jnp.conj(grad)), 
+                                                        static_argnums=(0))
+            self.transform_EO = global_defs.jit_for_my_device(lambda eo, v: jnp.matmul(eo, jnp.conj(v)))
 
 
     def set_diagonal_shift(self, delta):
@@ -70,28 +90,20 @@ class TDVP:
             
         self.ElocMean = mpi.global_mean(Eloc, p)
         self.ElocVar = jnp.real(mpi.global_variance(Eloc, p))
-        Eloc = subtract_helper(Eloc, self.ElocMean)
+        Eloc = self.subtract_helper_Eloc(Eloc, self.ElocMean)
 
         gradientsMean = mpi.global_mean(gradients, p)
-        gradients = subtract_helper(gradients, gradientsMean)
+        gradients = self.subtract_helper_grad(gradients, gradientsMean)
         
         if p is None:
             
-            # consider defining separate pmap'd function for this
-            EOdata = jax.pmap(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:,None], jnp.conj(grad)), 
-                                in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))(
-                                    self.rhsPrefactor, Eloc, gradients
-                                )
+            EOdata = self.get_EO(self.rhsPrefactor, Eloc, gradients)
         
             self.F0 = mpi.global_mean(EOdata)
 
         else:
 
-            # consider defining separate pmap'd function for this
-            EOdata = jax.pmap(lambda f, p, Eloc, grad: -f * jnp.multiply((p*Eloc)[:,None], jnp.conj(grad)), 
-                                in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))(
-                                    self.rhsPrefactor, p, Eloc, gradients
-                                )
+            EOdata = self.get_EO_p(self.rhsPrefactor, p, Eloc, gradients)
             
             self.F0 = mpi.global_sum(EOdata)
 
@@ -118,12 +130,11 @@ class TDVP:
     
     
     def transform_to_eigenbasis(self, S, F, EOdata):
-        
+       
         self.ev, self.V = jnp.linalg.eigh(S)
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
-        # consider defining separate pmap'd function for this
-        EOdata = jax.pmap(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0,None))(EOdata, self.V)
+        EOdata = self.transform_EO(EOdata, self.V)
         self.rhoVar = mpi.global_variance(EOdata)
 
         self.snr = jnp.sqrt( jnp.abs( mpi.globNumSamples / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.) ) )
@@ -159,7 +170,7 @@ class TDVP:
 
         tmpParameters = rhsArgs['psi'].get_parameters()
         rhsArgs['psi'].set_parameters(netParameters)
-        
+       
         outp = None
         if "outp" in rhsArgs:
             outp = rhsArgs["outp"]
@@ -194,6 +205,9 @@ class TDVP:
         start_timing(outp, "solve TDVP eqn.")
         update, solverResidual = self.solve(Eloc, sampleGradients, p)
         stop_timing(outp, "solve TDVP eqn.")
+
+        if outp is not None:
+            outp.add_timing("MPI communication", mpi.get_communication_time())
         
         rhsArgs['psi'].set_parameters(tmpParameters)
         

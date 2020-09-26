@@ -8,6 +8,8 @@ import sys
 sys.path.append(sys.path[0]+"/..")
 import jVMC.global_defs as global_defs
 
+import jVMC.global_defs as global_defs
+
 # Common operators
 def Id(idx=0,lDim=2):
     return {'idx': idx, 'map': jnp.array([j for j in range(lDim)],dtype=np.int32),
@@ -49,14 +51,21 @@ class Operator:
         self.lDim=lDim
         self.compiled=False
 
-        # pmap'd member functions
-        self._get_s_primes_pmapd = jax.pmap(self._get_s_primes, static_broadcasted_argnums=(1,2,3,4))
-        self._find_nonzero_pmapd = jax.pmap(vmap(self._find_nonzero, in_axes=1))
-        self._set_zero_to_zero_pmapd = jax.pmap(jax.vmap(self.set_zero_to_zero, in_axes=(1,0,0), out_axes=1), in_axes=(0,0,0))
-        self._array_idx_pmapd = jax.pmap(jax.vmap(lambda data, idx: data[idx], in_axes=(1,0), out_axes=1), in_axes=(0,0))
-        #self._get_O_loc_pmapd = jax.pmap(jax.vmap(self._get_O_loc, in_axes=(1,0,1), out_axes=1))
-        self._get_O_loc_pmapd = jax.pmap(self._get_O_loc)
-        self._flatten_pmapd = jax.pmap(lambda x: x.reshape(-1,*x.shape[2:]))
+        # jit'd member functions
+        if global_defs.usePmap:
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes, static_broadcasted_argnums=(1,2,3,4))
+            self._find_nonzero_pmapd = global_defs.pmap_for_my_devices(vmap(self._find_nonzero, in_axes=1))
+            self._set_zero_to_zero_pmapd = global_defs.pmap_for_my_devices(jax.vmap(self.set_zero_to_zero, in_axes=(1,0,0), out_axes=1), in_axes=(0,0,0))
+            self._array_idx_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda data, idx: data[idx], in_axes=(1,0), out_axes=1), in_axes=(0,0))
+            self._get_O_loc_pmapd = global_defs.pmap_for_my_devices(self._get_O_loc)
+            self._flatten_pmapd = global_defs.pmap_for_my_devices(lambda x: x.reshape(-1,*x.shape[2:]))
+        else:
+            self._get_s_primes_pmapd = global_defs.jit_for_my_device(self._get_s_primes, static_argnums=(1,2,3,4))
+            self._find_nonzero_pmapd = global_defs.jit_for_my_device(vmap(self._find_nonzero, in_axes=1))
+            self._set_zero_to_zero_pmapd = global_defs.jit_for_my_device(jax.vmap(self.set_zero_to_zero, in_axes=(1,0,0), out_axes=1))
+            self._array_idx_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda data, idx: data[idx], in_axes=(1,0), out_axes=1))
+            self._get_O_loc_pmapd = global_defs.jit_for_my_device(self._get_O_loc)
+            self._flatten_pmapd = global_defs.jit_for_my_device(lambda x: x.reshape(-1,*x.shape[2:]))
 
     def add(self,opDescr):
         self.ops.append(opDescr)
@@ -162,8 +171,10 @@ class Operator:
         # Get only non-zero contributions
         idx, self.numNonzero = self._find_nonzero_pmapd(self.matEl)
         #self.matEl = self._array_idx_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)])
-        self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)], self.numNonzero)
-        self.sp = self._array_idx_pmapd(self.sp, idx[:,:,:jnp.max(self.numNonzero)])
+        #self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[:,:,:jnp.max(self.numNonzero)], self.numNonzero)
+        self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[...,:jnp.max(self.numNonzero)], self.numNonzero)
+        #self.sp = self._array_idx_pmapd(self.sp, idx[:,:,:jnp.max(self.numNonzero)])
+        self.sp = self._array_idx_pmapd(self.sp, idx[...,:jnp.max(self.numNonzero)])
         
         return self._flatten_pmapd(self.sp), self.matEl
 
@@ -181,7 +192,12 @@ class Operator:
 if __name__ == '__main__':
     L=4
     lDim=2
-    s=jnp.array([jnp.zeros((2,L),dtype=np.int32)] * jax.local_device_count())
+    deviceCount = 1
+    shape = (2,L)
+    if global_defs.usePmap:
+        deviceCount = jax.local_device_count()
+        shape = (deviceCount,) + shape
+    s=jnp.zeros(shape,dtype=np.int32)
 
     h=Operator()
 
@@ -193,7 +209,9 @@ if __name__ == '__main__':
 
     sp,matEl=h.get_s_primes(s)
 
-    logPsi=jax.pmap(lambda s: jnp.ones(s.shape[0])*(0.5j))(s)
-    logPsiSP=jax.pmap(lambda sp: 0.3*jnp.ones((sp.shape[0], sp.shape[1])))(sp)
+    logPsi=jnp.ones(s.shape[:-1])*(0.5j)
+    logPsiSP=0.3*jnp.ones(sp.shape[:-1])
+    print(logPsi.shape)
+    print(logPsiSP.shape)
 
     print(h.get_O_loc(logPsi,logPsiSP))
