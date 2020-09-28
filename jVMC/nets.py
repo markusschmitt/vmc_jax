@@ -69,6 +69,8 @@ class FFN(nn.Module):
 class CNN(nn.Module):
 
     def apply(self, x, F=[8,], channels=[10], strides=[1], actFun=[nn.elu], bias=True):
+      
+        initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
        
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter
@@ -88,7 +90,10 @@ class CNN(nn.Module):
         x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
         for c,fun in zip(channels,actFun):
             x = jnp.pad(x, pads, 'wrap')
-            x = fun( nn.Conv(x, features=c, kernel_size=tuple(F), strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
+            x = fun( nn.Conv(x, features=c, kernel_size=tuple(F),
+                             strides=strides, padding=[(0,0)]*len(strides),
+                             bias=bias, dtype=global_defs.tReal,
+                             kernel_init=initFunction) )
 
         nrm = jnp.sqrt( jnp.prod(jnp.array(x.shape[reduceDims[-1]:])) )
         
