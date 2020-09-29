@@ -25,7 +25,40 @@ from functools import partial
 import time
 
 class NQS:
+    """Wrapper class providing basic functionality of variational states.
+    """
+
     def __init__(self, logModNet, phaseNet=None, batchSize=1000):
+        """Initializes NQS class.
+
+        This class can operate in two modi:
+
+            #. Holomorphic wave functions
+
+                :math:`\psi(s)\equiv\exp(r_\\theta(s))` with one network :math:`r_\\theta` \
+                parametrized by complex valued parameters :math:`\\theta`.
+
+            #. Non-holomorphic wave functions
+                
+                :math:`\psi(s)\equiv\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` with \
+                an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
+                :math:`\\varphi_{\\theta_\phi}` \
+                parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
+
+        Args:
+
+            * ``logModNet``: Holomorphic network or amplitude network.\
+                The given object has to be registered as pytree node and provide \
+                a ``__call__`` function for evaluation.
+            * ``phaseNet``: Phase network. If ``None``, the class operate in the \
+                holomorphic modus. If not ``None``, the given object has to be registered \
+                as pytree node and provide a ``__call__`` function for evaluation.
+            * ``batchSize``: Batch size for batched network evaluation. Choice \
+                of this parameter impacts performance: with too small values performance \
+                is limited by memory access overheads, too large values can lead \
+                to "out of memory" issues.
+        """
+
         # The net arguments have to be instances of flax.nn.Model
         self.realNets = False
         if phaseNet is None:
@@ -53,12 +86,6 @@ class NQS:
 
         # Need to keep handles of jit'd functions to avoid recompilation
         if global_defs.usePmap:
-            #self.evalJitdNet1 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
-            #self.evalJitdNet2 = jax.pmap(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
-            #self.evalJitdReal = jax.pmap(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
-            #self.evalJitdNet1 = global_defs.pmap_for_my_devices(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
-            #self.evalJitdNet2 = global_defs.pmap_for_my_devices(vmap(self._eval, in_axes=(None, 0)), in_axes=(None, 0))
-            #self.evalJitdReal = global_defs.pmap_for_my_devices(vmap(self._eval_real, in_axes=(None, 0)), in_axes=(None, 0))
             self.evalJitdNet1 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, 0, None), static_broadcasted_argnums=(2,))
             self.evalJitdNet2 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, 0, None), static_broadcasted_argnums=(2,))
             self.evalJitdReal = global_defs.pmap_for_my_devices(self._eval_real, in_axes=(None, 0, None), static_broadcasted_argnums=(2,))
@@ -67,9 +94,6 @@ class NQS:
             self._append_gradients = global_defs.pmap_for_my_devices(lambda x,y: jnp.concatenate((x[:,:], 1.j*y[:,:]), axis=1), in_axes=(0,0))
             self._sample_jitd = global_defs.pmap_for_my_devices(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
         else:
-            #self.evalJitdNet1 = global_defs.jit_for_my_device(vmap(self._eval, in_axes=(None, 0)))
-            #self.evalJitdNet2 = global_defs.jit_for_my_device(vmap(self._eval, in_axes=(None, 0)))
-            #self.evalJitdReal = global_defs.jit_for_my_device(vmap(self._eval_real, in_axes=(None, 0)))
             self.evalJitdNet1 = global_defs.jit_for_my_device(self._eval, static_argnums=(2,))
             self.evalJitdNet2 = global_defs.jit_for_my_device(self._eval, static_argnums=(2,))
             self.evalJitdReal = global_defs.jit_for_my_device(self._eval_real, static_argnums=(2,))
@@ -82,6 +106,18 @@ class NQS:
 
 
     def __call__(self, s):
+        """Evaluate variational wave function.
+
+        Compute the logarithmic wave function coefficients :math:`\ln\psi(s)` for \
+        computational configurations :math:`s`.
+
+        Args:
+
+            * ``s``: Array of computational basis states.
+
+        Returns:
+            Logarithmic wave function coefficients :math:`\ln\psi(s)`.
+        """
 
         if self.realNets:
             logMod = self.evalJitdNet1(self.net[0],s,self.batchSize)
@@ -94,6 +130,19 @@ class NQS:
     
 
     def real_coefficients(self, s):
+        """Evaluate real part of variational wave function.
+
+        Compute the real part of the logarithmic wave function coefficients, \
+        :math:`\\text{Re}(\ln\psi(s))`, for computational configurations :math:`s`.
+
+        Args:
+
+            * ``s``: Array of computational basis states.
+
+        Returns:
+            Real part of logarithmic wave function coefficients \
+            :math:`\\text{Re}(\ln\psi(s))`.
+        """
 
         if self.realNets:
             return self.evalJitdNet1(self.net[0],s,self.batchSize)
@@ -104,6 +153,10 @@ class NQS:
 
 
     def get_sampler_net(self):
+        """Returns variational ansatz relevant for sampling
+
+        Returns:
+        """
     
         if self.realNets:
             return self.net[0]
@@ -140,6 +193,20 @@ class NQS:
 
 
     def gradients(self, s):
+        """Compute gradients of logarithmic wave function.
+
+        Compute gradient of the logarithmic wave function coefficients, \
+        :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+
+        Args:
+
+            * ``s``: Array of computational basis states.
+
+        Returns:
+            A vector containing derivatives :math:`\partial_{\\theta_k}\ln\psi(s)` \
+            with respect to each variational parameter :math:`\\theta_k` for each \
+            input configuration :math:`s`.
+        """
 
         if self.realNets: # FOR REAL NETS
             gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s, self.batchSize)
@@ -155,6 +222,14 @@ class NQS:
 
 
     def update_parameters(self, deltaP):
+        """Update variational parameters.
+        
+        Sets new values of all variational parameters by adding given values.
+
+        Args:
+
+            * ``deltaP``: Values to be added to variational parameters.
+        """
 
         if self.realNets: # FOR REAL NETS
             
@@ -184,6 +259,14 @@ class NQS:
 
     
     def set_parameters(self, P):
+        """Set variational parameters.
+        
+        Sets new values of all variational parameters.
+
+        Args:
+
+            * ``P``: New values of variational parameters.
+        """
 
         if self.realNets: # FOR REAL NETS
             
@@ -238,6 +321,11 @@ class NQS:
     
 
     def get_parameters(self):
+        """Get variational parameters.
+        
+        Returns:
+            Array holding current values of all variational parameters.
+        """
 
         if self.realNets: # FOR REAL NETS
 
