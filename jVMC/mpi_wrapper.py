@@ -229,6 +229,23 @@ def global_covariance(data, p=None):
     return global_mean(cov_helper_without_p(data))
 
 
+def bcast_unknown_size(data, root=0):
+
+    dim = None
+    buf = None
+    if rank == root:
+        dim = len(data)
+        comm.bcast(dim, root=root)
+        buf = np.array(data)
+    else:
+        dim = comm.bcast(None, root=root)
+        buf = np.empty(dim, dtype=np.float64)
+
+    comm.Bcast([buf,dim,MPI.DOUBLE], root=root)
+
+    return buf
+    
+
 def get_communication_time():
     global communicationTime
     t = communicationTime

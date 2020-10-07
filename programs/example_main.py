@@ -190,13 +190,26 @@ tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
                                        rhsPrefactor=1., 
                                        diagonalShift=inp["gs_search"]["init_regularizer"], makeReal='real')
 
-# Perform ground state search to get initial state
-outp.print("** Ground state search")
-outp.set_group("ground_state_search")
+t=inp["time_evol"]["t_init"]
 
-ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler,
-                    numSteps=inp["gs_search"]["num_steps"], varianceTol=inp["gs_search"]["convergence_variance"]*L**2,
-                    stepSize=1e-2, observables=observables, outp=outp)
+fromCheckpoint = False
+if t<0:
+    outp.set_group("time_evolution")
+
+    t, weights = outp.get_network_checkpoint(t)
+
+    psi.set_parameters(weights)
+
+    fromCheckpoint = True
+
+else:
+    # Perform ground state search to get initial state
+    outp.print("** Ground state search")
+    outp.set_group("ground_state_search")
+
+    ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler,
+                        numSteps=inp["gs_search"]["num_steps"], varianceTol=inp["gs_search"]["convergence_variance"]*L**2,
+                        stepSize=1e-2, observables=observables, outp=outp)
 
 # Time evolution
 outp.print("** Time evolution")
@@ -209,14 +222,14 @@ tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
 
 stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
 
-t=inp["time_evol"]["t_init"]
 tmax=inp["time_evol"]["t_final"]
 
-outp.start_timing("measure observables")
-obs = measure(observables, psi, sampler)
-outp.stop_timing("measure observables")
+if not fromCheckpoint:
+    outp.start_timing("measure observables")
+    obs = measure(observables, psi, sampler)
+    outp.stop_timing("measure observables")
 
-outp.write_observables(t, **obs)
+    outp.write_observables(t, **obs)
 
 while t<tmax:
     tic = time.perf_counter()
