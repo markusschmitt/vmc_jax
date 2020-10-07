@@ -24,6 +24,18 @@ def propose_spin_flip(key, s, info):
     return jax.ops.index_update( s, jax.ops.index[idx], update )
 
 
+def propose_spin_flip_Z2(key, s, info):
+    idxKey, flipKey = jax.random.split(key)
+    idx = random.randint(idxKey,(1,),0,s.size)[0]
+    idx = jnp.unravel_index(idx, s.shape)
+    update = (s[idx] + 1 ) % 2
+    s = jax.ops.index_update( s, jax.ops.index[idx], update )
+    # On average, do a global spin flip every 30 updates to
+    # reflect Z_2 symmetry
+    doFlip = random.randint(flipKey,(1,),0,5)[0]
+    return jax.lax.cond(doFlip==0, lambda x: 1-x, lambda x: x, s)
+
+
 class MCMCSampler:
     """A sampler class.
 
