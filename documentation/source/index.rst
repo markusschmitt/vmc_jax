@@ -30,10 +30,12 @@ A core part of this codebase is the ``NQS`` class, an abstract wrapper class
 for variational wave functions, which proves an interface that other parts 
 of the code rely on. At initialization the specific variational wave function 
 is passed to ``NQS``. The implementation of the variational function has to 
-be `registered as a pytree <add_link_here>`_ and it has to be callable.
+be `registered as a pytree <https://jax.readthedocs.io/en/latest/pytrees.html>`_ 
+and it has to be callable.
 
 A simple way to meet these requirements is to implement variational wave
-functions as modules in the `Flax <add_link_here>`_ framework. `Flax` is a
+functions as modules in the `Flax <https://github.com/google/flax>`_ framework.
+`Flax <https://github.com/google/flax>`_ is a
 library that supplements `JAX` with a class structure to enable simple
 implementation of neural networks (and more) based on modules as it is
 known also from `Pytorch`.

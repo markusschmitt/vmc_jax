@@ -18,12 +18,16 @@ def cplx_init(rng, shape):
 # Nets have to be defined to act on a single configuration (not a batch)
 
 class CpxRBM(nn.Module):
-    """Restricted Boltzmann machine with complex parameters.
-
-    This is an RBM class.
-    """
 
     def apply(self, s, numHidden=2, bias=False):
+        """Restricted Boltzmann machine with complex parameters.
+
+        Args:
+
+            * ``s``: Computational basis configuration.
+            * ``numHidden``: Number of hidden units.
+            * ``bias``: ``Boolean`` indicating whether to use bias.
+        """
 
         layer = nn.Dense.shared(features=numHidden, name='rbm_layer', bias=bias, dtype=global_defs.tCpx,
                                 kernel_init=cplx_init, 
@@ -36,10 +40,16 @@ class CpxRBM(nn.Module):
 
 
 class RBM(nn.Module):
-    """Restricted Boltzmann machine with real parameters.
-    """
 
     def apply(self, s, numHidden=2, bias=False):
+        """Restricted Boltzmann machine with real parameters.
+
+        Args:
+
+            * ``s``: Computational basis configuration.
+            * ``numHidden``: Number of hidden units.
+            * ``bias``: ``Boolean`` indicating whether to use bias.
+        """
 
         layer = nn.Dense.shared(features=numHidden, name='rbm_layer', bias=bias, dtype=global_defs.tReal, 
                                 kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 

@@ -3,7 +3,7 @@
 Operator module
 ===============
 
-The many-body Hilbert space is a product of local Hilbert spaces, :math:`\mathscr H=\\bigotimes_l \mathscr h_l`.
+The many-body Hilbert space is a product of local Hilbert spaces, :math:`\mathscr H=\bigotimes_l \mathscr h_l`.
 Operators generally take the form :math:`\hat O=\sum_k \hat O_k`, where :math:`\hat O_k=\prod_l \hat o_l^k` are operator strings 
 made up of elementary operators :math:`\hat o_l` acting on the factors :math:`\mathscr h_l`.
 
@@ -29,7 +29,7 @@ At the core the operator class works with a general description of elementary op
 
 For concreteness, consider the Pauli operator
 
-    :math:`\hat\sigma^x=\\begin{pmatrix}0&1\\\\1&0\end{pmatrix}`
+    :math:`\hat\sigma^x=\begin{pmatrix}0&1\\1&0\end{pmatrix}`
 
 acting on lattice site :math:`l=1`. The corresponding dictionary is::
 
@@ -52,7 +52,7 @@ is obtained as::
     X1Z2 = ( Sx(1), Sz(2) )
 
 Prefactors can be added to operator strings using the ``scal_opstr()`` function. For \
-example, to obtain :math:`\\frac{1}{2}\hat\sigma_1^x\hat\sigma_2^z`::
+example, to obtain :math:`\frac{1}{2}\hat\sigma_1^x\hat\sigma_2^z`::
 
     X1Z2_with_prefactor = scal_opstr(0.5, X1Z2)
 
