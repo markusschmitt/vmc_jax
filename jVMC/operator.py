@@ -12,24 +12,99 @@ import jVMC.global_defs as global_defs
 
 # Common operators
 def Id(idx=0,lDim=2):
+    """Returns an identity operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+    * ``lDim``: Dimension of local Hilbert space.
+
+    Returns:
+        Dictionary defining an identity operator
+
+    """
+
     return {'idx': idx, 'map': jnp.array([j for j in range(lDim)],dtype=np.int32),
             'matEls':jnp.array([1. for j in range(lDim)],dtype=global_defs.tReal), 'diag': True}
 
+
 def Sx(idx):
+    """Returns a :math:`\hat\sigma^x` Pauli operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`\hat\sigma^x` Pauli operator
+
+    """
+
     return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,1.0],dtype=global_defs.tReal), 'diag': False}
 
+
 def Sz(idx):
+    """Returns a :math:`\hat\sigma^z` Pauli operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`\hat\sigma^z` Pauli operator
+
+    """
+
     return {'idx': idx, 'map': jnp.array([0,1],dtype=np.int32), 'matEls':jnp.array([-1.0,1.0],dtype=global_defs.tReal), 'diag': True}
 
+
 def Sp(idx):
+    """Returns a :math:`S^+` spin-1/2 ladder operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`S^+` ladder operator
+
+    """
+
     return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,0.0],dtype=global_defs.tReal), 'diag': False}
 
+
 def Sm(idx):
+    """Returns a :math:`S^-` spin-1/2 ladder operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`S^-` ladder operator
+
+    """
+
     return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([0.0,1.0],dtype=global_defs.tReal), 'diag': False}
 
+
 def scal_opstr(a,op):
+    """Add prefactor to operator string
+
+    Args:
+
+    * ``a``: Scalar prefactor.
+    * ``op``: Operator string.
+
+    Returns:
+        Rescaled operator string. Effectively, the matrix elements of the first element of \
+        the operator string are multiplied by ``a``.
+
+    """
+
     op[0]['matEls'] = a * op[0]['matEls']
     return op
+
 
 def apply_fun(s,matEl,idx,sMap,matEls):
     matEl=matEl*matEls[s[idx]]
@@ -45,8 +120,20 @@ def apply_multi(s,matEl,opIdx,opMap,opMatEls,diag):
 
 
 class Operator:
+    """This class provides functionality to compute operator matrix elements
+
+    Initializer arguments:
+        
+        * ``lDim``: Dimension of local Hilbert space.
+    """
 
     def __init__(self,lDim=2):
+        """Initialize ``Operator``.
+
+        Args:
+
+        * ``lDim``: Dimension of local Hilbert space.
+        """
         self.ops=[]
         self.lDim=lDim
         self.compiled=False
@@ -68,6 +155,14 @@ class Operator:
             self._flatten_pmapd = global_defs.jit_for_my_device(lambda x: x.reshape(-1,*x.shape[2:]))
 
     def add(self,opDescr):
+        """Add another operator to the operator
+
+        Args:
+
+        * ``opDescr``: Operator string to be added to the operator.
+
+        """
+
         self.ops.append(opDescr)
         self.compiled=False
 
@@ -161,6 +256,20 @@ class Operator:
 
 
     def get_s_primes(self,s):
+        """Compute matrix elements
+
+        For a list of computational basis states :math:`s` this member function computes the corresponding \
+        matrix elements :math:`O_{s,s'}=\langle s|\hat O|s'\\rangle` and their respective configurations \
+        :math:`s'`.
+
+        Args:
+
+        * ``s``: Array of computational basis states.
+
+        Returns:
+            An array holding `all` configurations :math:`s'` and the corresponding matrix elements :math:`O_{s,s'}`.
+
+        """
 
         if not self.compiled:
             self.compile()
@@ -185,6 +294,23 @@ class Operator:
 
 
     def get_O_loc(self,logPsiS,logPsiSP):
+        """Compute :math:`O_{loc}(s)`.
+
+        This member function assumes that ``get_s_primes(s)`` has been called before, as \
+        internally stored matrix elements :math:`O_{s,s'}` are used.
+
+        Computes :math:`O_{loc}(s)=\sum_{s'} O_{s,s'}\\frac{\psi(s')}{\psi(s)}`, given the \
+        logarithmic wave function amplitudes of the involved configurations :math:`\\ln(\psi(s))` \
+        and :math:`\\ln\psi(s')`
+
+        Args:
+
+        * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+        * ``logPsiSP``: Logarithmic amplitudes :math:`\\ln(\psi(s'))`
+
+        Returns:
+            :math:`O_{loc}(s)` for each configuration :math:`s`.
+        """
       
         return self._get_O_loc_pmapd(self.matEl, logPsiS, logPsiSP)
 

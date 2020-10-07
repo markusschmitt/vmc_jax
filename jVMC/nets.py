@@ -18,6 +18,10 @@ def cplx_init(rng, shape):
 # Nets have to be defined to act on a single configuration (not a batch)
 
 class CpxRBM(nn.Module):
+    """Restricted Boltzmann machine with complex parameters.
+
+    This is an RBM class.
+    """
 
     def apply(self, s, numHidden=2, bias=False):
 
@@ -27,10 +31,13 @@ class CpxRBM(nn.Module):
 
         return jnp.sum(jnp.log(jnp.cosh(layer(2*s-1))))
 
+
 # ** end class CpxRBM
 
 
 class RBM(nn.Module):
+    """Restricted Boltzmann machine with real parameters.
+    """
 
     def apply(self, s, numHidden=2, bias=False):
 
@@ -44,6 +51,8 @@ class RBM(nn.Module):
 
 
 class FFN(nn.Module):
+    """Feed-forward network.
+    """
 
     def apply(self, s, layers=[10], bias=False, actFun=[jax.nn.elu,]):
         
@@ -67,8 +76,12 @@ class FFN(nn.Module):
 
 
 class CNN(nn.Module):
+    """Convolutional neural network.
+    """
 
     def apply(self, x, F=[8,], channels=[10], strides=[1], actFun=[nn.elu], bias=True):
+      
+        initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
        
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter
@@ -88,7 +101,10 @@ class CNN(nn.Module):
         x = jnp.expand_dims(jnp.expand_dims(2*x-1, axis=0), axis=-1)
         for c,fun in zip(channels,actFun):
             x = jnp.pad(x, pads, 'wrap')
-            x = fun( nn.Conv(x, features=c, kernel_size=tuple(F), strides=strides, padding=[(0,0)]*len(strides), bias=bias, dtype=global_defs.tReal) )
+            x = fun( nn.Conv(x, features=c, kernel_size=tuple(F),
+                             strides=strides, padding=[(0,0)]*len(strides),
+                             bias=bias, dtype=global_defs.tReal,
+                             kernel_init=initFunction) )
 
         nrm = jnp.sqrt( jnp.prod(jnp.array(x.shape[reduceDims[-1]:])) )
         
@@ -98,6 +114,8 @@ class CNN(nn.Module):
 
 
 class CpxCNN(nn.Module):
+    """Convolutional neural network with complex parameters.
+    """
 
     def apply(self, x, F=[8], channels=[10], strides=[1], actFun=[act_funs.poly6,], bias=True):
       
@@ -134,6 +152,8 @@ class CpxCNN(nn.Module):
 
 
 class RNN(nn.Module):
+    """Recurrent neural network.
+    """
 
     def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0):
 
@@ -167,6 +187,8 @@ class RNN(nn.Module):
 
     @nn.module_method
     def sample(self,batchSize,key,L,units,inputDim=2,actFun=[nn.elu,], initScale=1.0):
+        """sampler
+        """
 
         initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
         initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")

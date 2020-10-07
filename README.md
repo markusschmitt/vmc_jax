@@ -3,4 +3,4 @@ This is an impementation of Variational Monte Carlo (VMC) for quantum many-body 
 
 ## Installation
 
-[How to compile JAX on a supercomputing cluster](documentation/compile_jax_on_cluster.md)
+[How to compile JAX on a supercomputing cluster](documentation/readme/compile_jax_on_cluster.md)
