@@ -7,7 +7,7 @@
 ========================================================
 
 This package provides a versatile and efficient implementation of variational
-quantum Monte Carlo. It utilizes Google's 
+quantum Monte Carlo in Python. It utilizes Google's 
 `JAX <https://github.com/google/jax>`_ library to exploit the
 blessings of automatic differentiation and just-in-time compilation for
 available computing resources. The package is devised to serve as white box
@@ -18,10 +18,28 @@ In particular, `jVMC` provides a framework that allows to work with arbitrary
 variational wave functions and bosonic quantum operators. The code was
 written mainly with neural quantum states (NQS) as variational wave functions
 in mind, but it is not restricted to that; the ansatz wave functions can be
-arbitrary parametrized programs.
+arbitrary parametrized programs. Nonetheless, throughout the documentation
+we will refer to the variational ansätze as "networks".
 
 Design choices
---------------
+##############
+
+Variational wave functions
+--------------------------
+A core part of this codebase is the ``NQS`` class, an abstract wrapper class 
+for variational wave functions, which proves an interface that other parts 
+of the code rely on. At initialization the specific variational wave function 
+is passed to ``NQS``. The implementation of the variational function has to 
+be `registered as a pytree <add_link_here>`_ and it has to be callable.
+
+A simple way to meet these requirements is to implement variational wave
+functions as modules in the `Flax <add_link_here>`_ framework. `Flax` is a
+library that supplements `JAX` with a class structure to enable simple
+implementation of neural networks (and more) based on modules as it is
+known also from `Pytorch`.
+
+Parallelism
+-----------
 The performance of the code relies on a few design choices, which enable
 efficient computation for typical use cases on a desktop device as well as
 on distributed multi GPU clusters. An important manifestation of these
@@ -120,8 +138,9 @@ obtained from the `jVMC` API have an additional `batch dimension`.
    :maxdepth: 2
    :caption: Contents:
 
-   vqs
    operator
+   vqs
+   nets
    sampler
 
 

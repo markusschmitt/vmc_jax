@@ -19,6 +19,7 @@ import jVMC
 import jVMC.operator as operator
 import jVMC.vqs as vqs
 import jVMC.sampler as sampler
+import jVMC.nets as nets
 
 
 # -- Project information -----------------------------------------------------

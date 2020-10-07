@@ -18,6 +18,10 @@ def cplx_init(rng, shape):
 # Nets have to be defined to act on a single configuration (not a batch)
 
 class CpxRBM(nn.Module):
+    """Restricted Boltzmann machine with complex parameters.
+
+    This is an RBM class.
+    """
 
     def apply(self, s, numHidden=2, bias=False):
 
@@ -27,10 +31,13 @@ class CpxRBM(nn.Module):
 
         return jnp.sum(jnp.log(jnp.cosh(layer(2*s-1))))
 
+
 # ** end class CpxRBM
 
 
 class RBM(nn.Module):
+    """Restricted Boltzmann machine with real parameters.
+    """
 
     def apply(self, s, numHidden=2, bias=False):
 
@@ -44,6 +51,8 @@ class RBM(nn.Module):
 
 
 class FFN(nn.Module):
+    """Feed-forward network.
+    """
 
     def apply(self, s, layers=[10], bias=False, actFun=[jax.nn.elu,]):
         
@@ -67,6 +76,8 @@ class FFN(nn.Module):
 
 
 class CNN(nn.Module):
+    """Convolutional neural network.
+    """
 
     def apply(self, x, F=[8,], channels=[10], strides=[1], actFun=[nn.elu], bias=True):
       
@@ -103,6 +114,8 @@ class CNN(nn.Module):
 
 
 class CpxCNN(nn.Module):
+    """Convolutional neural network with complex parameters.
+    """
 
     def apply(self, x, F=[8], channels=[10], strides=[1], actFun=[act_funs.poly6,], bias=True):
       
@@ -139,6 +152,8 @@ class CpxCNN(nn.Module):
 
 
 class RNN(nn.Module):
+    """Recurrent neural network.
+    """
 
     def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0):
 
@@ -172,6 +187,8 @@ class RNN(nn.Module):
 
     @nn.module_method
     def sample(self,batchSize,key,L,units,inputDim=2,actFun=[nn.elu,], initScale=1.0):
+        """sampler
+        """
 
         initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
         initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
