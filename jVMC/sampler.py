@@ -321,10 +321,12 @@ class ExactSampler:
 
         # jit'd member functions
         if global_defs.usePmap:
-            self._get_basis_pmapd = global_defs.pmap_for_my_devices(self._get_basis, in_axes=(0, 0))
+            self._get_basis_ldim2_pmapd = global_defs.pmap_for_my_devices(self._get_basis_ldim2, in_axes=(0, 0))
+            self._get_basis_pmapd = global_defs.pmap_for_my_devices(self._get_basis, in_axes=(0, 0, None), static_broadcasted_argnums=2)
             self._compute_probabilities_pmapd = global_defs.pmap_for_my_devices(self._compute_probabilities, in_axes=(0, None, 0))
             self._normalize_pmapd = global_defs.pmap_for_my_devices(self._normalize, in_axes=(0, None))
         else:
+            self._get_basis_ldim2_pmapd = global_defs.jit_for_my_device(self._get_basis_ldim2)
             self._get_basis_pmapd = global_defs.jit_for_my_device(self._get_basis)
             self._compute_probabilities_pmapd = global_defs.jit_for_my_device(self._compute_probabilities)
             self._normalize_pmapd = global_defs.jit_for_my_device(self._normalize)
@@ -356,10 +358,13 @@ class ExactSampler:
         if global_defs.usePmap:
             intReps = intReps.reshape((global_defs.device_count(), -1))
         self.basis = jnp.zeros(intReps.shape + (self.N,), dtype=np.int32)
-        self.basis = self._get_basis_pmapd(self.basis, intReps)
+        if self.lDim == 2:
+            self.basis = self._get_basis_ldim2_pmapd(self.basis, intReps)
+        else:
+            self.basis = self._get_basis_pmapd(self.basis, intReps, self.lDim)
 
 
-    def _get_basis(self, states, intReps):
+    def _get_basis_ldim2(self, states, intReps):
 
         def make_state(state, intRep):
 
@@ -371,6 +376,24 @@ class ExactSampler:
             return state
 
         basis = jax.vmap(make_state, in_axes=(0,0))(states, intReps)
+
+        return basis
+
+
+    def _get_basis(self, states, intReps, lDim):
+
+        def make_state(state, intRep):
+
+            def scan_fun(c, x):
+                locState = c % lDim
+                c = (c - locState) // lDim
+                return c, locState
+
+            _, state = jax.lax.scan(scan_fun,intRep,state)
+
+            return state[::-1]
+
+        basis = jax.vmap(make_state, in_axes=(0,0))(states,intReps)
 
         return basis
 
@@ -427,7 +450,6 @@ class ExactSampler:
 
 
 if __name__ == "__main__":
-    
 
     import nets
     from vqs import NQS
