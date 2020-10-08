@@ -143,10 +143,10 @@ class TDVP:
     def solve(self, Eloc, gradients, p=None):
 
         # Get TDVP equation from MC data
-        S, F, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
+        self.S, F, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
 
         # Transform TDVP equation to eigenbasis
-        self.transform_to_eigenbasis(S,F,Fdata)
+        self.transform_to_eigenbasis(self.S,F,Fdata)
 
         # Discard eigenvalues below numerical precision
         self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > self.svdTol, 1./self.ev, 0.)
@@ -159,11 +159,16 @@ class TDVP:
 
         update = jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
 
-        return update, jnp.linalg.norm(S.dot(update)-F)/jnp.linalg.norm(F)
+        return update, jnp.linalg.norm(self.S.dot(update)-F)/jnp.linalg.norm(F)
 
         #work with complex matrix
         #update = jnp.dot( self.V, (self.invEv * (regularizer * self.VtF)) )
         #return jnp.concatenate((jnp.real(update), jnp.imag(update)))
+
+    
+    def S_dot(self, v):
+
+        return jnp.dot(self.S0, v) 
 
 
     def __call__(self, netParameters, t, **rhsArgs):
@@ -219,6 +224,7 @@ class TDVP:
                 self.solverResidual = solverResidual
                 self.snr0 = self.snr
                 self.ev0 = self.ev
+                self.S0 = self.S
 
         return update
 

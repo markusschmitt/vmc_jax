@@ -220,6 +220,9 @@ tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
                                        svdTol=inp["time_evol"]["svd_tolerance"],
                                        rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
 
+def norm_fun(v, df=lambda x:x):
+    return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
+
 stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
 
 tmax=inp["time_evol"]["t_final"]
@@ -236,7 +239,7 @@ while t<tmax:
     outp.print( ">  t = %f\n" % (t) )
 
     # TDVP step
-    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=hamiltonian, psi=psi, numSamples=inp["sampler"]["numSamples"], outp=outp)
+    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=hamiltonian, psi=psi, numSamples=inp["sampler"]["numSamples"], outp=outp, normFunction=partial(norm_fun, df=tdvpEquation.S_dot))
     psi.set_parameters(dp)
     t += dt
     outp.print( "   Time step size: dt = %f" % (dt) )
