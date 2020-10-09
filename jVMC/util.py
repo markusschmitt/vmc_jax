@@ -16,7 +16,7 @@ import jVMC.mpi_wrapper as mpi
 import collections
 
 def get_iterable(x):
-    if isinstance(x, collections.Iterable):
+    if isinstance(x, collections.abc.Iterable):
         return x
     else:
         return (x,)

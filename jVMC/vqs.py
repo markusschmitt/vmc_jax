@@ -21,38 +21,69 @@ from jVMC.nets import RBM
 import jVMC.mpi_wrapper as mpi
 
 from functools import partial
-
+import collections
 import time
 
 class NQS:
     """Wrapper class providing basic functionality of variational states.
+    
+    This class can operate in two modi:
+
+        #. Single-network ansatz
+
+            Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
+            where the network :math:`r_\\theta` is
+
+            a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\theta`.
+
+            b) real, i.e., parametrized by real valued parameters :math:`\\theta`.
+
+        #. Two-network ansatz
+           
+            Quantum state of the form 
+            :math:`\psi_\\theta(s)\equiv\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
+            with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
+            :math:`\\varphi_{\\theta_\phi}` \
+            parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
+
+    Initializer arguments:
+
+        * ``nets``: Variational network or tuple of networks.\
+            A network has to be registered as pytree node and provide \
+            a ``__call__`` function for evaluation.
+        * ``batchSize``: Batch size for batched network evaluation. Choice \
+            of this parameter impacts performance: with too small values performance \
+            is limited by memory access overheads, too large values can lead \
+            to "out of memory" issues.
     """
 
-    def __init__(self, logModNet, phaseNet=None, batchSize=1000):
+    def __init__(self, nets, batchSize=1000):
         """Initializes NQS class.
 
         This class can operate in two modi:
 
-            #. Holomorphic wave functions
+            #. Single-network ansatz
 
-                :math:`\psi(s)\equiv\exp(r_\\theta(s))` with one network :math:`r_\\theta` \
-                parametrized by complex valued parameters :math:`\\theta`.
+                Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
+                where the network :math:`r_\\theta` is
 
-            #. Non-holomorphic wave functions
-                
-                :math:`\psi(s)\equiv\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` with \
-                an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
+                a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\theta`.
+
+                b) real, i.e., parametrized by real valued parameters :math:`\\theta`.
+
+            #. Two-network ansatz
+               
+                Quantum state of the form 
+                :math:`\psi_\\theta(s)\equiv\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
+                with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
                 :math:`\\varphi_{\\theta_\phi}` \
                 parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
 
         Args:
 
-            * ``logModNet``: Holomorphic network or amplitude network.\
-                The given object has to be registered as pytree node and provide \
+            * ``nets``: Variational network or tuple of networks.\
+                A network has to be registered as pytree node and provide \
                 a ``__call__`` function for evaluation.
-            * ``phaseNet``: Phase network. If ``None``, the class operate in the \
-                holomorphic modus. If not ``None``, the given object has to be registered \
-                as pytree node and provide a ``__call__`` function for evaluation.
             * ``batchSize``: Batch size for batched network evaluation. Choice \
                 of this parameter impacts performance: with too small values performance \
                 is limited by memory access overheads, too large values can lead \
@@ -61,15 +92,24 @@ class NQS:
 
         # The net arguments have to be instances of flax.nn.Model
         self.realNets = False
-        if phaseNet is None:
-            self.net = logModNet
+        self.holomorphic = False
+
+        if not isinstance(nets, collections.abc.Iterable):
+   
+            self.net = nets
+ 
+            if np.concatenate([p.ravel() for p in tree_flatten(self.net.params)[0]]).dtype == np.complex128:
+                self.holomorphic = True
 
             self.paramShapes = [(p.size,p.shape) for p in tree_flatten(self.net.params)[0]]
             self.netTreeDef = jax.tree_util.tree_structure(self.net.params)
             self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net.params)[0]]))
+
         else:
+
+            self.net = list(nets)
+
             self.realNets = True
-            self.net = [logModNet, phaseNet] # for [ log|psi(s)|, arg(psi(2)) ]
 
             self.paramShapes = [ [(p.size,p.shape) for p in tree_flatten(net.params)[0]] for net in self.net ]
             self.netTreeDef = [ jax.tree_util.tree_structure(net.params) for net in self.net ]
@@ -79,7 +119,12 @@ class NQS:
 
         # Check whether wave function can generate samples
         self._isGenerator = False
-        if callable(getattr(logModNet, 'sample', None)):
+        sampleNet = None
+        if self.realNets:
+            sampleNet = self.net[0]
+        else:
+            sampleNet = self.net
+        if callable(getattr(sampleNet, 'sample', None)):
             self._isGenerator = True
 
         self.batchSize = batchSize
@@ -153,9 +198,10 @@ class NQS:
 
 
     def get_sampler_net(self):
-        """Returns variational ansatz relevant for sampling
+        """Returns net used for sampling
 
         Returns:
+            Variational network that yields :math:`\\text{Re}(\log\psi(s))`.
         """
     
         if self.realNets:
@@ -216,7 +262,11 @@ class NQS:
         else:             # FOR COMPLEX NET
 
             gradOut = self._get_gradients_net1_pmapd(self.net, s, self.batchSize)
-            return self._append_gradients(gradOut, gradOut)
+
+            if self.holomorphic:
+                return self._append_gradients(gradOut, gradOut)
+            
+            return gradOut
 
     # **  end def gradients
 
@@ -299,19 +349,20 @@ class NQS:
         # Return unflattened parameters
         return ( tree_unflatten( self.netTreeDef[0], PTreeShape[0] ), tree_unflatten( self.netTreeDef[1], PTreeShape[1] ) )
 
-    # **  end def _param_unflatten_cpx
+    # **  end def _param_unflatten_real
 
 
     def _param_unflatten_cpx(self, P):
             
-        # Get complex-valued parameter update vector
-        PCpx = P[:self.numParameters] + 1.j * P[self.numParameters:]
+        if self.holomorphic:
+            # Get complex-valued parameter update vector
+            P = P[:self.numParameters] + 1.j * P[self.numParameters:]
         
         # Reshape parameter update according to net tree structure
         PTreeShape = []
         start = 0
         for s in self.paramShapes:
-            PTreeShape.append(PCpx[start:start+s[0]].reshape(s[1]))
+            PTreeShape.append(P[start:start+s[0]].reshape(s[1]))
             start += s[0]
         
         # Return unflattened parameters
@@ -345,17 +396,10 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            paramOut = jnp.empty(2*self.numParameters, dtype=global_defs.tReal)
+            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.net.params)[0]])
 
-            parameters, _ = tree_flatten( self.net.params )
-            
-            # Flatten parameters to give a single vector
-            start = 0
-            for p in parameters:
-                numParams = p.size
-                paramOut = jax.ops.index_update(paramOut, jax.ops.index[start:start+numParams], jnp.real(p.reshape(-1)))
-                paramOut = jax.ops.index_update(paramOut, jax.ops.index[self.numParameters+start:self.numParameters+start+numParams], jnp.imag(p.reshape(-1)))
-                start += numParams
+            if self.holomorphic:
+                paramOut = jnp.concatenate([paramOut.real, paramOut.imag])            
 
             return paramOut
 

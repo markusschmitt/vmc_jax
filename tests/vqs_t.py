@@ -76,7 +76,7 @@ class TestGradients(unittest.TestCase):
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
             
-            psi = NQS(rbmModel1,rbmModel2)
+            psi = NQS((rbmModel1,rbmModel2))
             psi0 = psi(s)
             G = psi.gradients(s)
             delta=1e-5

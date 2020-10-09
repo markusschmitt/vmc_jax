@@ -89,7 +89,7 @@ class TestMCMC(unittest.TestCase):
         _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
         rbmModel = nn.Model(rbm,params)
         
-        psi = NQS(rnnModel, rbmModel)
+        psi = NQS((rnnModel, rbmModel))
         
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(L)

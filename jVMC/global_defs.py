@@ -21,7 +21,7 @@ pmap_for_my_devices = partial(jax.pmap, devices=myPmapDevices)
 
 import collections
 def get_iterable(x):
-    if isinstance(x, collections.Iterable):
+    if isinstance(x, collections.abc.Iterable):
         return x
     else:
         return (x,)

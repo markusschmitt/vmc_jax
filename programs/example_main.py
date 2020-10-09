@@ -78,7 +78,7 @@ def init_net(descr, dims, seed=0):
         model1 = get_real_net(descr["net1"], dims, seed)
         model2 = get_real_net(descr["net2"], dims, seed)
 
-        return jVMC.vqs.NQS(model1, model2, batchSize=descr["gradient_batch_size"])
+        return jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"])
 
 
 inp = None
