@@ -7,7 +7,6 @@ import unittest
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
-
 import jax.random as random
 import flax.nn as nn
 import jax.numpy as jnp
@@ -90,7 +89,9 @@ class TestMCMC(unittest.TestCase):
         rbmModel = nn.Model(rbm,params)
         
         psi = NQS((rnnModel, rbmModel))
-        
+       
+        ps=psi.get_parameters()
+        psi.update_parameters(ps)
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(L)
         

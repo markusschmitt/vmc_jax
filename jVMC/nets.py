@@ -1,4 +1,6 @@
 import jax
+from jax.config import config
+config.update("jax_enable_x64", True)
 import flax
 from flax import nn
 import numpy as np
@@ -12,7 +14,7 @@ from functools import partial
 def cplx_init(rng, shape):
     rng1,rng2 = jax.random.split(rng)
     unif=jax.nn.initializers.uniform()
-    return unif(rng1,shape)+1.j*unif(rng2,shape)
+    return unif(rng1,shape,dtype=global_defs.tReal)+1.j*unif(rng2,shape,dtype=global_defs.tReal)
 
 # ! ! !
 # Nets have to be defined to act on a single configuration (not a batch)
@@ -91,7 +93,8 @@ class CNN(nn.Module):
 
     def apply(self, x, F=[8,], channels=[10], strides=[1], actFun=[nn.elu], bias=True):
       
-        initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+        initFunction = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"), 
+                               dtype=global_defs.tReal)
        
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter
@@ -167,20 +170,25 @@ class RNN(nn.Module):
 
     def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0):
 
-        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
-        initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
+        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
+                                    dtype=global_defs.tReal)
+        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform"),
+                                    dtype=global_defs.tReal)
 
         cellIn = nn.Dense.shared(features=units[0],
                                     name='rnn_cell_in',
-                                    bias=False, dtype=global_defs.tReal)
+                                    bias=False, dtype=global_defs.tReal,
+                                    kernel_init=initFunctionCell)
         cellCarry = nn.Dense.shared(features=units[0],
                                     name='rnn_cell_carry',
                                     bias=True,
-                                    kernel_init=initFunctionCell, dtype=global_defs.tReal)
+                                    kernel_init=initFunctionCell, dtype=global_defs.tReal,
+                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
         outputDense = nn.Dense.shared(features=inputDim,
                                       name='rnn_output_dense',
-                                      kernel_init=initFunctionOut, dtype=global_defs.tReal)
+                                      kernel_init=initFunctionOut, dtype=global_defs.tReal,
+                                      bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
         state = jnp.zeros((units[0]))
 
@@ -200,20 +208,25 @@ class RNN(nn.Module):
         """sampler
         """
 
-        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
-        initFunctionOut = jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform")
+        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
+                                    dtype=global_defs.tReal)
+        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform"),
+                                    dtype=global_defs.tReal)
 
         cellIn = nn.Dense.shared(features=units[0],
-                                 name='rnn_cell_in',
-                                 bias=False, dtype=global_defs.tReal)
+                                    name='rnn_cell_in',
+                                    bias=False, dtype=global_defs.tReal,
+                                    kernel_init=initFunctionCell)
         cellCarry = nn.Dense.shared(features=units[0],
                                     name='rnn_cell_carry',
                                     bias=True,
-                                    kernel_init=initFunctionCell, dtype=global_defs.tReal)
+                                    kernel_init=initFunctionCell, dtype=global_defs.tReal,
+                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
         outputDense = nn.Dense.shared(features=inputDim,
                                       name='rnn_output_dense',
-                                      kernel_init=initFunctionOut, dtype=global_defs.tReal)
+                                      kernel_init=initFunctionOut, dtype=global_defs.tReal,
+                                      bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
         outputs = jnp.asarray(np.zeros((batchSize,L,L)))
         

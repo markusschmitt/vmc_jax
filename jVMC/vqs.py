@@ -385,7 +385,6 @@ class NQS:
             start = 0
             for netId in [0,1]:
                 parameters, _ = tree_flatten( self.net[netId].params )
-                
                 # Flatten parameters to give a single vector
                 for p in parameters:
                     numParams = p.size
