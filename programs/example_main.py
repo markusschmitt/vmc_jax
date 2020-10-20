@@ -42,12 +42,12 @@ def init_net(descr, dims, seed=0):
         "FFN" : jVMC.nets.FFN,
         "CNN" : jVMC.nets.CNN,
         "RNN" : jVMC.nets.RNN,
+        "RNNsym" : jVMC.nets.RNNsym
     }
     netTypesCpx = {
         "CpxRBM" : jVMC.nets.CpxRBM,
-        "CpxCNN" : jVMC.nets.CpxCNN,
+        "CpxCNN" : jVMC.nets.CpxCNN
     }
-
 
     def get_net(descr, dims, seed, netTypes=None):
 
@@ -62,6 +62,11 @@ def init_net(descr, dims, seed=0):
     if "actFun" in descr["net1"]["parameters"]:
 
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
+
+    if descr["net1"]["type"] == "RNNsym":
+        # Generate orbit of 1D translations for RNNsym net
+        L = descr["net1"]["parameters"]["L"]
+        descr["net1"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
 
     if not "net2" in descr:
 
@@ -143,7 +148,7 @@ L = inp["system"]["L"]
 outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
-psi = init_net(inp["network"], (L,))
+psi = init_net(inp["network"], [(L,)])
 
 outp.print("** Network properties")
 outp.print("    Number of parameters: %d" % (len(psi.get_parameters())))
@@ -254,7 +259,11 @@ while t<tmax:
     # Write observables
     outp.write_observables(t, **obs)
     # Write metadata
-    outp.write_metadata(t, tdvp_error=tdvpErr, tdvp_residual=tdvpRes, SNR=tdvpEquation.get_snr(), spectrum=tdvpEquation.get_spectrum())
+    outp.write_metadata(t, tdvp_error=tdvpErr,
+                           tdvp_residual=tdvpRes,
+                           tdvp_contrib=tdvpEquation.get_tdvp_contributions(),
+                           SNR=tdvpEquation.get_snr(),
+                           spectrum=tdvpEquation.get_spectrum())
     # Write network parameters
     outp.write_network_checkpoint(t, psi.get_parameters())
 

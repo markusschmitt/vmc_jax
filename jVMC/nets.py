@@ -168,7 +168,7 @@ class RNN(nn.Module):
     """Recurrent neural network.
     """
 
-    def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0):
+    def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0, logProbFactor=0.5):
 
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
                                     dtype=global_defs.tReal)
@@ -200,11 +200,11 @@ class RNN(nn.Module):
       
         _, probs = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
 
-        return 0.5 * jnp.sum(probs, axis=0)
+        return logProbFactor * jnp.sum(probs, axis=0)
 
 
     @nn.module_method
-    def sample(self,batchSize,key,L,units,inputDim=2,actFun=[nn.elu,], initScale=1.0):
+    def sample(self,batchSize,key,L,units,inputDim=2,actFun=[nn.elu,], initScale=1.0, logProbFactor=0.5):
         """sampler
         """
 
@@ -246,3 +246,40 @@ class RNN(nn.Module):
         return jnp.transpose( res[1] )#, 0.5 * jnp.sum(res[0], axis=0)
 
 # ** end class RNN
+
+
+class RNNsym(nn.Module):
+    """Recurrent neural network with symmetries.
+    """
+
+    def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0, logProbFactor=0.5, orbit=None):
+
+        self.rnn = RNN.shared(L=L, units=units, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+
+        self.orbit = orbit
+        
+        x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(self.orbit, x)
+
+        def evaluate(x):
+            return self.rnn(x)
+
+        logProbs = logProbFactor * jnp.log( jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(x)), axis=0) )
+
+        return logProbs
+
+    @nn.module_method
+    def sample(self,batchSize,key,L,units=[10],inputDim=2,actFun=[nn.elu,], initScale=1.0, logProbFactor=0.5, orbit=None):
+        
+        rnn = RNN.shared(L=L, units=units, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+
+        key1, key2 = jax.random.split(key)
+
+        configs = rnn.sample(batchSize, key1)
+
+        orbitIdx = jax.random.choice(key2, orbit.shape[0], shape=(batchSize,))
+
+        configs = jax.vmap(lambda k,o,s: jnp.dot(o[k], s), in_axes=(0,None,0))(orbitIdx, orbit, configs)
+
+        return configs
+
+# ** end class RNNsym

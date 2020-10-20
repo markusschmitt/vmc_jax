@@ -116,6 +116,49 @@ class TestMCMC(unittest.TestCase):
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
 
         self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
+    
+
+    def test_autoregressive_sampling_with_symmetries(self):
+
+        L=4
+
+        # Set up symmetry orbit
+        orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
+
+        # Set up variational wave function
+        rnn = nets.RNNsym.partial( L=L, units=[5], orbit=orbit )
+        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
+        rnnModel = nn.Model(rnn,params)
+        rbm = nets.RBM.partial(numHidden=2,bias=False)
+        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
+        rbmModel = nn.Model(rbm,params)
+        
+        psi = NQS((rnnModel, rbmModel))
+       
+        # Set up exact sampler
+        exactSampler=sampler.ExactSampler(L)
+        
+        # Set up MCMC sampler
+        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        
+        # Compute exact probabilities
+        _, logPsi, pex = exactSampler.sample(psi)
+
+        numSamples=1000000
+        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+
+        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
+    
+        if global_defs.usePmap:
+            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+       
+        self.assertTrue( smc.shape[0] >= numSamples )
+        
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+        pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
+
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
 
 if __name__ == "__main__":
     unittest.main()

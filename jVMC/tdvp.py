@@ -71,6 +71,11 @@ class TDVP:
         return self.snr0
     
 
+    def get_tdvp_contributions(self):
+
+        return self.tdvpContrib
+    
+
     def get_spectrum(self):
 
         return self.ev0
@@ -91,7 +96,6 @@ class TDVP:
         self.ElocMean = mpi.global_mean(Eloc, p)
         self.ElocVar = jnp.real(mpi.global_variance(Eloc, p))
         Eloc = self.subtract_helper_Eloc(Eloc, self.ElocMean)
-
         gradientsMean = mpi.global_mean(gradients, p)
         gradients = self.subtract_helper_grad(gradients, gradientsMean)
         
@@ -224,6 +228,9 @@ class TDVP:
                 self.solverResidual = solverResidual
                 self.snr0 = self.snr
                 self.ev0 = self.ev
+                #T = jnp.transpose(jnp.triu(jnp.ones((self.ev.shape[0],self.ev.shape[0]))) / self.ev)
+                #updates = self.V.dot(T * self.VtF)
+                #self.tdvpContrib = jnp.real(jnp.conj(exactUpdate) * (self.S0.dot(exactUpdate) - 2.*self.F0)) / self.ElocVar
                 self.S0 = self.S
 
         return update
