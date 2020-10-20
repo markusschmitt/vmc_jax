@@ -71,11 +71,6 @@ class TDVP:
         return self.snr0
     
 
-    def get_tdvp_contributions(self):
-
-        return self.tdvpContrib
-    
-
     def get_spectrum(self):
 
         return self.ev0

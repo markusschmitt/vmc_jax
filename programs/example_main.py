@@ -52,7 +52,7 @@ def init_net(descr, dims, seed=0):
     def get_net(descr, dims, seed, netTypes=None):
 
         net = netTypes[descr["type"]].partial(**descr["parameters"])
-        _, params = net.init_by_shape(random.PRNGKey(seed),[dims])
+        _, params = net.init_by_shape(random.PRNGKey(seed),dims)
         return nn.Model(net,params)
 
     get_real_net=partial(get_net, netTypes=netTypesReal)
@@ -261,7 +261,6 @@ while t<tmax:
     # Write metadata
     outp.write_metadata(t, tdvp_error=tdvpErr,
                            tdvp_residual=tdvpRes,
-                           tdvp_contrib=tdvpEquation.get_tdvp_contributions(),
                            SNR=tdvpEquation.get_snr(),
                            spectrum=tdvpEquation.get_spectrum())
     # Write network parameters
