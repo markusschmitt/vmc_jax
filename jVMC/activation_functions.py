@@ -21,5 +21,6 @@ activationFunctions = {
     "poly5" : poly5 ,
     "poly6" : poly6 ,
     "elu" : nn.elu ,
-    "relu" : nn.relu
+    "relu" : nn.relu,
+    "tanh" : jnp.tanh
 }

@@ -81,7 +81,7 @@ class TestMCMC(unittest.TestCase):
         L=4
 
         # Set up variational wave function
-        rnn = nets.RNN.partial( L=4, units=[5] )
+        rnn = nets.RNN.partial( L=4, hiddenSize=5, depth=2 )
         _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
         rnnModel = nn.Model(rnn,params)
         rbm = nets.RBM.partial(numHidden=2,bias=False)
@@ -126,7 +126,7 @@ class TestMCMC(unittest.TestCase):
         orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
 
         # Set up variational wave function
-        rnn = nets.RNNsym.partial( L=L, units=[5], orbit=orbit )
+        rnn = nets.RNNsym.partial( L=L, hiddenSize=5, orbit=orbit )
         _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
         rnnModel = nn.Model(rnn,params)
         rbm = nets.RBM.partial(numHidden=2,bias=False)
