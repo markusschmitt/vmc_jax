@@ -182,11 +182,11 @@ class RNNCell(nn.Module):
         cellCarry = nn.Dense.partial(features=hiddenSize,
                                     bias=True,
                                     kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                    bias_init=partial(jax.nn.initializers.zeros,dtype=global_defs.tReal))
 
         outputDense = nn.Dense.partial(features=outDim,
                                       kernel_init=initFunctionOut, dtype=global_defs.tReal,
-                                      bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                      bias_init=jax.nn.initializers.normal(stddev=0.1,dtype=global_defs.tReal))
         
         newCarry = actFun(cellCarry(carry) + cellIn(x))
         out = outputDense(newCarry)
@@ -264,7 +264,7 @@ class RNNsym(nn.Module):
 
     def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None):
 
-        self.rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+        self.rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, logProbFactor=logProbFactor, name='myRNN')
 
         self.orbit = orbit
         
@@ -280,7 +280,7 @@ class RNNsym(nn.Module):
     @nn.module_method
     def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None):
         
-        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, logProbFactor=logProbFactor, name='myRNN')
 
         key1, key2 = jax.random.split(key)
 
@@ -386,5 +386,46 @@ class LSTMsym(nn.Module):
         configs = jax.vmap(lambda k,o,s: jnp.dot(o[k], s), in_axes=(0,None,0))(orbitIdx, orbit, configs)
 
         return configs
+
+# ** end class RNNsym
+
+
+class PhaseRNN(nn.Module):
+    """Recurrent neural network.
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0):
+        
+        rnnCell = RNNCellStack.partial(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale)
+
+        state = jnp.zeros((depth, hiddenSize))
+
+        def rnn_cell(carry, x):
+            newCarry, out = rnnCell(carry[0],carry[1])
+            return (newCarry, x), out
+      
+        _, res = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
+
+        return jnp.mean(actFun(nn.Dense(res.ravel(), features=8)))
+
+# ** end class RNN
+
+
+class PhaseRNNsym(nn.Module):
+    """Recurrent neural network with symmetries.
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, orbit=None):
+
+        self.rnn = PhaseRNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+        
+        x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(orbit, x)
+
+        def evaluate(x):
+            return self.rnn(x)
+
+        res = jnp.mean(jax.vmap(evaluate)(x), axis=0)
+
+        return res
 
 # ** end class RNNsym
