@@ -165,7 +165,7 @@ for l in range(L):
 
 # Set up hamiltonian
 hamiltonian = op.Operator()
-hz = 0.0
+lbda = 0.0
 if "lambda" in inp["system"].keys():
     lbda = inp["system"]["lambda"]
 for l in range(L):
