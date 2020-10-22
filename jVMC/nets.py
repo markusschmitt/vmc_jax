@@ -167,77 +167,84 @@ class CpxCNN(nn.Module):
 # ** end class CNN
 
 
-class RNN(nn.Module):
-    """Recurrent neural network.
-    """
+class RNNCell(nn.Module):
 
-    def apply(self, x, L=10, units=[10], inputDim=2, actFun=[nn.elu,], initScale=1.0):
-
+    def apply(self, carry, x, hiddenSize=10, outDim=2, actFun=nn.elu, initScale=1.0):
+        
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
                                     dtype=global_defs.tReal)
         initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform"),
                                     dtype=global_defs.tReal)
 
-        cellIn = nn.Dense.shared(features=units[0],
-                                    name='rnn_cell_in',
+        cellIn = nn.Dense.partial(features=hiddenSize,
                                     bias=False, dtype=global_defs.tReal,
                                     kernel_init=initFunctionCell)
-        cellCarry = nn.Dense.shared(features=units[0],
-                                    name='rnn_cell_carry',
+        cellCarry = nn.Dense.partial(features=hiddenSize,
                                     bias=True,
                                     kernel_init=initFunctionCell, dtype=global_defs.tReal,
                                     bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
-        outputDense = nn.Dense.shared(features=inputDim,
-                                      name='rnn_output_dense',
+        outputDense = nn.Dense.partial(features=outDim,
                                       kernel_init=initFunctionOut, dtype=global_defs.tReal,
                                       bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+        
+        newCarry = actFun(cellCarry(carry) + cellIn(x))
+        out = outputDense(newCarry)
+        return newCarry, out
 
-        state = jnp.zeros((units[0]))
+# ** end class RNNCell
+
+
+class RNNCellStack(nn.Module):
+
+    def apply(self, carry, x, hiddenSize=10, outDim=2, actFun=nn.elu, initScale=1.0):
+
+        def scan_fun(r,c):
+            
+            newC, newR = RNNCell(c, r, hiddenSize=hiddenSize, outDim=outDim, actFun=actFun, initScale=initScale)
+            return newR, newC
+
+        out, newCarry = jax.lax.scan(scan_fun, x, carry)
+
+        return newCarry, out
+
+# ** end class RNNCellStack
+
+
+class RNN(nn.Module):
+    """Recurrent neural network.
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+        
+        rnnCell = RNNCellStack.shared(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale, name="myCell")
+
+        state = jnp.zeros((depth, hiddenSize))
 
         def rnn_cell(carry, x):
-            newCarry = actFun[0](cellCarry(carry[0]) + cellIn(carry[1]))
-            prob = nn.softmax(outputDense(newCarry))
+            newCarry, out = rnnCell(carry[0],carry[1])
+            prob = nn.softmax(out)
             prob = jnp.log( jnp.sum( prob * x, axis=-1 ) )
             return (newCarry, x), prob
       
         _, probs = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
 
-        return 0.5 * jnp.sum(probs, axis=0)
+        return logProbFactor * jnp.sum(probs, axis=0)
 
 
     @nn.module_method
-    def sample(self,batchSize,key,L,units,inputDim=2,actFun=[nn.elu,], initScale=1.0):
+    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
         """sampler
         """
-
-        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                                    dtype=global_defs.tReal)
-        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform"),
-                                    dtype=global_defs.tReal)
-
-        cellIn = nn.Dense.shared(features=units[0],
-                                    name='rnn_cell_in',
-                                    bias=False, dtype=global_defs.tReal,
-                                    kernel_init=initFunctionCell)
-        cellCarry = nn.Dense.shared(features=units[0],
-                                    name='rnn_cell_carry',
-                                    bias=True,
-                                    kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
-
-        outputDense = nn.Dense.shared(features=inputDim,
-                                      name='rnn_output_dense',
-                                      kernel_init=initFunctionOut, dtype=global_defs.tReal,
-                                      bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+        
+        rnnCell = RNNCellStack.shared(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale, name="myCell")
 
         outputs = jnp.asarray(np.zeros((batchSize,L,L)))
         
-        state = jnp.zeros((batchSize, units[0]))
+        state = jnp.zeros((batchSize, depth, hiddenSize))
 
         def rnn_cell(carry, x):
-            newCarry = actFun[0]( cellCarry(carry[0]) + cellIn(carry[1]) )
-            logits = outputDense(newCarry)
+            newCarry, logits = jax.vmap(rnnCell)(carry[0],carry[1])
             sampleOut = jax.random.categorical( x, logits )
             sample = jax.nn.one_hot( sampleOut, inputDim )
             logProb = jnp.log( jnp.sum( nn.softmax(logits) * sample, axis=1 ) )
@@ -249,3 +256,135 @@ class RNN(nn.Module):
         return jnp.transpose( res[1] )#, 0.5 * jnp.sum(res[0], axis=0)
 
 # ** end class RNN
+
+
+class RNNsym(nn.Module):
+    """Recurrent neural network with symmetries.
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None):
+
+        self.rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+
+        self.orbit = orbit
+        
+        x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(self.orbit, x)
+
+        def evaluate(x):
+            return self.rnn(x)
+
+        logProbs = logProbFactor * jnp.log( jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(x)), axis=0) )
+
+        return logProbs
+
+    @nn.module_method
+    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None):
+        
+        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+
+        key1, key2 = jax.random.split(key)
+
+        configs = rnn.sample(batchSize, key1)
+
+        orbitIdx = jax.random.choice(key2, orbit.shape[0], shape=(batchSize,))
+
+        configs = jax.vmap(lambda k,o,s: jnp.dot(o[k], s), in_axes=(0,None,0))(orbitIdx, orbit, configs)
+
+        return configs
+
+# ** end class RNNsym
+
+
+class LSTMCell(nn.Module):
+
+    def apply(self, carry, x, inputDim=2, actFun=nn.elu):
+
+        newCarry, out = nn.LSTMCell(carry, x)
+
+        out = actFun( nn.Dense(out, features=inputDim) )
+
+        return newCarry, out.reshape((-1))
+
+
+class LSTM(nn.Module):
+    """Long short-term memory (LSTM).
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5):
+        
+        lstmCell = LSTMCell.shared(name="myCell", inputDim=inputDim, actFun=actFun)
+
+        state = nn.LSTMCell.initialize_carry(jax.random.PRNGKey(0), (1,), hiddenSize)
+
+        def lstm_cell(carry, x):
+            newCarry, out = lstmCell(carry[0],carry[1])
+            prob = nn.softmax(out)
+            prob = jnp.log( jnp.sum( prob * x, axis=-1 ) )
+            return (newCarry, x), prob
+      
+        _, probs = jax.lax.scan(lstm_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
+
+        return logProbFactor * jnp.sum(probs, axis=0)
+
+
+    @nn.module_method
+    def sample(self,batchSize,key,L,hiddenSize=10,inputDim=2,actFun=nn.elu, logProbFactor=0.5):
+        """sampler
+        """
+        
+        lstmCell = LSTMCell.shared(name="myCell", inputDim=inputDim, actFun=actFun)
+
+        outputs = jnp.asarray(np.zeros((batchSize,L,L)))
+        
+        state = nn.LSTMCell.initialize_carry(jax.random.PRNGKey(0), (batchSize,), hiddenSize)
+
+        def lstm_cell(carry, x):
+            newCarry, logits = jax.vmap(lstmCell)(carry[0],carry[1])
+            sampleOut = jax.random.categorical( x, logits )
+            sample = jax.nn.one_hot( sampleOut, inputDim )
+            logProb = jnp.log( jnp.sum( nn.softmax(logits) * sample, axis=1 ) )
+            return (newCarry, sample), (logProb, sampleOut)
+ 
+        keys = jax.random.split(key,L)
+        _, res = jax.lax.scan( lstm_cell, (state, jnp.zeros((batchSize,inputDim))), keys )
+
+        return jnp.transpose( res[1] )#, 0.5 * jnp.sum(res[0], axis=0)
+
+# ** end class RNN
+
+
+class LSTMsym(nn.Module):
+    """LSTM with symmetries.
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5, orbit=None):
+
+        self.rnn = LSTM.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
+
+        self.orbit = orbit
+        
+        x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(self.orbit, x)
+
+        def evaluate(x):
+            return self.rnn(x)
+
+        logProbs = logProbFactor * jnp.log( jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(x)), axis=0) )
+
+        return logProbs
+
+    @nn.module_method
+    def sample(self, batchSize, key, L, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5, orbit=None):
+        
+        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
+
+        key1, key2 = jax.random.split(key)
+
+        configs = rnn.sample(batchSize, key1)
+
+        orbitIdx = jax.random.choice(key2, orbit.shape[0], shape=(batchSize,))
+
+        configs = jax.vmap(lambda k,o,s: jnp.dot(o[k], s), in_axes=(0,None,0))(orbitIdx, orbit, configs)
+
+        return configs
+
+# ** end class RNNsym

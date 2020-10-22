@@ -29,30 +29,34 @@ import jVMC.global_defs as global_defs
 
 from functools import partial
 
-
 def init_net(descr, dims, seed=0):
 
     def get_activation_functions(actFuns):
 
-        return [act_funs.activationFunctions[fn] for fn in actFuns] 
+        if type(actFuns) is list:
+            return [act_funs.activationFunctions[fn] for fn in actFuns] 
+        
+        return act_funs.activationFunctions[actFuns]
    
  
     netTypesReal = {
         "RBM" : jVMC.nets.RBM,
         "FFN" : jVMC.nets.FFN,
         "CNN" : jVMC.nets.CNN,
+        "LSTM" : jVMC.nets.LSTM,
+        "LSTMsym" : jVMC.nets.LSTMsym,
         "RNN" : jVMC.nets.RNN,
+        "RNNsym" : jVMC.nets.RNNsym
     }
     netTypesCpx = {
         "CpxRBM" : jVMC.nets.CpxRBM,
-        "CpxCNN" : jVMC.nets.CpxCNN,
+        "CpxCNN" : jVMC.nets.CpxCNN
     }
-
 
     def get_net(descr, dims, seed, netTypes=None):
 
         net = netTypes[descr["type"]].partial(**descr["parameters"])
-        _, params = net.init_by_shape(random.PRNGKey(seed),[dims])
+        _, params = net.init_by_shape(random.PRNGKey(seed),dims)
         return nn.Model(net,params)
 
     get_real_net=partial(get_net, netTypes=netTypesReal)
@@ -62,6 +66,11 @@ def init_net(descr, dims, seed=0):
     if "actFun" in descr["net1"]["parameters"]:
 
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
+
+    if descr["net1"]["type"] == "RNNsym" or descr["net1"]["type"] == "LSTMsym":
+        # Generate orbit of 1D translations for RNNsym net
+        L = descr["net1"]["parameters"]["L"]
+        descr["net1"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
 
     if not "net2" in descr:
 
@@ -143,7 +152,7 @@ L = inp["system"]["L"]
 outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
-psi = init_net(inp["network"], (L,))
+psi = init_net(inp["network"], [(L,)])
 
 outp.print("** Network properties")
 outp.print("    Number of parameters: %d" % (len(psi.get_parameters())))
@@ -259,7 +268,10 @@ while t<tmax:
     # Write observables
     outp.write_observables(t, **obs)
     # Write metadata
-    outp.write_metadata(t, tdvp_error=tdvpErr, tdvp_residual=tdvpRes, SNR=tdvpEquation.get_snr(), spectrum=tdvpEquation.get_spectrum())
+    outp.write_metadata(t, tdvp_error=tdvpErr,
+                           tdvp_residual=tdvpRes,
+                           SNR=tdvpEquation.get_snr(),
+                           spectrum=tdvpEquation.get_spectrum())
     # Write network parameters
     outp.write_network_checkpoint(t, psi.get_parameters())
 
