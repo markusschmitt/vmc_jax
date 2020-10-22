@@ -43,6 +43,8 @@ def init_net(descr, dims, seed=0):
         "RBM" : jVMC.nets.RBM,
         "FFN" : jVMC.nets.FFN,
         "CNN" : jVMC.nets.CNN,
+        "LSTM" : jVMC.nets.LSTM,
+        "LSTMsym" : jVMC.nets.LSTMsym,
         "RNN" : jVMC.nets.RNN,
         "RNNsym" : jVMC.nets.RNNsym
     }
@@ -65,7 +67,7 @@ def init_net(descr, dims, seed=0):
 
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
-    if descr["net1"]["type"] == "RNNsym":
+    if descr["net1"]["type"] == "RNNsym" or descr["net1"]["type"] == "LSTMsym":
         # Generate orbit of 1D translations for RNNsym net
         L = descr["net1"]["parameters"]["L"]
         descr["net1"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
