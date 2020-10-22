@@ -149,13 +149,15 @@ class TDVP:
         self.transform_to_eigenbasis(self.S,F,Fdata)
 
         # Discard eigenvalues below numerical precision
-        self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > self.svdTol, 1./self.ev, 0.)
+        #self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > self.svdTol, 1./self.ev, 0.)
+        self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1./self.ev, 0.)
+        regularizer = 1. / (1. + ( self.svdTol / jnp.abs(self.ev / self.ev[-1]) )**6 )
 
         if p is None:
             # Construct a soft cutoff based on the SNR
-            regularizer = 1. / (1. + (self.snrTol / self.snr)**6 )
-        else:
-            regularizer = jnp.ones(len(self.invEv))
+            regularizer *= 1. / (1. + (self.snrTol / (0.5*(self.snr+self.snr[::-1])))**6 )
+        #else:
+        #    regularizer = jnp.ones(len(self.invEv))
 
         update = jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
 
@@ -192,6 +194,10 @@ class TDVP:
         start_timing(outp, "sampling")
         sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
         stop_timing(outp, "sampling")
+
+        #sampleConfigs = jax.pmap(lambda x: jnp.concatenate([x, 1-x], axis=0))(sampleConfigs)
+        #sampleLogPsi = jax.pmap(lambda x: jnp.concatenate([x, x], axis=0))(sampleLogPsi)
+        #mpi.globNumSamples *= 2
 
         # Evaluate local energy
         start_timing(outp, "compute Eloc")

@@ -25,6 +25,9 @@ def measure(observables, psi, sampler, numSamples=None):
     
     # Get sample
     sampleConfigs, sampleLogPsi, p =  sampler.sample( psi, numSamples )
+    #sampleConfigs = jax.pmap(lambda x: jnp.concatenate([x, 1-x], axis=0))(sampleConfigs)
+    #sampleLogPsi = jax.pmap(lambda x: jnp.concatenate([x, x], axis=0))(sampleLogPsi)
+    #mpi.globNumSamples *= 2
 
     result = {}
     

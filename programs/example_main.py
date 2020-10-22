@@ -156,9 +156,14 @@ for l in range(L):
 
 # Set up hamiltonian
 hamiltonian = op.Operator()
+hz = 0.0
+if "lambda" in inp["system"].keys():
+    lbda = inp["system"]["lambda"]
 for l in range(L):
     hamiltonian.add( op.scal_opstr( inp["system"]["J"], ( op.Sz(l), op.Sz((l+1)%L) ) ) )
     hamiltonian.add( op.scal_opstr( inp["system"]["hx"], ( op.Sx(l), ) ) )
+    if np.abs(lbda) > 1e-10:
+        hamiltonian.add( op.scal_opstr( lbda * inp["system"]["J"], ( op.Sz(l), op.Sz((l+2)%L) ) ) )
 
 # Set up observables
 observables = {
