@@ -88,6 +88,7 @@ def Sm(idx):
     return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([0.0,1.0],dtype=global_defs.tReal), 'diag': False}
 
 
+import copy
 def scal_opstr(a,op):
     """Add prefactor to operator string
 
@@ -102,8 +103,9 @@ def scal_opstr(a,op):
 
     """
 
-    op[0]['matEls'] = a * op[0]['matEls']
-    return op
+    newOp = [copy.deepcopy(o) for o in op]
+    newOp[0]['matEls'] = a * newOp[0]['matEls']
+    return tuple(newOp)
 
 
 def apply_fun(s,matEl,idx,sMap,matEls):
