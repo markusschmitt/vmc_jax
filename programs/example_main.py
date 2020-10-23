@@ -165,9 +165,14 @@ outp.print("    Number of parameters: %d" % (len(psi.get_parameters())))
 
 # Set up hamiltonian for ground state search
 hamiltonianGS = op.Operator()
+hz0 = 0.0
+if "hz0" in inp["system"].keys():
+    hz0 = inp["system"]["hz0"]
 for l in range(L):
     hamiltonianGS.add( op.scal_opstr( inp["system"]["J0"], ( op.Sz(l), op.Sz((l+1)%L) ) ) )
     hamiltonianGS.add( op.scal_opstr( inp["system"]["hx0"], ( op.Sx(l), ) ) )
+    if np.abs(hz0) > 1e-10:
+        hamiltonianGS.add( op.scal_opstr( hz0, ( op.Sz(l), ) ) )
 
 # Set up hamiltonian
 hamiltonian = op.Operator()

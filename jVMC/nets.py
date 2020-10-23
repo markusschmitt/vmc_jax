@@ -359,14 +359,12 @@ class LSTMsym(nn.Module):
 
     def apply(self, x, L=10, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5, orbit=None):
 
-        self.rnn = LSTM.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
-
-        self.orbit = orbit
+        lstm = LSTM.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
         
-        x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(self.orbit, x)
+        x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(orbit, x)
 
         def evaluate(x):
-            return self.rnn(x)
+            return lstm(x)
 
         logProbs = logProbFactor * jnp.log( jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(x)), axis=0) )
 
@@ -375,11 +373,11 @@ class LSTMsym(nn.Module):
     @nn.module_method
     def sample(self, batchSize, key, L, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5, orbit=None):
         
-        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
+        lstm = LSTM.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
 
         key1, key2 = jax.random.split(key)
 
-        configs = rnn.sample(batchSize, key1)
+        configs = lstm.sample(batchSize, key1)
 
         orbitIdx = jax.random.choice(key2, orbit.shape[0], shape=(batchSize,))
 
