@@ -223,9 +223,9 @@ class RNN(nn.Module):
 
         def rnn_cell(carry, x):
             newCarry, out = rnnCell(carry[0],carry[1])
-            prob = nn.softmax(out)
-            prob = jnp.log( jnp.sum( prob * x, axis=-1 ) )
-            return (newCarry, x), prob
+            logProb = nn.log_softmax(out)
+            logProb = jnp.sum( logProb * x, axis=-1 )
+            return (newCarry, x), jnp.nan_to_num(logProb, nan=-35)
       
         _, probs = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
 
@@ -247,8 +247,8 @@ class RNN(nn.Module):
             newCarry, logits = jax.vmap(rnnCell)(carry[0],carry[1])
             sampleOut = jax.random.categorical( x, logits )
             sample = jax.nn.one_hot( sampleOut, inputDim )
-            logProb = jnp.log( jnp.sum( nn.softmax(logits) * sample, axis=1 ) )
-            return (newCarry, sample), (logProb, sampleOut)
+            logProb = jnp.sum( nn.log_softmax(logits) * sample, axis=1 )
+            return (newCarry, sample), (jnp.nan_to_num(logProb, nan=-35), sampleOut)
  
         keys = jax.random.split(key,L)
         _, res = jax.lax.scan( rnn_cell, (state, jnp.zeros((batchSize,inputDim))), keys )
