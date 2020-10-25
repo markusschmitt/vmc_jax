@@ -232,9 +232,13 @@ else:
     outp.print("** Ground state search")
     outp.set_group("ground_state_search")
 
+    if "numSamplesGS" in inp["sampler"]:
+        sampler.set_number_of_samples(inp["sampler"]["numSamplesGS"])
     ground_state_search(psi, hamiltonianGS, tdvpEquation, sampler,
                         numSteps=inp["gs_search"]["num_steps"], varianceTol=inp["gs_search"]["convergence_variance"]*L**2,
                         stepSize=1e-2, observables=observables, outp=outp)
+    
+    sampler.set_number_of_samples(inp["sampler"]["numSamples"])
 
 # Time evolution
 outp.print("** Time evolution")
