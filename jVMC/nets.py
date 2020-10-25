@@ -404,9 +404,13 @@ class PhaseRNN(nn.Module):
       
         _, res = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
 
-        return jnp.mean(actFun(nn.Dense(res.ravel(), features=8)))
+        res = nn.Dense(res.ravel(), features=8, dtype=global_defs.tReal,
+                        kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
+                        bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
-# ** end class RNN
+        return jnp.mean(actFun(res))
+
+# ** end class PhaseRNN
 
 
 class PhaseRNNsym(nn.Module):
@@ -426,4 +430,69 @@ class PhaseRNNsym(nn.Module):
 
         return res
 
-# ** end class RNNsym
+# ** end class PhaseRNNsym
+
+
+class CpxRNN(nn.Module):
+    """Recurrent neural network.
+    """
+
+    def apply(self, x, L=10, hiddenSize=10, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+        
+        rnnCell = RNNCell.shared(hiddenSize=hiddenSize, outDim=hiddenSize, actFun=actFun, initScale=initScale, name="myCell")
+
+        probDense = nn.Dense.shared(features=inputDim, name="probDense", dtype=global_defs.tReal,
+                                kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
+                                bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+
+        state = jnp.zeros((hiddenSize,))
+
+        def rnn_cell(carry, x):
+            newCarry, out = rnnCell(carry[0],carry[1])
+            logProb = nn.log_softmax(actFun(probDense(out)))
+            logProb = jnp.sum( logProb * x, axis=-1 )
+            return (newCarry, x), (jnp.nan_to_num(logProb, nan=-35), out)
+      
+        _, (probs, phaseOut) = jax.lax.scan(rnn_cell, (state, jnp.zeros(inputDim)), jax.nn.one_hot(x,inputDim))
+
+        phase = nn.Dense(phaseOut, features=6, dtype=global_defs.tReal,
+                            kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
+                            bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+        phase = actFun(phase)
+        phase = nn.Dense(phaseOut, features=4, dtype=global_defs.tReal,
+                            kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal), 
+                            bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+
+        return logProbFactor * jnp.sum(probs, axis=0) + 1.j * jnp.mean(actFun(phase))
+
+
+    @nn.module_method
+    def sample(self,batchSize,key,L,hiddenSize=10,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+        """sampler
+        """
+        
+        rnnCell = RNNCell.shared(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale, name="myCell")
+        
+        probDense = nn.Dense.shared(features=inputDim, name="probDense", dtype=global_defs.tReal)
+
+        outputs = jnp.asarray(np.zeros((batchSize,L,L)))
+        
+        state = jnp.zeros((batchSize, hiddenSize))
+            
+        def eval_cell(x,y):
+            newCarry, out = rnnCell(x,y)
+            return newCarry, actFun(probDense(out))
+
+        def rnn_cell(carry, x):
+            newCarry, logits = jax.vmap(eval_cell)(carry[0],carry[1])
+            sampleOut = jax.random.categorical( x, logits )
+            sample = jax.nn.one_hot( sampleOut, inputDim )
+            logProb = jnp.sum( nn.log_softmax(logits) * sample, axis=1 )
+            return (newCarry, sample), (jnp.nan_to_num(logProb, nan=-35), sampleOut)
+ 
+        keys = jax.random.split(key,L)
+        _, res = jax.lax.scan( rnn_cell, (state, jnp.zeros((batchSize,inputDim))), keys )
+
+        return jnp.transpose( res[1] )#, 0.5 * jnp.sum(res[0], axis=0)
+
+# ** end class CpxRNN

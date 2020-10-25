@@ -458,6 +458,10 @@ class ExactSampler:
  
         return self.basis, logPsi, p
 
+
+    def set_number_of_samples(self, N):
+        pass
+
 # ** end class ExactSampler
 
 

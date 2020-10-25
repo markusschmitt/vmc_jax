@@ -39,7 +39,7 @@ def init_net(descr, dims, seed=0):
         return act_funs.activationFunctions[actFuns]
    
  
-    netTypesReal = {
+    netTypes = {
         "RBM" : jVMC.nets.RBM,
         "FFN" : jVMC.nets.FFN,
         "CNN" : jVMC.nets.CNN,
@@ -47,40 +47,37 @@ def init_net(descr, dims, seed=0):
         "LSTMsym" : jVMC.nets.LSTMsym,
         "PhaseRNN" : jVMC.nets.RNN,
         "PhaseRNNsym" : jVMC.nets.RNNsym,
+        "CpxRNN" : jVMC.nets.CpxRNN,
         "RNN" : jVMC.nets.RNN,
-        "RNNsym" : jVMC.nets.RNNsym
-    }
-    netTypesCpx = {
+        "RNNsym" : jVMC.nets.RNNsym,
         "CpxRBM" : jVMC.nets.CpxRBM,
         "CpxCNN" : jVMC.nets.CpxCNN
     }
 
-    def get_net(descr, dims, seed, netTypes=None):
+    def get_net(descr, dims, seed):
 
         net = netTypes[descr["type"]].partial(**descr["parameters"])
         _, params = net.init_by_shape(random.PRNGKey(seed),dims)
         return nn.Model(net,params)
 
-    get_real_net=partial(get_net, netTypes=netTypesReal)
-    get_cpx_net=partial(get_net, netTypes=netTypesCpx)
-
 
     if "actFun" in descr["net1"]["parameters"]:
-
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
     if descr["net1"]["type"][-3:] == "sym":
         # Generate orbit of 1D translations for RNNsym net
         L = descr["net1"]["parameters"]["L"]
         descr["net1"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
-    if descr["net2"]["type"][-3:] == "sym":
-        # Generate orbit of 1D translations for RNNsym net
-        L = descr["net2"]["parameters"]["L"]
-        descr["net2"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
+    if "net2" in descr:
+        if descr["net2"]["type"][-3:] == "sym":
+            # Generate orbit of 1D translations for RNNsym net
+            L = descr["net2"]["parameters"]["L"]
+            descr["net2"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
+
 
     if not "net2" in descr:
 
-        model = get_cpx_net(descr["net1"], dims, seed)
+        model = get_net(descr["net1"], dims, seed)
     
         return jVMC.vqs.NQS(model, batchSize=descr["gradient_batch_size"])
 
@@ -90,8 +87,8 @@ def init_net(descr, dims, seed=0):
 
             descr["net2"]["parameters"]["actFun"] = get_activation_functions(descr["net2"]["parameters"]["actFun"])
         
-        model1 = get_real_net(descr["net1"], dims, seed)
-        model2 = get_real_net(descr["net2"], dims, seed)
+        model1 = get_net(descr["net1"], dims, seed)
+        model2 = get_net(descr["net2"], dims, seed)
 
         return jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"])
 
