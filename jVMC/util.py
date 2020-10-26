@@ -224,7 +224,7 @@ class OutputManager:
                 f[self.currentGroup+"/"+groupname+"/"+key][-1] = value
 
 
-    def get_network_checkpoint(self, time):
+    def get_network_checkpoint(self, time=-1, idx=-1):
         
         groupname="network_checkpoints"
         key = "checkpoints"
@@ -236,8 +236,8 @@ class OutputManager:
             if time < 0:
 
                 with h5py.File(self.fn, "r") as f:
-                    weights = f[self.currentGroup+"/"+groupname+"/"+key][-1]
-                    time = f[self.currentGroup+"/"+groupname+"/times"][-1]
+                    weights = f[self.currentGroup+"/"+groupname+"/"+key][idx]
+                    time = f[self.currentGroup+"/"+groupname+"/times"][idx]
         
             mpi.comm.bcast(time)
 

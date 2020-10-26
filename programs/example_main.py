@@ -241,10 +241,14 @@ else:
 outp.print("** Time evolution")
 outp.set_group("time_evolution")
 
+reim = 'imag'
+if "tdvp_make_real" in inp["time_evol"]:
+    reim = inp["time_evol"]["tdvp_make_real"]
+
 observables["energy"] = hamiltonian
 tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"], 
                                        svdTol=inp["time_evol"]["svd_tolerance"],
-                                       rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
+                                       rhsPrefactor=1.j, diagonalShift=0., makeReal=reim)
 
 def norm_fun(v, df=lambda x:x):
     return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
