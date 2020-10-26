@@ -1,0 +1,50 @@
+{
+    "general" : {
+        "working_directory" : "./data/dev/",
+        "data_output" : "data.hdf5",
+        "append_data" : false
+    },
+    "system" : {
+        "L" : 6,
+        "J0" : 0.0,
+        "hx0" : -2.0,
+        "hz0" : -0.0,
+        "J" : -1.0,
+        "hx" : -1.0
+    },
+    "sampler" : {
+        "type" : "exact",
+        "numSamples" : 10000,
+        "numChains" : 75,
+        "num_thermalization_sweeps": 20,
+        "seed": 1234
+    },
+    "gs_search" : {
+        "num_steps" : 200,
+        "convergence_variance" : 1e-6,
+        "init_regularizer" : 5
+    },
+    "time_evol" : {
+        "t_init" : 0.0,
+        "t_final" : 2.0,
+        "time_step" : 1e-3,
+        "snr_tolerance" : 1,
+        "svd_tolerance" : 1e-8,
+        "stepper_tolerance" : 1e-4
+    },
+    "network" : {
+        "gradient_batch_size" : 500,
+        "net1" : {
+            "type" : "RNNsym",
+            "parameters" : {"L": 6, "depth": 2, "hiddenSize":10, "actFun":"elu"}
+        },
+        "net2" : {
+            "type" : "PhaseRNNsym",
+            "parameters" : {"L": 6, "hiddenSize":10, "actFun":"elu"}
+        },
+        "net3" : {
+            "type" : "CNN",
+            "parameters" : {"channels":[3,2], "F":[4], "bias":true, "actFun":["poly6","elu"]}
+        }
+    }
+}

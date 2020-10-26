@@ -199,14 +199,14 @@ class RNNCellStack(nn.Module):
 
     def apply(self, carry, x, hiddenSize=10, outDim=2, actFun=nn.elu, initScale=1.0):
 
-        def scan_fun(r,c):
-            
-            newC, newR = RNNCell(c, r, hiddenSize=hiddenSize, outDim=outDim, actFun=actFun, initScale=initScale)
-            return newR, newC
+        newCarry = [None] * carry.shape[0]
+        
+        newR = x
+        # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
+        for j,c in enumerate(carry):
+            newCarry[j], newR = RNNCell(c, newR, hiddenSize=hiddenSize, outDim=outDim, actFun=actFun, initScale=initScale)
 
-        out, newCarry = jax.lax.scan(scan_fun, x, carry)
-
-        return newCarry, out
+        return jnp.array(newCarry), newR
 
 # ** end class RNNCellStack
 
