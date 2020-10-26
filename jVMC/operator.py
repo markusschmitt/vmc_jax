@@ -10,6 +10,8 @@ import jVMC.global_defs as global_defs
 
 import jVMC.global_defs as global_defs
 
+opDtype = global_defs.tCpx
+
 # Common operators
 def Id(idx=0,lDim=2):
     """Returns an identity operator
@@ -25,7 +27,7 @@ def Id(idx=0,lDim=2):
     """
 
     return {'idx': idx, 'map': jnp.array([j for j in range(lDim)],dtype=np.int32),
-            'matEls':jnp.array([1. for j in range(lDim)],dtype=global_defs.tReal), 'diag': True}
+            'matEls':jnp.array([1. for j in range(lDim)],dtype=opDtype), 'diag': True}
 
 
 def Sx(idx):
@@ -40,7 +42,7 @@ def Sx(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,1.0],dtype=global_defs.tReal), 'diag': False}
+    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,1.0],dtype=opDtype), 'diag': False}
 
 
 def Sz(idx):
@@ -55,7 +57,7 @@ def Sz(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([0,1],dtype=np.int32), 'matEls':jnp.array([-1.0,1.0],dtype=global_defs.tReal), 'diag': True}
+    return {'idx': idx, 'map': jnp.array([0,1],dtype=np.int32), 'matEls':jnp.array([-1.0,1.0],dtype=opDtype), 'diag': True}
 
 
 def Sp(idx):
@@ -70,7 +72,7 @@ def Sp(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,0.0],dtype=global_defs.tReal), 'diag': False}
+    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,0.0],dtype=opDtype), 'diag': False}
 
 
 def Sm(idx):
@@ -85,7 +87,7 @@ def Sm(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([0.0,1.0],dtype=global_defs.tReal), 'diag': False}
+    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([0.0,1.0],dtype=opDtype), 'diag': False}
 
 
 import copy
@@ -206,7 +208,7 @@ class Operator:
 
         self.idxC = jnp.array(self.idx,dtype=np.int32)
         self.mapC = jnp.array(self.map,dtype=np.int32)
-        self.matElsC = jnp.array(self.matEls,dtype=global_defs.tReal)
+        self.matElsC = jnp.array(self.matEls,dtype=opDtype)
         self.diag = jnp.array(self.diag, dtype=np.int32)
 
         self.compiled=True
@@ -216,7 +218,7 @@ class Operator:
 
         numInStates = s.shape[0]
         numOps = idxC.shape[0]
-        matEl=jnp.ones((numOps,numInStates),dtype=global_defs.tReal)
+        matEl=jnp.ones((numOps,numInStates),dtype=matElsC.dtype)
         sp=jnp.vstack([[s]]*numOps)
 
         # vmap over operators
@@ -225,7 +227,7 @@ class Operator:
         if len(diag) > 1:
             matEl = jax.ops.index_update(matEl, jax.ops.index[diag[0],:], jnp.sum(matEl[diag], axis=0))
             matEl = jax.ops.index_update(matEl, jax.ops.index[diag[1:],:],
-                                         jnp.zeros((diag.shape[0]-1,matEl.shape[1]), dtype=global_defs.tReal))
+                                         jnp.zeros((diag.shape[0]-1,matEl.shape[1]), dtype=matElsC.dtype))
 
         return sp, matEl
 
@@ -248,7 +250,7 @@ class Operator:
     def set_zero_to_zero(self, m, idx, numNonzero):
 
         def scan_fun(c, x):
-            out = jax.lax.cond(c[1]<c[0], lambda z: z[0], lambda z: z[1], (x, 0.))
+            out = jax.lax.cond(c[1]<c[0], lambda z: z[0], lambda z: z[1], (x, 0.*x)) # use 0.*x to get correct data type
             newCarry = (c[0], c[1]+1)
             return newCarry, out
 
