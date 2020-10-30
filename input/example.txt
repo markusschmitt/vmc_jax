@@ -34,13 +34,9 @@
     },
     "network" : {
         "gradient_batch_size" : 500,
-        "net7" : {
+        "net1" : {
             "type" : "RNNsym",
             "parameters" : {"L": 6, "depth": 2, "hiddenSize":10, "actFun":"elu"}
-        },
-        "net1" : {
-            "type" : "LSTM",
-            "parameters" : {"L": 6, "hiddenSize":10, "actFun":"elu"}
         },
         "net2" : {
             "type" : "PhaseRNNsym",
