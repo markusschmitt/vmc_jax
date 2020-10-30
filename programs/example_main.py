@@ -58,6 +58,7 @@ def init_net(descr, dims, seed=0):
 
         net = netTypes[descr["type"]].partial(**descr["parameters"])
         _, params = net.init_by_shape(random.PRNGKey(seed),dims)
+        print(params)
         return nn.Model(net,params)
 
 

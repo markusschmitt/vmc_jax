@@ -299,7 +299,10 @@ class LSTMCell(nn.Module):
 
     def apply(self, carry, x, inputDim=2, actFun=nn.elu):
 
-        newCarry, out = nn.LSTMCell(carry, x)
+        newCarry, out = nn.LSTMCell(carry, x,
+                                    kernel_init=partial(flax.nn.linear.default_kernel_init, dtype=global_defs.tReal),
+                                    recurrent_kernel_init=partial(flax.nn.initializers.orthogonal(), dtype=global_defs.tReal),
+                                    bias_init=partial(flax.nn.initializers.zeros, dtype=global_defs.tReal))
 
         out = actFun( nn.Dense(out, features=inputDim) )
 
