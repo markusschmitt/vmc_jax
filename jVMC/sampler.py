@@ -129,7 +129,7 @@ class MCMCSampler:
         return mpi.globNumSamples
 
 
-    def sample(self, net, numSamples=None):
+    def sample(self, net, numSamples=None, multipleOf=1):
         """Generate random samples from wave function.
 
         If supported by ``net``, direct sampling is peformed. Otherwise, MCMC is run \
@@ -158,24 +158,24 @@ class MCMCSampler:
 
         if net.is_generator:
 
-            configs = self._get_samples_gen(net, numSamples)
+            configs = self._get_samples_gen(net, numSamples, multipleOf)
 
             return configs, net(configs), None
 
 
-        configs, logPsi = self._get_samples_mcmc(net, numSamples)
+        configs, logPsi = self._get_samples_mcmc(net, numSamples, multipleOf)
 
         return configs, logPsi, None
 
 
-    def _get_samples_gen(self, net, numSamples):
+    def _get_samples_gen(self, net, numSamples, multipleOf=1):
         
         def dc():
             if global_defs.usePmap:
                 return global_defs.device_count()
             return 1
         
-        numSamples = mpi.distribute_sampling(numSamples, localDevices=dc())
+        numSamples = mpi.distribute_sampling(numSamples, localDevices=dc(), numChainsPerDevice=multipleOf)
         numSamplesStr = str(numSamples)
 
         # check whether _get_samples is already compiled for given number of samples
@@ -196,7 +196,7 @@ class MCMCSampler:
         return self._get_samples_gen_jitd[numSamplesStr](net.get_sampler_net(), numSamples, tmpKey)
 
 
-    def _get_samples_mcmc(self, net, numSamples):
+    def _get_samples_mcmc(self, net, numSamples, multipleOf=1):
 
         # Initialize sampling stuff
         self._mc_init(net)
@@ -206,7 +206,7 @@ class MCMCSampler:
                 return global_defs.device_count()
             return 1
 
-        numSamples = mpi.distribute_sampling(numSamples, localDevices=dc(), numChainsPerDevice=self.numChains)
+        numSamples = mpi.distribute_sampling(numSamples, localDevices=dc(), numChainsPerDevice=np.lcm(self.numChains,multipleOf))
         numSamplesStr = str(numSamples)
 
         # check whether _get_samples is already compiled for given number of samples
@@ -429,7 +429,7 @@ class ExactSampler:
             return p/nrm
 
 
-    def sample(self, net, numSamples=None):
+    def sample(self, net, numSamples=None, multipleOf=None):
         """Return all computational basis states.
 
         Sampling is automatically distributed accross MPI processes and available \

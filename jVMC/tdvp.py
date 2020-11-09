@@ -16,10 +16,6 @@ def imagFun(x):
     return 0.5 * ( x - jnp.conj(x) )
 
 
-#@partial(jax.pmap, in_axes=(0,None))
-#def subtract_helper(x,y):
-#    return x-y
-
 class TDVP:
 
     def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0.):
@@ -206,6 +202,8 @@ class TDVP:
         stop_timing(outp, "evaluate off-diagonal")
         Eloc = rhsArgs['hamiltonian'].get_O_loc(sampleLogPsi,sampleLogPsiOffd)
         stop_timing(outp, "compute Eloc")
+
+        #Eloc1 = rhsArgs['hamiltonian'].get_O_loc_batched(sampleConfigs, rhsArgs['psi'], sampleLogPsi, 1)
 
         # Evaluate gradients
         start_timing(outp, "compute gradients")
