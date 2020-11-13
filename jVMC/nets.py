@@ -262,7 +262,7 @@ class RNNsym(nn.Module):
     """Recurrent neural network with symmetries.
     """
 
-    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None):
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None, z2sym=False):
 
         self.rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, logProbFactor=logProbFactor, name='myRNN')
 
@@ -273,7 +273,12 @@ class RNNsym(nn.Module):
         def evaluate(x):
             return self.rnn(x)
 
-        logProbs = logProbFactor * jnp.log( jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(x)), axis=0) )
+        res = jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(x)), axis=0)
+
+        if z2sym:
+            res = 0.5 * (res + jnp.mean(jnp.exp((1./logProbFactor)*jax.vmap(evaluate)(1-x)), axis=0))
+
+        logProbs = logProbFactor * jnp.log( res )
 
         return logProbs
 
@@ -420,7 +425,7 @@ class PhaseRNNsym(nn.Module):
     """Recurrent neural network with symmetries.
     """
 
-    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, orbit=None):
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, orbit=None, z2sym=False):
 
         self.rnn = PhaseRNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
         
@@ -430,6 +435,9 @@ class PhaseRNNsym(nn.Module):
             return self.rnn(x)
 
         res = jnp.mean(jax.vmap(evaluate)(x), axis=0)
+
+        if z2sym:
+            res = 0.5 * (res + jnp.mean(jax.vmap(evaluate)(1-x), axis=0))
 
         return res
 

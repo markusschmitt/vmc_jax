@@ -13,8 +13,8 @@
         "hx" : -1.0
     },
     "sampler" : {
-        "type" : "MC",
-        "numSamples" : 400000,
+        "type" : "exact",
+        "numSamples" : 2000,
         "numChains" : 75,
         "num_thermalization_sweeps": 20,
         "seed": 1234
@@ -34,17 +34,19 @@
     },
     "network" : {
         "gradient_batch_size" : 500,
-        "net1" : {
+        "net1_" : {
             "type" : "RNNsym",
             "parameters" : {"L": 6, "depth": 2, "hiddenSize":10, "actFun":"elu"}
         },
-        "net2" : {
+        "net2_" : {
             "type" : "PhaseRNNsym",
             "parameters" : {"L": 6, "hiddenSize":10, "actFun":"elu"}
         },
         "net3" : {
             "type" : "CNN",
             "parameters" : {"channels":[3,2], "F":[4], "bias":true, "actFun":["poly6","elu"]}
-        }
+        },
+        "net1" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 1, "hiddenSize":10, "actFun":"tanh", "z2sym":true} },
+        "net2" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 1, "hiddenSize":10, "actFun":"elu", "z2sym":true} }
     }
 }
