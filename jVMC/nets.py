@@ -283,7 +283,7 @@ class RNNsym(nn.Module):
         return logProbs
 
     @nn.module_method
-    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None):
+    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None, z2sym=False):
         
         rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, logProbFactor=logProbFactor, name='myRNN')
 
