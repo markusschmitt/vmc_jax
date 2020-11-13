@@ -138,6 +138,11 @@ class RNNsym(nn.Module):
 
         configs = jax.vmap(lambda k,o,s: jnp.dot(o[k], s), in_axes=(0,None,0))(orbitIdx, orbit, configs)
 
+        if z2sym:
+            key3, _ = jax.random.split(key2)
+            flipChoice = jax.random.choice(key3, 2, shape=(batchSize,))
+            configs = jax.vmap(lambda b,c: jax.lax.cond(b==1, lambda x: 1-x, lambda x: x, c), in_axes=(0,0))(flipChoice, configs)
+
         return configs
 
 # ** end class RNNsym
