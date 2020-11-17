@@ -13,7 +13,7 @@
         "hx" : -1.0
     },
     "sampler" : {
-        "type" : "exact",
+        "type" : "MC",
         "numSamples" : 2000,
         "numChains" : 75,
         "num_thermalization_sweeps": 20,
