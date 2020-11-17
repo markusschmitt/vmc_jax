@@ -115,7 +115,7 @@ class TestMCMC(unittest.TestCase):
         smcInt = jax.vmap(state_to_int)(smc)
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
 
-        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1.1e-3 )
     
 
     def test_autoregressive_sampling_with_symmetries(self):

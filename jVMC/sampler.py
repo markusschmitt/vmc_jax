@@ -116,6 +116,19 @@ class MCMCSampler:
         self.numSamples = N
 
 
+    def set_random_key(self, key):
+        """Set key for pseudo random number generator.
+
+        Args:
+        
+        * ``key``: Key (jax.random.PRNGKey)
+        """
+        
+        self.key = key
+        if global_defs.usePmap:
+            self.key = jax.random.split(self.key, global_defs.device_count())
+
+
     def get_last_number_of_samples(self):
         """Return last number of samples.
 
