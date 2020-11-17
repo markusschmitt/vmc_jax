@@ -49,7 +49,7 @@ def measure(observables, psi, sampler, numSamples=None):
             else:
                 tmpMeans.append( mpi.global_mean(Oloc) )
                 tmpVariances.append( mpi.global_variance(Oloc) )
-                tmpErrors.append( tmpVariances[-1] / jnp.sqrt(sampler.get_last_number_of_samples()) )
+                tmpErrors.append( jnp.sqrt(tmpVariances[-1]) / jnp.sqrt(sampler.get_last_number_of_samples()) )
 
         result[name] = {}
         result[name]["mean"] = jnp.real(jnp.array(tmpMeans))
