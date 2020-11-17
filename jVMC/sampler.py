@@ -91,7 +91,7 @@ class MCMCSampler:
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        self.key = key
+        self.key = jax.random.split(key, mpi.commSize)[mpi.rank]
         if global_defs.usePmap:
             self.key = jax.random.split(self.key, global_defs.device_count())
         self.thermalizationSweeps = thermalizationSweeps
