@@ -46,7 +46,7 @@
             "type" : "CNN",
             "parameters" : {"channels":[3,2], "F":[4], "bias":true, "actFun":["poly6","elu"]}
         },
-        "net1" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 1, "hiddenSize":10, "actFun":"tanh", "z2sym":true} },
-        "net2" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 1, "hiddenSize":10, "actFun":"elu", "z2sym":true} }
+        "net1" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 2, "hiddenSize":10, "actFun":"tanh", "z2sym":true} },
+        "net2" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 2, "hiddenSize":10, "actFun":"elu", "z2sym":true} }
     }
 }

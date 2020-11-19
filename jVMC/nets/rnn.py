@@ -40,14 +40,20 @@ class RNNCell(nn.Module):
 
 class RNNCellStack(nn.Module):
 
-    def apply(self, carry, x, hiddenSize=10, outDim=2, actFun=nn.elu, initScale=1.0):
+    def apply(self, carry, x, hiddenSize=10, outDim=2, passDim=None, actFun=nn.elu, initScale=1.0):
+
+        if passDim is None:
+            passDim = outDim
+
+        outDims = [passDim] * carry.shape[0]
+        outDims[-1] = outDim
 
         newCarry = [None] * carry.shape[0]
         
         newR = x
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j,c in enumerate(carry):
-            newCarry[j], newR = RNNCell(c, newR, hiddenSize=hiddenSize, outDim=outDim, actFun=actFun, initScale=initScale)
+            newCarry[j], newR = RNNCell(c, newR, hiddenSize=hiddenSize, outDim=outDims[j], actFun=actFun, initScale=initScale)
 
         return jnp.array(newCarry), newR
 
@@ -58,9 +64,12 @@ class RNN(nn.Module):
     """Recurrent neural network.
     """
 
-    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, passDim=None, actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
         
-        rnnCell = RNNCellStack.shared(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale, name="myCell")
+        if passDim is None:
+            passDim = inputDim
+
+        rnnCell = RNNCellStack.shared(hiddenSize=hiddenSize, outDim=inputDim, passDim=passDim, actFun=actFun, initScale=initScale, name="myCell")
 
         state = jnp.zeros((depth, hiddenSize))
 
@@ -76,11 +85,14 @@ class RNN(nn.Module):
 
 
     @nn.module_method
-    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,passDim=None,actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
         """sampler
         """
         
-        rnnCell = RNNCellStack.shared(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale, name="myCell")
+        if passDim is None:
+            passDim = inputDim
+        
+        rnnCell = RNNCellStack.shared(hiddenSize=hiddenSize, outDim=inputDim, passDim=passDim, actFun=actFun, initScale=initScale, name="myCell")
 
         outputs = jnp.asarray(np.zeros((batchSize,L,L)))
         
@@ -105,9 +117,12 @@ class RNNsym(nn.Module):
     """Recurrent neural network with symmetries.
     """
 
-    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None, z2sym=False):
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, passDim=None, actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None, z2sym=False):
 
-        self.rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, logProbFactor=logProbFactor, name='myRNN')
+        self.rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth,\
+                                inputDim=inputDim, passDim=passDim,\
+                                actFun=actFun, initScale=initScale,\
+                                logProbFactor=logProbFactor, name='myRNN')
 
         self.orbit = orbit
         
@@ -126,9 +141,12 @@ class RNNsym(nn.Module):
         return logProbs
 
     @nn.module_method
-    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None, z2sym=False):
+    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,passDim=None,actFun=nn.elu, initScale=1.0, logProbFactor=0.5, orbit=None, z2sym=False):
         
-        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, logProbFactor=logProbFactor, name='myRNN')
+        rnn = RNN.shared(L=L, hiddenSize=hiddenSize, depth=depth,\
+                                inputDim=inputDim, passDim=passDim,\
+                                actFun=actFun, initScale=initScale,\
+                                logProbFactor=logProbFactor, name='myRNN')
 
         key1, key2 = jax.random.split(key)
 
@@ -155,7 +173,10 @@ class PhaseRNN(nn.Module):
 
     def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0):
         
-        rnnCell = RNNCellStack.partial(hiddenSize=hiddenSize, outDim=inputDim, actFun=actFun, initScale=initScale)
+        if passDim is None:
+            passDim = inputDim
+        
+        rnnCell = RNNCellStack.partial(hiddenSize=hiddenSize, outDim=inputDim, passDim=passDim, actFun=actFun, initScale=initScale)
 
         state = jnp.zeros((depth, hiddenSize))
 
@@ -178,9 +199,9 @@ class PhaseRNNsym(nn.Module):
     """Recurrent neural network with symmetries.
     """
 
-    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, actFun=nn.elu, initScale=1.0, orbit=None, z2sym=False):
+    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, passDim=None, actFun=nn.elu, initScale=1.0, orbit=None, z2sym=False):
 
-        self.rnn = PhaseRNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, actFun=actFun, initScale=initScale, name='myRNN')
+        self.rnn = PhaseRNN.shared(L=L, hiddenSize=hiddenSize, depth=depth, inputDim=inputDim, passDim=passDim, actFun=actFun, initScale=initScale, name='myRNN')
         
         x = jax.vmap(lambda o,s: jnp.dot(o,s), in_axes=(0,None))(orbit, x)
 

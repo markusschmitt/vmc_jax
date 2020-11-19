@@ -3,6 +3,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 import flax
 from flax import nn
+from flax import linen
 import jax.numpy as jnp
 
 import jVMC.global_defs as global_defs
