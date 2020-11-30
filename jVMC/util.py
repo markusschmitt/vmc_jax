@@ -191,7 +191,7 @@ class OutputManager:
         if group != "/":
             self.currentGroup = "/" + group
 
-        if mpi.rank == 0:                
+        if mpi.rank == 0:  
             with h5py.File(self.fn, self.append) as f:
                 if not self.currentGroup in f:
                     f.create_group(self.currentGroup)

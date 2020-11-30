@@ -22,75 +22,12 @@ import json
 
 import jVMC
 import jVMC.operator as op
-from jVMC.util import measure, ground_state_search, OutputManager
+from jVMC.util import measure, ground_state_search, OutputManager, init_net
 import jVMC.mpi_wrapper as mpi
 import jVMC.activation_functions as act_funs
 import jVMC.global_defs as global_defs
 
 from functools import partial
-
-def init_net(descr, dims, seed=0):
-
-    def get_activation_functions(actFuns):
-
-        if type(actFuns) is list:
-            return [act_funs.activationFunctions[fn] for fn in actFuns] 
-        
-        return act_funs.activationFunctions[actFuns]
-   
- 
-    netTypes = {
-        "RBM" : jVMC.nets.RBM,
-        "FFN" : jVMC.nets.FFN,
-        "CNN" : jVMC.nets.CNN,
-        "LSTM" : jVMC.nets.LSTM,
-        "LSTMsym" : jVMC.nets.LSTMsym,
-        "PhaseRNN" : jVMC.nets.RNN,
-        "PhaseRNNsym" : jVMC.nets.RNNsym,
-        "CpxRNN" : jVMC.nets.CpxRNN,
-        "RNN" : jVMC.nets.RNN,
-        "RNNsym" : jVMC.nets.RNNsym,
-        "CpxRBM" : jVMC.nets.CpxRBM,
-        "CpxCNN" : jVMC.nets.CpxCNN
-    }
-
-    def get_net(descr, dims, seed):
-
-        net = netTypes[descr["type"]].partial(**descr["parameters"])
-        _, params = net.init_by_shape(random.PRNGKey(seed),dims)
-        return nn.Model(net,params)
-
-
-    if "actFun" in descr["net1"]["parameters"]:
-        descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
-
-    if descr["net1"]["type"][-3:] == "sym":
-        # Generate orbit of 1D translations for RNNsym net
-        L = descr["net1"]["parameters"]["L"]
-        descr["net1"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
-    if "net2" in descr:
-        if descr["net2"]["type"][-3:] == "sym":
-            # Generate orbit of 1D translations for RNNsym net
-            L = descr["net2"]["parameters"]["L"]
-            descr["net2"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
-
-
-    if not "net2" in descr:
-
-        model = get_net(descr["net1"], dims, seed)
-    
-        return jVMC.vqs.NQS(model, batchSize=descr["gradient_batch_size"])
-
-    else:
-
-        if "actFun" in descr["net2"]["parameters"]:
-
-            descr["net2"]["parameters"]["actFun"] = get_activation_functions(descr["net2"]["parameters"]["actFun"])
-        
-        model1 = get_net(descr["net1"], dims, seed)
-        model2 = get_net(descr["net2"], dims, seed)
-
-        return jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"])
 
 
 inp = None
@@ -99,43 +36,10 @@ if len(sys.argv) > 1:
     with open(sys.argv[1],'r') as f:
         inp = json.load(f)
 else:
-    # otherwise, set up default input dict
-    inp = {}
-    inp["general"] = {
-        "working_directory": "./data/devel/",
-        "data_output" : "data.hdf5",
-        "append_data" : False
-    }
-    inp["system"] = {
-        "L" : 4,
-        "J0" : -1.0,
-        "hx0" : -2.5,
-        "J" : -1.0,
-        "hx" : -0.3
-    }
 
-    inp["sampler"] = {
-        "type" : "exact",
-        "numSamples" : 50000,
-        "numChains" : 500,
-        "num_thermalization_sweeps": 20,
-        "seed": 1234
-    }
-    
-    inp["gs_search"] = {
-        "num_steps" : 10,
-        "init_regularizer" : 5
-    }
-    
-    inp["time_evol"] = {
-        "t_init": 0.,
-        "t_final": 1.,
-        "time_step": 1e-3,
-        "snr_tolerance": 5,
-        "svd_tolerance": 1e-6,
-        "stepper_tolerance": 1e-4
-    }
-
+   if mpi.rank == 0:
+        print("Error: No input file given.")
+        exit() 
 
 wdir=inp["general"]["working_directory"]
 if mpi.rank == 0:
