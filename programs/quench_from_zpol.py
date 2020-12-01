@@ -29,6 +29,44 @@ import jVMC.global_defs as global_defs
 
 from functools import partial
 
+class ZPolShortTime(nn.Module):
+
+    def apply(self, s, J, hx, hz, DeltaT):
+
+        N = s.shape[0]
+        nUp = jnp.sum(s)
+        nDown = N - nUp
+
+        ZZ = jnp.sum((2*s-1) * (2*jnp.roll(s,1)-1))
+
+        dummyParam = self.param("dummy", (1,), jax.random.normal)
+
+        return 1.j * 0.5 * DeltaT * (J*(N-ZZ)+hz*(N-(nUp-nDown))) + nUp * jnp.log(jnp.cos(hx*DeltaT)) + nDown * jnp.log(-1.j*jnp.sin(hx*DeltaT))
+
+# ** end class ZPolShortTime
+
+def first_step(params, psi, hx, hz, dt, sampler, L):
+
+    net = ZPolShortTime.partial(J=-1.0, hx=hx, hz=hz, DeltaT=dt)
+    _, params = net.init_by_shape(random.PRNGKey(123),[(L,)])
+    psiTarget = jVMC.vqs.NQS(nn.Model(net,params), batchSize=1000)
+
+    # Get sample
+    sampleConfigs, sampleLogPsi, p =  sampler.sample(psiTarget)
+    
+    for k in range(1500):
+        obs1 = jnp.exp(psi(sampleConfigs) - sampleLogPsi)
+        gradDenom = mpi.global_mean(obs1, p)
+        gradNum = mpi.global_mean(jax.pmap(lambda a,b: a*b[:,None])(psi.gradients(sampleConfigs), obs1), p)
+        grad = -2. * jnp.real(gradNum / gradDenom)
+
+        psi.update_parameters(-0.5 * grad)
+
+        if k%10==0:
+            print(gradDenom)
+            if gradDenom > 0.94:
+                break
+
 
 inp = None
 if len(sys.argv) > 1:
@@ -165,6 +203,9 @@ def norm_fun(v, df=lambda x:x):
 stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
 
 tmax=inp["time_evol"]["t_final"]
+
+first_step(psi.get_parameters(), psi, inp["system"]["hx"], hz, 0.1, sampler, L)
+t+=0.1
 
 if not fromCheckpoint:
     outp.start_timing("measure observables")
