@@ -55,7 +55,7 @@ def first_step(params, psi, hx, hz, dt, sampler, L):
     sampleConfigs, sampleLogPsi, p =  sampler.sample(psiTarget)
     
     for k in range(1500):
-        obs1 = jnp.exp(psi(sampleConfigs) - sampleLogPsi)
+        obs1 = jax.pmap(lambda x,y: jnp.exp(x-y))(psi(sampleConfigs), sampleLogPsi)
         gradDenom = mpi.global_mean(obs1, p)
         gradNum = mpi.global_mean(jax.pmap(lambda a,b: a*b[:,None])(psi.gradients(sampleConfigs), obs1), p)
         grad = -2. * jnp.real(gradNum / gradDenom)
@@ -64,7 +64,7 @@ def first_step(params, psi, hx, hz, dt, sampler, L):
 
         if k%10==0:
             print(gradDenom)
-            if gradDenom > 0.94:
+            if gradDenom > 0.96:
                 break
 
 
