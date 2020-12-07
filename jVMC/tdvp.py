@@ -131,7 +131,12 @@ class TDVP:
     
     def transform_to_eigenbasis(self, S, F, EOdata):
        
-        self.ev, self.V = jnp.linalg.eigh(S)
+        npS = np.array(S)
+        npEv, npV = np.linalg.eigh(npS)
+        self.ev = jnp.array(npEv)
+        self.V = jnp.array(npV)
+
+        #self.ev, self.V = jnp.linalg.eigh(S)
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
         EOdata = self.transform_EO(EOdata, self.V)
