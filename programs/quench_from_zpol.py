@@ -63,7 +63,8 @@ def first_step(params, psi, hx, hz, dt, sampler, L):
         psi.update_parameters(-0.5 * grad)
 
         if k%10==0:
-            print(gradDenom)
+            if mpi.rank == 0:
+                print(gradDenom)
             if gradDenom > 0.96:
                 break
 
