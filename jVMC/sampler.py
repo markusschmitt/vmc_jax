@@ -346,8 +346,8 @@ class ExactSampler:
 
         # jit'd member functions
         if global_defs.usePmap:
-            self._get_basis_ldim2_pmapd = global_defs.pmap_for_my_devices(self._get_basis_ldim2, in_axes=(0, 0))
-            self._get_basis_pmapd = global_defs.pmap_for_my_devices(self._get_basis, in_axes=(0, 0, None), static_broadcasted_argnums=2)
+            self._get_basis_ldim2_pmapd = global_defs.pmap_for_my_devices(self._get_basis_ldim2, in_axes=(0, 0,None), static_broadcasted_argnums=2)
+            self._get_basis_pmapd = global_defs.pmap_for_my_devices(self._get_basis, in_axes=(0, 0, None,None), static_broadcasted_argnums=(2,3))
             self._compute_probabilities_pmapd = global_defs.pmap_for_my_devices(self._compute_probabilities, in_axes=(0, None, 0))
             self._normalize_pmapd = global_defs.pmap_for_my_devices(self._normalize, in_axes=(0, None))
         else:
@@ -384,12 +384,12 @@ class ExactSampler:
             intReps = intReps.reshape((global_defs.device_count(), -1))
         self.basis = jnp.zeros(intReps.shape + (self.N,), dtype=np.int32)
         if self.lDim == 2:
-            self.basis = self._get_basis_ldim2_pmapd(self.basis, intReps)
+            self.basis = self._get_basis_ldim2_pmapd(self.basis, intReps, self.sampleShape)
         else:
-            self.basis = self._get_basis_pmapd(self.basis, intReps, self.lDim)
+            self.basis = self._get_basis_pmapd(self.basis, intReps, self.lDim, self.sampleShape)
 
 
-    def _get_basis_ldim2(self, states, intReps):
+    def _get_basis_ldim2(self, states, intReps, sampleShape):
 
         def make_state(state, intRep):
 
@@ -398,14 +398,14 @@ class ExactSampler:
 
             (state, _)=jax.lax.fori_loop(0,state.shape[0],for_fun,(state, intRep))
 
-            return state
+            return state.reshape(sampleShape)
 
         basis = jax.vmap(make_state, in_axes=(0,0))(states, intReps)
 
         return basis
 
 
-    def _get_basis(self, states, intReps, lDim):
+    def _get_basis(self, states, intReps, lDim, sampleShape):
 
         def make_state(state, intRep):
 
@@ -416,7 +416,7 @@ class ExactSampler:
 
             _, state = jax.lax.scan(scan_fun,intRep,state)
 
-            return state[::-1]
+            return state[::-1].reshape(sampleShape)
 
         basis = jax.vmap(make_state, in_axes=(0,0))(states,intReps)
 
