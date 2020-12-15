@@ -202,6 +202,51 @@ class TestMCMC(unittest.TestCase):
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
 
         self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
+    
+
+    def test_autoregressive_sampling_with_rnn2d(self):
+
+        L=2
+
+        # Set up variational wave function
+        rnn = nets.RNN2D.partial( L=L, hiddenSize=5 )
+        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,L)] )
+        rnnModel = nn.Model(rnn,params)
+
+        psi = NQS((rnnModel,rnnModel))
+        
+        #s = jnp.array([[[[1,0,0],[1,1,1],[0,0,1]],
+        #                [[0,0,1],[0,1,1],[1,0,1]]]])
+        #print(psi(s))
+        ##print(rnnModel(s))
+        #exit()
+        
+        # Set up exact sampler
+        exactSampler=sampler.ExactSampler((L,L))
+        
+        # Set up MCMC sampler
+        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        
+        # Compute exact probabilities
+        _, logPsi, pex = exactSampler.sample(psi)
+
+        self.assertTrue(jnp.abs(jnp.sum(pex)-1.) < 1e-12)
+
+        numSamples=1000000
+        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+
+        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
+    
+        if global_defs.usePmap:
+            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+       
+        self.assertTrue( smc.shape[0] >= numSamples )
+        
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+        pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
+
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
 
 if __name__ == "__main__":
     unittest.main()
