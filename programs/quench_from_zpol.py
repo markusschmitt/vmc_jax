@@ -60,7 +60,7 @@ def first_step(params, psi, hx, hz, dt, sampler, L):
         gradNum = mpi.global_mean(jax.pmap(lambda a,b: a*b[:,None])(psi.gradients(sampleConfigs), obs1), p)
         grad = -2. * jnp.real(gradNum / gradDenom)
 
-        psi.update_parameters(-0.5 * grad)
+        psi.update_parameters(-0.05 * grad)
 
         if k%10==0:
             if mpi.rank == 0:
@@ -205,8 +205,9 @@ stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=
 
 tmax=inp["time_evol"]["t_final"]
 
-first_step(psi.get_parameters(), psi, inp["system"]["hx"], hz, 0.1, sampler, L)
-t+=0.1
+if not fromCheckpoint:
+    first_step(psi.get_parameters(), psi, inp["system"]["hx"], hz, 0.1, sampler, L)
+    t+=0.1
 
 if not fromCheckpoint:
     outp.start_timing("measure observables")
