@@ -130,16 +130,12 @@ class TDVP:
     
     
     def transform_to_eigenbasis(self, S, F, EOdata):
-       
-        npS = np.array(S)
-        npEv, npV = np.linalg.eigh(npS)
-        self.ev = jnp.array(npEv)
-        self.V = jnp.array(npV)
 
-        #self.ev, self.V = jnp.linalg.eigh(S)
+        self.ev, self.V = jnp.linalg.eigh(S)
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
         EOdata = self.transform_EO(EOdata, self.V)
+        EOdata.block_until_ready()
         self.rhoVar = mpi.global_variance(EOdata)
 
         self.snr = jnp.sqrt( jnp.abs( mpi.globNumSamples / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF)  - 1.) ) )
@@ -149,6 +145,7 @@ class TDVP:
 
         # Get TDVP equation from MC data
         self.S, F, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
+        F.block_until_ready()
 
         # Transform TDVP equation to eigenbasis
         self.transform_to_eigenbasis(self.S,F,Fdata)
@@ -243,5 +240,4 @@ class TDVP:
                 self.S0 = self.S
 
         return update
-
 
