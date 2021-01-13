@@ -111,9 +111,11 @@ def scal_opstr(a,op):
 
 
 def apply_fun(s,matEl,idx,sMap,matEls):
+    configShape = s.shape
+    s = s.ravel()
     matEl=matEl*matEls[s[idx]]
     s=jax.ops.index_update(s,jax.ops.index[idx],sMap[s[idx]])
-    return s,matEl
+    return s.reshape(configShape),matEl
 
 @jit
 def apply_multi(s,matEl,opIdx,opMap,opMatEls,diag):

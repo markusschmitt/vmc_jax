@@ -10,6 +10,8 @@ import jVMC.activation_functions as act_funs
 
 from functools import partial
 
+import jVMC.nets.initializers
+
 class CNN(nn.Module):
     """Convolutional neural network.
     """
@@ -58,7 +60,8 @@ class CpxCNN(nn.Module):
 
     def apply(self, x, F=[8], channels=[10], strides=[1], actFun=[act_funs.poly6,], bias=True):
       
-        initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+        #initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform", dtype=global_defs.tReal)
+        initFunction = jVMC.nets.initializers.cplx_variance_scaling
  
         # Set up padding for periodic boundary conditions 
         # Padding size must be 1 - filter diameter
@@ -87,4 +90,25 @@ class CpxCNN(nn.Module):
         
         return jnp.sum(x, axis=reduceDims) / nrm
 
-# ** end class CNN
+# ** end class CpxCNN
+
+
+class CpxCNNSym(nn.Module):
+    """Convolutional neural network with complex parameters including additional symmetries.
+    """
+
+    def apply(self, x, F=[8], channels=[10], strides=[1], actFun=[act_funs.poly6,], bias=True, orbit=None):
+
+        self.cnn = CpxCNN.shared(F=F, channels=channels, strides=strides, actFun=actFun, bias=bias)
+
+        inShape = x.shape
+        x = jax.vmap(lambda o,s: jnp.dot(o,s.ravel()).reshape(inShape), in_axes=(0,None))(orbit, x)
+
+        def evaluate(x):
+            return self.cnn(x)
+
+        res = jnp.mean(jax.vmap(evaluate)(x), axis=0)
+
+        return res
+
+# ** end class CpxCNNSym

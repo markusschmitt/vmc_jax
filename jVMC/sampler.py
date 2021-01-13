@@ -83,6 +83,8 @@ class MCMCSampler:
         * ``sweepSteps``: Number of proposed updates per sweep.
         """
 
+        self.sampleShape = sampleShape
+
         stateShape = (numChains,) + sampleShape
         if global_defs.usePmap:
             stateShape = (global_defs.device_count(),) + stateShape
@@ -226,22 +228,27 @@ class MCMCSampler:
         if not numSamplesStr in self._get_samples_jitd:
             if global_defs.usePmap:
                 self._get_samples_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(partial(self._get_samples, sweepFunction=self._sweep),
-                                                                    static_broadcasted_argnums=(1,2,3,9),
-                                                                    in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None))
+                                                                    static_broadcasted_argnums=(1,2,3,9,11),
+                                                                    in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None, None))
             else:
                 self._get_samples_jitd[numSamplesStr] = global_defs.jit_for_my_device(partial(self._get_samples, sweepFunction=self._sweep),
-                                                                    static_argnums=(1,2,3,9))
+                                                                    static_argnums=(1,2,3,9,11))
 
         (self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted), configs =\
             self._get_samples_jitd[numSamplesStr](net.get_sampler_net(), numSamples, self.thermalizationSweeps, self.sweepSteps,
                                                     self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted,
-                                                    self.updateProposer, self.updateProposerArg)
+                                                    self.updateProposer, self.updateProposerArg, self.sampleShape)
 
         #return configs, None
         return configs, net(configs)
 
 
-    def _get_samples(self, net, numSamples, thermSweeps, sweepSteps, states, logPsiSq, key, numProposed, numAccepted, updateProposer, updateProposerArg, sweepFunction=None):
+    def _get_samples(self, net, numSamples,
+                            thermSweeps, sweepSteps,
+                            states, logPsiSq, key, 
+                            numProposed, numAccepted,
+                            updateProposer, updateProposerArg,
+                            sampleShape, sweepFunction=None):
 
         # Thermalize
         states, logPsiSq, key, numProposed, numAccepted =\
@@ -257,7 +264,8 @@ class MCMCSampler:
 
         meta, configs = jax.lax.scan(scan_fun, (states, logPsiSq, key, numProposed, numAccepted), None, length=numSamples)
 
-        return meta, configs.reshape((configs.shape[0]*configs.shape[1], -1))
+        #return meta, configs.reshape((configs.shape[0]*configs.shape[1], -1))
+        return meta, configs.reshape((configs.shape[0]*configs.shape[1],) + sampleShape)
 
     def _sweep(self, states, logPsiSq, key, numProposed, numAccepted, net, numSteps, updateProposer, updateProposerArg):
         
