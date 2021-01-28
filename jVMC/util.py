@@ -321,7 +321,7 @@ class OutputManager:
 
     def write_error_data(self, name, data, mpiRank=0):
 
-        if mpi.rank == rank:
+        if mpi.rank == mpiRank:
             
             groupname="error_data"
 
@@ -330,6 +330,20 @@ class OutputManager:
                 if not groupname in f["/"]:
                     f.create_group("/"+groupname)
                 
+                f.create_dataset("/"+groupname+"/"+name, data=np.array(data))
+
+
+    def write_dataset(self, name, data, groupname="/", mpiRank=0):
+
+        if mpi.rank == mpiRank:
+            
+            with h5py.File(self.fn, "a") as f:
+
+                if not groupname == "/":
+                    if not groupname in f["/"]:
+                        f.create_group("/"+groupname)
+
+                print(data.shape)
                 f.create_dataset("/"+groupname+"/"+name, data=np.array(data))
 
 
