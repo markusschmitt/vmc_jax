@@ -193,6 +193,7 @@ wdir=inp["general"]["working_directory"]
 outp = jVMC.util.OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 L = inp["system"]["L"]
+N=L**2
 g = -inp["system"]["g"]
 inputShape=(L,L)
 
@@ -263,13 +264,16 @@ for n in range(inp["search"]["num_steps"]):
     delta=0.95*delta
     tdvpEquation.set_diagonal_shift(delta)
 
-    energy = jax.numpy.real(tdvpEquation.ElocMean0)/L
-    energyVariance = tdvpEquation.ElocVar0/L**2
+    energy = jax.numpy.real(tdvpEquation.ElocMean0)/N
+    energyVariance = tdvpEquation.ElocVar0/N**2
     outp.print("%d\t%f\t%f" % (n, energy, energyVariance))
     # Write network parameters
-    outp.write_network_checkpoint(n, psiOrtho.get_parameters())
+    outp.write_network_checkpoint(n, gsPsi.get_parameters())
     # Write observables
     outp.write_observables(n, energy={"mean":energy, "variance":energyVariance})
+
+    if energyVariance<inp["search"]["convergence_variance"]:
+        break
 
 np.savetxt(wdir+"gs_parameters.txt", np.array(gsPsi.get_parameters()))
 #gsPsi.set_parameters(jnp.array(np.loadtxt("tmp.txt"), dtype=global_defs.tReal))
@@ -280,7 +284,7 @@ np.savetxt(wdir+"gs_parameters.txt", np.array(gsPsi.get_parameters()))
 outp.set_group("excited_state")
 
 net1 = jVMC.nets.CpxCNNSym.partial(**netArgs)
-_, params = net1.init_by_shape(jax.random.PRNGKey(4321),[inputShape])
+_, params = net1.init_by_shape(jax.random.PRNGKey(3421),[inputShape])
 vsModel = flax.nn.Model(net1,params)
 psi = jVMC.vqs.NQS(vsModel) # Variational wave function
 
@@ -293,7 +297,7 @@ lbda, dLbda = get_lambda(vsLogPsi, gsLogPsi, vsGrads)
 
 psiOrtho = OrthoNQS(psi, gsPsi, lbda, dLbda, inputShape, batchSize=numChains, **netArgs) # Variational wave function
 
-delta=inp["search"]["init_regularizer"]
+delta=2*inp["search"]["init_regularizer"]
 for n in range(inp["search"]["num_steps"]):
 
     psi.set_parameters(psiOrtho.get_parameters())
@@ -307,13 +311,16 @@ for n in range(inp["search"]["num_steps"]):
     dp, _ = stepper.step(0, tdvpEquation, psiOrtho.get_parameters(), hamiltonian=hamiltonian, psi=psiOrtho, numSamples=None)
     psiOrtho.set_parameters(dp)
     
-    energy = jax.numpy.real(tdvpEquation.ElocMean0)/L
-    energyVariance = tdvpEquation.ElocVar0/L**2
+    energy = jax.numpy.real(tdvpEquation.ElocMean0)/N
+    energyVariance = tdvpEquation.ElocVar0/N**2
     outp.print("%d\t%f\t%f" % (n, energy, energyVariance))
     # Write network parameters
     outp.write_network_checkpoint(n, psiOrtho.get_parameters())
     # Write observables
     outp.write_observables(n, energy={"mean":energy, "variance":energyVariance})
+
+    if energyVariance<inp["search"]["convergence_variance"]:
+        break
         
     delta=0.95*delta
     tdvpEquation.set_diagonal_shift(delta)
@@ -321,6 +328,8 @@ for n in range(inp["search"]["num_steps"]):
     if (n+1)%10 == 0:
         # get new sample from GS
         gsSample, gsLogPsi, _ = sampler.sample(gsPsi)
+
+np.savetxt(wdir+"es_parameters.txt", np.array(psiOrtho.get_parameters()))
 
 
 #import numpy as np

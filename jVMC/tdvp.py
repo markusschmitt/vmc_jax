@@ -130,8 +130,20 @@ class TDVP:
     
     
     def transform_to_eigenbasis(self, S, F, EOdata):
+        
+        tmpS = np.array(S)
+        tmpEv, tmpV = np.linalg.eigh(tmpS)
+        self.ev = jnp.array(tmpEv)
+        self.V = jnp.array(tmpV)
 
-        self.ev, self.V = jnp.linalg.eigh(S)
+        #try:
+        #    self.ev, self.V = jnp.linalg.eigh(S)
+        #except RuntimeError:
+        #    self.outp.write_error_data("Smat_re", np.array(jnp.real(S)))
+        #    self.outp.write_error_data("Smat_im", np.array(jnp.imag(S)))
+        #    print("RuntimeError: jVMC/tdvp.py line 135; wrote Smat to output file.")
+        #    raise
+            
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
         EOdata = self.transform_EO(EOdata, self.V)
@@ -183,6 +195,7 @@ class TDVP:
         outp = None
         if "outp" in rhsArgs:
             outp = rhsArgs["outp"]
+        self.outp = outp
 
         def start_timing(outp, name):
             if outp is not None:

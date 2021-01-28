@@ -319,6 +319,20 @@ class OutputManager:
         return time, weights
 
 
+    def write_error_data(self, name, data, mpiRank=0):
+
+        if mpi.rank == rank:
+            
+            groupname="error_data"
+
+            with h5py.File(self.fn, "a") as f:
+                
+                if not groupname in f["/"]:
+                    f.create_group("/"+groupname)
+                
+                f.create_dataset("/"+groupname+"/"+name, data=np.array(data))
+
+
     def start_timing(self, name):
         
         if not name in self.timings:

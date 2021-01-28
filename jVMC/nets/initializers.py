@@ -18,4 +18,4 @@ def cplx_variance_scaling(rng, shape):
     for k in shape[:-2]:
         elems *= k
     w = jax.numpy.sqrt((shape[-1]+shape[-2]) * elems)
-    return (1./w) * unif(rng1,shape,dtype=global_defs.tReal)*jax.numpy.exp(1.j*unif(rng2,shape,dtype=global_defs.tReal))
+    return (1./w) * unif(rng1,shape,dtype=global_defs.tReal)*jax.numpy.exp(1.j*3.141593*unif(rng2,shape,dtype=global_defs.tReal))
