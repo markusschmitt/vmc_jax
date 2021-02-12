@@ -251,7 +251,7 @@ sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(inp["sampler"]["seed"]), jVMC
 # Set up TDVP
 delta=inp["search"]["init_regularizer"]
 tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=1.,
-                              svdTol=1e-8, diagonalShift=delta, makeReal='real')
+                              svdTol=1e-8, diagonalShift=delta, makeReal='real', diagonalizeOnDevice=False)
 
 stepper = jVMC.stepper.Euler(timeStep=1e-2) # ODE integrator
 
