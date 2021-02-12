@@ -3,10 +3,33 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. toctree::
+   :hidden:
+   
+   self
+
+.. toctree::
+   :hidden:
+   :maxdepth: 2
+   :caption: API documentation:
+
+   operator
+   vqs
+   nets
+   sampler
+
+.. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Examples:
+
+    examples
+
 `jVMC`: Versatile and performant variational Monte Carlo
 ========================================================
 
-This package provides a versatile and efficient implementation of variational
+This package, `available on GitHub <https://github.com/markusschmitt/vmc_jax>`_, 
+provides a versatile and efficient implementation of variational
 quantum Monte Carlo in Python. It utilizes Google's 
 `JAX <https://github.com/google/jax>`_ library to exploit the
 blessings of automatic differentiation and just-in-time compilation for
@@ -134,17 +157,6 @@ is crucial. This applies in particular to wave function evaluations. Therefore,
 any operation implemented in `jVMC` is performed on a batch of input data. This
 means that following the leading `device dimension`, any data arrays passed to or 
 obtained from the `jVMC` API have an additional `batch dimension`.
-
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-   operator
-   vqs
-   nets
-   sampler
-
 
 Indices and tables
 ==================
