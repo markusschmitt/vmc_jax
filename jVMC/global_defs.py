@@ -12,8 +12,12 @@ import jax
 from functools import partial
 
 usePmap = True
+try:
+    myDevice = jax.devices()[MPI.COMM_WORLD.Get_rank() % len(jax.devices())]
+    break
+except:
+    myDevice = jax.devices()[0]
 
-myDevice = jax.devices()[MPI.COMM_WORLD.Get_rank() % len(jax.devices())]
 myPmapDevices = jax.devices()#[myDevice]
 myDeviceCount = len(myPmapDevices)
 jit_for_my_device = partial(jax.jit, device=myDevice)
