@@ -5,7 +5,7 @@
         "append_data" : false
     },
     "system" : {
-        "L" : 6,
+        "L" : 10,
         "J0" : -1.0,
         "hx0" : -0.0,
         "hz0" : -1.0,
@@ -14,8 +14,8 @@
         "hz" : -0.5
     },
     "sampler" : {
-        "type" : "exact",
-        "numSamples" : 2000,
+        "type" : "MC",
+        "numSamples" : 10000,
         "numChains" : 50,
         "num_thermalization_sweeps": 20,
         "seed": 1234
@@ -35,19 +35,7 @@
     },
     "network" : {
         "gradient_batch_size" : 500,
-        "net1_" : {
-            "type" : "RNNsym",
-            "parameters" : {"L": 6, "depth": 2, "hiddenSize":10, "actFun":"elu"}
-        },
-        "net2_" : {
-            "type" : "PhaseRNNsym",
-            "parameters" : {"L": 6, "hiddenSize":10, "actFun":"elu"}
-        },
-        "net3" : {
-            "type" : "CNN",
-            "parameters" : {"channels":[3,2], "F":[4], "bias":true, "actFun":["poly6","elu"]}
-        },
-        "net1" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 3, "hiddenSize":7, "passDim":5, "actFun":"tanh", "z2sym":false} },
-        "net2" : { "type" : "PhaseRNNsym", "parameters" : {"L": 6, "depth": 3, "hiddenSize":7, "passDim":5, "actFun":"elu", "z2sym":false} }
+        "net1" : { "type" : "RNNsym", "parameters" : {"L": 10, "depth": 3, "hiddenSize":7, "passDim":5, "actFun":"tanh", "z2sym":false} },
+        "net2" : { "type" : "PhaseRNNsym", "parameters" : {"L": 10, "depth": 3, "hiddenSize":7, "passDim":5, "actFun":"elu", "z2sym":false} }
     }
 }

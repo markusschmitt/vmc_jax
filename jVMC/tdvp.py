@@ -18,13 +18,15 @@ def imagFun(x):
 
 class TDVP:
 
-    def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0.):
+    def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., diagonalizeOnDevice=True):
 
         self.sampler = sampler
         self.snrTol = snrTol
         self.svdTol = svdTol
         self.diagonalShift = diagonalShift
         self.rhsPrefactor = rhsPrefactor
+
+        self.diagonalizeOnDevice = diagonalizeOnDevice
 
         self.makeReal = realFun
         if makeReal == 'imag':
@@ -107,12 +109,6 @@ class TDVP:
             
             self.F0 = mpi.global_sum(EOdata)
 
-            #work with complex matrix
-            #np = gradients.shape[1]//2
-            #EOdata = EOdata[:,:np]
-            #F = jnp.sum(EOdata, axis=0)
-            #S = jnp.matmul(jnp.conj(jnp.transpose(gradients[:,:np])), jnp.matmul(jnp.diag(p), gradients[:,:np]) )
-
         F = self.makeReal( self.F0 )
 
         self.S0 = mpi.global_covariance(gradients, p)
@@ -131,18 +127,16 @@ class TDVP:
     
     def transform_to_eigenbasis(self, S, F, EOdata):
         
-        tmpS = np.array(S)
-        tmpEv, tmpV = np.linalg.eigh(tmpS)
-        self.ev = jnp.array(tmpEv)
-        self.V = jnp.array(tmpV)
+        if self.diagonalizeOnDevice:
 
-        #try:
-        #    self.ev, self.V = jnp.linalg.eigh(S)
-        #except RuntimeError:
-        #    self.outp.write_error_data("Smat_re", np.array(jnp.real(S)))
-        #    self.outp.write_error_data("Smat_im", np.array(jnp.imag(S)))
-        #    print("RuntimeError: jVMC/tdvp.py line 135; wrote Smat to output file.")
-        #    raise
+            self.ev, self.V = jnp.linalg.eigh(S)
+
+        else:
+
+            tmpS = np.array(S)
+            tmpEv, tmpV = np.linalg.eigh(tmpS)
+            self.ev = jnp.array(tmpEv)
+            self.V = jnp.array(tmpV)
             
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)),F)
 
@@ -163,23 +157,18 @@ class TDVP:
         self.transform_to_eigenbasis(self.S,F,Fdata)
 
         # Discard eigenvalues below numerical precision
-        #self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > self.svdTol, 1./self.ev, 0.)
         self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1./self.ev, 0.)
+
+        # Set regularizer for singular value cutoff
         regularizer = 1. / (1. + ( self.svdTol / jnp.abs(self.ev / self.ev[-1]) )**6 )
 
         if p is None:
             # Construct a soft cutoff based on the SNR
             regularizer *= 1. / (1. + (self.snrTol / (0.5*(self.snr+self.snr[::-1])))**6 )
-        #else:
-        #    regularizer = jnp.ones(len(self.invEv))
 
         update = jnp.real( jnp.dot( self.V, (self.invEv * regularizer * self.VtF) ) )
 
         return update, jnp.linalg.norm(self.S.dot(update)-F)/jnp.linalg.norm(F)
-
-        #work with complex matrix
-        #update = jnp.dot( self.V, (self.invEv * (regularizer * self.VtF)) )
-        #return jnp.concatenate((jnp.real(update), jnp.imag(update)))
 
     
     def S_dot(self, v):
@@ -201,34 +190,30 @@ class TDVP:
             if outp is not None:
                 outp.start_timing(name)
 
-        def stop_timing(outp, name):
+        def stop_timing(outp, name, waitFor=None):
+            if waitFor is not None:
+                waitFor.block_until_ready()
             if outp is not None:
                 outp.stop_timing(name)
 
         # Get sample
         start_timing(outp, "sampling")
         sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['psi'], rhsArgs['numSamples'] )
-        stop_timing(outp, "sampling")
-
-        #sampleConfigs = jax.pmap(lambda x: jnp.concatenate([x, 1-x], axis=0))(sampleConfigs)
-        #sampleLogPsi = jax.pmap(lambda x: jnp.concatenate([x, x], axis=0))(sampleLogPsi)
-        #mpi.globNumSamples *= 2
+        stop_timing(outp, "sampling", waitFor=sampleConfigs)
 
         # Evaluate local energy
         start_timing(outp, "compute Eloc")
         sampleOffdConfigs, matEls = rhsArgs['hamiltonian'].get_s_primes(sampleConfigs)
         start_timing(outp, "evaluate off-diagonal")
         sampleLogPsiOffd = rhsArgs['psi'](sampleOffdConfigs)
-        stop_timing(outp, "evaluate off-diagonal")
+        stop_timing(outp, "evaluate off-diagonal", waitFor=sampleLogPsiOffd)
         Eloc = rhsArgs['hamiltonian'].get_O_loc(sampleLogPsi,sampleLogPsiOffd)
-        stop_timing(outp, "compute Eloc")
-
-        #Eloc1 = rhsArgs['hamiltonian'].get_O_loc_batched(sampleConfigs, rhsArgs['psi'], sampleLogPsi, 1)
+        stop_timing(outp, "compute Eloc", waitFor=Eloc)
 
         # Evaluate gradients
         start_timing(outp, "compute gradients")
         sampleGradients = rhsArgs['psi'].gradients(sampleConfigs)
-        stop_timing(outp, "compute gradients")
+        stop_timing(outp, "compute gradients", waitFor=sampleGradients)
 
         start_timing(outp, "solve TDVP eqn.")
         update, solverResidual = self.solve(Eloc, sampleGradients, p)
@@ -247,9 +232,6 @@ class TDVP:
                 self.solverResidual = solverResidual
                 self.snr0 = self.snr
                 self.ev0 = self.ev
-                #T = jnp.transpose(jnp.triu(jnp.ones((self.ev.shape[0],self.ev.shape[0]))) / self.ev)
-                #updates = self.V.dot(T * self.VtF)
-                #self.tdvpContrib = jnp.real(jnp.conj(exactUpdate) * (self.S0.dot(exactUpdate) - 2.*self.F0)) / self.ElocVar
                 self.S0 = self.S
 
         return update
