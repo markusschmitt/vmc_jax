@@ -1,3 +1,2 @@
 numpy
-mpi4py
 h5py

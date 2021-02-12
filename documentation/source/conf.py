@@ -11,10 +11,15 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 
+import mock
 
 import os
 import sys
 sys.path.append(os.path.abspath("../../"))
+ 
+MOCK_MODULES = ['mpi4py']
+for mod_name in MOCK_MODULES:
+sys.modules[mod_name] = mock.Mock()
 
 import jVMC
 import jVMC.operator as operator
