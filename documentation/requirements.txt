@@ -1,2 +1,4 @@
 numpy
 h5py
+jax
+jaxlib
