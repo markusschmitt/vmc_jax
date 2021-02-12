@@ -14,7 +14,6 @@ from functools import partial
 usePmap = True
 try:
     myDevice = jax.devices()[MPI.COMM_WORLD.Get_rank() % len(jax.devices())]
-    break
 except:
     myDevice = jax.devices()[0]
 
