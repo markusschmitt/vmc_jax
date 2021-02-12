@@ -225,7 +225,7 @@ netArgs = {
 
 # Initialize net
 net = jVMC.nets.CpxCNNSym.partial(**netArgs)
-_, params = net.init_by_shape(jax.random.PRNGKey(1234),[inputShape])
+_, params = net.init_by_shape(jax.random.PRNGKey(9876),[inputShape])
 gsModel = flax.nn.Model(net,params)
 
 gsPsi = jVMC.vqs.NQS(gsModel) # Variational wave function
@@ -257,7 +257,7 @@ stepper = jVMC.stepper.Euler(timeStep=1e-2) # ODE integrator
 
 for n in range(inp["search"]["num_steps"]):
     
-    gsSample, gsLogPsi, _ = sampler.sample(gsPsi)
+    #gsSample, gsLogPsi, _ = sampler.sample(gsPsi)
     dp, _ = stepper.step(0, tdvpEquation, gsPsi.get_parameters(), hamiltonian=hamiltonian, psi=gsPsi, numSamples=None)
     gsPsi.set_parameters(dp)
     
@@ -272,6 +272,9 @@ for n in range(inp["search"]["num_steps"]):
     # Write observables
     outp.write_observables(n, energy={"mean":energy, "variance":energyVariance})
 
+    # Write simulation meta data
+    outp.write_metadata(n,MC_acceptance_ratio=sampler.acceptance_ratio())
+
     if energyVariance<inp["search"]["convergence_variance"]:
         break
 
@@ -284,7 +287,7 @@ np.savetxt(wdir+"gs_parameters.txt", np.array(gsPsi.get_parameters()))
 outp.set_group("excited_state")
 
 net1 = jVMC.nets.CpxCNNSym.partial(**netArgs)
-_, params = net1.init_by_shape(jax.random.PRNGKey(3421),[inputShape])
+_, params = net1.init_by_shape(jax.random.PRNGKey(2143),[inputShape])
 vsModel = flax.nn.Model(net1,params)
 psi = jVMC.vqs.NQS(vsModel) # Variational wave function
 
@@ -318,6 +321,9 @@ for n in range(inp["search"]["num_steps"]):
     outp.write_network_checkpoint(n, psiOrtho.get_parameters())
     # Write observables
     outp.write_observables(n, energy={"mean":energy, "variance":energyVariance})
+    
+    # Write simulation meta data
+    outp.write_metadata(n,MC_acceptance_ratio=sampler.acceptance_ratio())
 
     if energyVariance<inp["search"]["convergence_variance"]:
         break
