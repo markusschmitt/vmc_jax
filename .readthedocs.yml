@@ -9,3 +9,7 @@ version: 2
 sphinx:
    configuration: documentation/source/conf_readthedocs.py
 
+python:
+   version: 3.8
+   install:
+   - requirements: documentation/requirements.txt
