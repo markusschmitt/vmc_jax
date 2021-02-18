@@ -32,7 +32,7 @@ class TestOperator(unittest.TestCase):
         key = random.PRNGKey(3)
         s = random.randint(key, (24,L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L)))
 
-        h=op.Operator()
+        h=op.BranchFreeOperator()
 
         h.add(op.scal_opstr(2., (op.Sp(0),)))
         h.add(op.scal_opstr(2., (op.Sp(1),)))

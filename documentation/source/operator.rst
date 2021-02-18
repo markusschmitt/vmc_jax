@@ -76,5 +76,12 @@ for this Hamiltonian can be obtained as::
 Detailed documentation
 ^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: jVMC.operator
+Abstract operator class
+-----------------------
+.. automodule:: jVMC.operator.base
+    :members:
+
+Branch-free operator class
+--------------------------
+.. automodule:: jVMC.operator.branch_free
     :members:

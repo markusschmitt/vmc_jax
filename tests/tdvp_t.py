@@ -42,7 +42,7 @@ class TestGsSearch(unittest.TestCase):
             psi = NQS(rbmModel)
 
             # Set up hamiltonian for ground state search
-            hamiltonianGS = op.Operator()
+            hamiltonianGS = op.BranchFreeOperator()
             for l in range(L):
                 hamiltonianGS.add( op.scal_opstr( J, ( op.Sz(l), op.Sz((l+1)%L) ) ) )
                 hamiltonianGS.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
@@ -81,13 +81,13 @@ class TestTimeEvolution(unittest.TestCase):
         psi.set_parameters(weights)
 
         # Set up hamiltonian for time evolution
-        hamiltonian = op.Operator()
+        hamiltonian = op.BranchFreeOperator()
         for l in range(L):
             hamiltonian.add( op.scal_opstr( J, ( op.Sz(l), op.Sz((l+1)%L) ) ) )
             hamiltonian.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
         
         # Set up ZZ observable
-        ZZ = op.Operator()
+        ZZ = op.BranchFreeOperator()
         for l in range(L):
             ZZ.add( ( op.Sz(l), op.Sz((l+1)%L) ) )
 
