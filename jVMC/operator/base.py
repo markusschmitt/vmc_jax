@@ -33,7 +33,7 @@ class Operator(metaclass=abc.ABCMeta):
 
     **Example:**
 
-        Here we define a `\hat\sigma_1^x` operator acting on lattice site `1` of a spin-1/2 chain.
+        Here we define a :math:`\hat\sigma_1^x` operator acting on lattice site :math:`1` of a spin-1/2 chain.
 
         .. literalinclude:: ../../examples/ex1_custom_operator.py
                 :linenos:
@@ -114,8 +114,7 @@ class Operator(metaclass=abc.ABCMeta):
         :math:`s'`.
 
         Arguments:
-
-        * ``s``: Array of computational basis states.
+            * ``s``: Array of computational basis states.
 
         Returns:
             An array holding `all` configurations :math:`s'` and the corresponding matrix elements :math:`O_{s,s'}`.
@@ -158,9 +157,8 @@ class Operator(metaclass=abc.ABCMeta):
         and :math:`\\ln\psi(s')`
 
         Arguments:
-
-        * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
-        * ``logPsiSP``: Logarithmic amplitudes :math:`\\ln(\psi(s'))`
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+            * ``logPsiSP``: Logarithmic amplitudes :math:`\\ln(\psi(s'))`
 
         Returns:
             :math:`O_{loc}(s)` for each configuration :math:`s`.
@@ -189,7 +187,7 @@ class Operator(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def compile():
-        """An implementation of this method should return a jit-able function that returns for a given \
+        """An implementation of this method should return a *jit-able* function that returns for a given \
             basis configuration ``s`` the connected configurations ``s'`` and the \
             corresponding matrix elements.
         """

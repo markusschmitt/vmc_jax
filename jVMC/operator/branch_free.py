@@ -96,10 +96,9 @@ import copy
 def scal_opstr(a,op):
     """Add prefactor to operator string
 
-    Args:
-
-    * ``a``: Scalar prefactor.
-    * ``op``: Operator string.
+    Arguments:
+        * ``a``: Scalar prefactor.
+        * ``op``: Operator string.
 
     Returns:
         Rescaled operator string. Effectively, the matrix elements of the first element of \
@@ -124,9 +123,8 @@ class BranchFreeOperator(Operator):
     def __init__(self,lDim=2):
         """Initialize ``Operator``.
 
-        Args:
-
-        * ``lDim``: Dimension of local Hilbert space.
+        Arguments:
+            * ``lDim``: Dimension of local Hilbert space.
         """
         self.ops=[]
         self.lDim=lDim
@@ -137,9 +135,8 @@ class BranchFreeOperator(Operator):
     def add(self,opDescr):
         """Add another operator to the operator
 
-        Args:
-
-        * ``opDescr``: Operator string to be added to the operator.
+        Arguments:
+            * ``opDescr``: Operator string to be added to the operator.
 
         """
 

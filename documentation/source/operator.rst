@@ -78,10 +78,10 @@ Detailed documentation
 
 Abstract operator class
 -----------------------
-.. automodule:: jVMC.operator.base
+.. autoclass:: jVMC.operator.Operator
     :members:
 
 Branch-free operator class
 --------------------------
-.. automodule:: jVMC.operator.branch_free
+.. autoclass:: jVMC.operator.BranchFreeOperator
     :members:
