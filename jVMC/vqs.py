@@ -24,15 +24,15 @@ from functools import partial
 import collections
 import time
 
-def flat_gradient(fun, arg):
-    gr = grad(lambda x, y: jnp.real(x(y)))(fun,arg)
+def flat_gradient(fun, params, arg):
+    gr = grad(lambda p,y: jnp.real(fun.apply(p,y)))(params,arg)
     gr = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), gr))[0]
-    gi = grad(lambda x, y: jnp.imag(x(y)))(fun,arg)
+    gi = grad(lambda p,y: jnp.imag(fun.apply(p,y)))(params,arg)
     gi = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), gi))[0]
     return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
 
-def flat_gradient_real(fun, arg):
-    g = grad(lambda x, y: jnp.real(x(y)))(fun,arg)
+def flat_gradient_real(fun, params, arg):
+    g = grad(lambda p,y: jnp.real(fun.apply(p,y)))(params,arg)
     g = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), g))[0]
     return jnp.concatenate(g)
 
@@ -70,7 +70,7 @@ class NQS:
             to "out of memory" issues.
     """
 
-    def __init__(self, nets, batchSize=1000):
+    def __init__(self, nets, parameters, batchSize=1000):
         """Initializes NQS class.
 
         This class can operate in two modi:
@@ -111,26 +111,28 @@ class NQS:
         if not isinstance(nets, collections.abc.Iterable):
    
             self.net = nets
+            self.parameters = parameters
  
-            if np.concatenate([p.ravel() for p in tree_flatten(self.net.params)[0]]).dtype == np.complex128:
+            if np.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]]).dtype == np.complex128:
                 self.holomorphic = True
             else:
                 self.flat_gradient_function = flat_gradient
 
-            self.paramShapes = [(p.size,p.shape) for p in tree_flatten(self.net.params)[0]]
-            self.netTreeDef = jax.tree_util.tree_structure(self.net.params)
-            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net.params)[0]]))
+            self.paramShapes = [(p.size,p.shape) for p in tree_flatten(self.parameters)[0]]
+            self.netTreeDef = jax.tree_util.tree_structure(self.parameters)
+            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters)[0]]))
 
         else:
 
             self.net = list(nets)
+            self.parameters = list(parameters)
 
             self.realNets = True
 
-            self.paramShapes = [ [(p.size,p.shape) for p in tree_flatten(net.params)[0]] for net in self.net ]
-            self.netTreeDef = [ jax.tree_util.tree_structure(net.params) for net in self.net ]
-            self.numParameters1 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net[0].params)[0]]))
-            self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.net[1].params)[0]]))
+            self.paramShapes = [ [(p.size,p.shape) for p in tree_flatten(params)[0]] for params in self.parameters ]
+            self.netTreeDef = [ jax.tree_util.tree_structure(params) for params in self.parameters ]
+            self.numParameters1 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters[0])[0]]))
+            self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters[1])[0]]))
             self.numParameters = self.numParameters1 + self.numParameters2
 
         # Check whether wave function can generate samples
@@ -147,13 +149,14 @@ class NQS:
 
         # Need to keep handles of jit'd functions to avoid recompilation
         if global_defs.usePmap:
-            self.evalJitdNet1 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, 0, None), static_broadcasted_argnums=(2,))
-            self.evalJitdNet2 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, 0, None), static_broadcasted_argnums=(2,))
-            self.evalJitdReal = global_defs.pmap_for_my_devices(self._eval_real, in_axes=(None, 0, None), static_broadcasted_argnums=(2,))
-            self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None,0,None,None), static_broadcasted_argnums=(2,3))
-            self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None,0,None,None), static_broadcasted_argnums=(2,3))
+            self.evalJitdNet1 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0,3))
+            self.evalJitdNet2 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0,3))
+            self.evalJitdReal = global_defs.pmap_for_my_devices(self._eval_real, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0,3))
+            self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None,None,0,None,None), static_broadcasted_argnums=(0,3,4))
+            self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None,None,0,None,None), static_broadcasted_argnums=(0,3,4))
             self._append_gradients = global_defs.pmap_for_my_devices(lambda x,y: jnp.concatenate((x[:,:], 1.j*y[:,:]), axis=1), in_axes=(0,0))
-            self._sample_jitd = global_defs.pmap_for_my_devices(self._sample, static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
+            #self._sample_jitd = global_defs.pmap_for_my_devices(self._sample, static_broadcasted_argnums=(2,), in_axes=(None,None, None, 0))
+            self._sample_jitd = {}
         else:
             self.evalJitdNet1 = global_defs.jit_for_my_device(self._eval, static_argnums=(2,))
             self.evalJitdNet2 = global_defs.jit_for_my_device(self._eval, static_argnums=(2,))
@@ -181,11 +184,11 @@ class NQS:
         """
 
         if self.realNets:
-            logMod = self.evalJitdNet1(self.net[0],s,self.batchSize)
-            phase = self.evalJitdNet2(self.net[1],s,self.batchSize)
+            logMod = self.evalJitdNet1(self.net[0],self.parameters[0],s,self.batchSize)
+            phase = self.evalJitdNet2(self.net[1],self.parameters[1],s,self.batchSize)
             return logMod + 1.j * phase
         else:
-            return self.evalJitdNet1(self.net,s,self.batchSize)
+            return self.evalJitdNet1(self.net,self.parameters,s,self.batchSize)
 
     # **  end def __call__
     
@@ -206,9 +209,9 @@ class NQS:
         """
 
         if self.realNets:
-            return self.evalJitdNet1(self.net[0],s,self.batchSize)
+            return self.evalJitdNet1(self.net[0],self.parameters[0],s,self.batchSize)
         else:
-            return self.evalJitdReal(self.net,s,self.batchSize)
+            return self.evalJitdReal(self.net,self.parameters,s,self.batchSize)
 
     # **  end def real_coefficients
 
@@ -221,14 +224,14 @@ class NQS:
         """
     
         if self.realNets:
-            return self.net[0]
+            return self.net[0], self.parameters[0]
         else:
-            return self.net
+            return self.net, self.parameters
 
     # **  end def get_sampler_net
 
 
-    def _get_gradients(self, net, s, batchSize, flat_grad):
+    def _get_gradients(self, net, params, s, batchSize, flat_grad):
         
         def create_batches(s, b):
 
@@ -240,7 +243,7 @@ class NQS:
         sb = create_batches(s, batchSize)
   
         def scan_fun(c,x):
-            return c, jax.vmap(flat_grad, in_axes=(None,0))(net,x)
+            return c, jax.vmap(lambda y: flat_grad(net,params,y), in_axes=(0,))(x)
 
         g = jax.lax.scan(scan_fun, None, sb)[1]
 
@@ -266,13 +269,15 @@ class NQS:
         """
 
         if self.realNets: # FOR REAL NETS
-            gradOut1 = self._get_gradients_net1_pmapd(self.net[0], s, self.batchSize, self.flat_gradient_function)
-            gradOut2 = self._get_gradients_net2_pmapd(self.net[1], s, self.batchSize, self.flat_gradient_function)
+
+            gradOut1 = self._get_gradients_net1_pmapd(self.net[0], self.parameters[0], s, self.batchSize, self.flat_gradient_function)
+            gradOut2 = self._get_gradients_net2_pmapd(self.net[1], self.parameters[1], s, self.batchSize, self.flat_gradient_function)
+
             return self._append_gradients(gradOut1, gradOut2)
 
         else:             # FOR COMPLEX NET
 
-            gradOut = self._get_gradients_net1_pmapd(self.net, s, self.batchSize, self.flat_gradient_function)
+            gradOut = self._get_gradients_net1_pmapd(self.net, self.parameters, s, self.batchSize, self.flat_gradient_function)
 
             if self.holomorphic:
                 return self._append_gradients(gradOut, gradOut)
@@ -296,25 +301,24 @@ class NQS:
             
             # Reshape parameter update according to net tree structure
             newParams = self._param_unflatten_real(deltaP)
+
             # Update model parameters
             for netId in [0,1]:
-                self.net[netId] = self.net[netId].replace(params=
-                                        jax.tree_util.tree_multimap( 
-                                            jax.lax.add, self.net[netId].params, 
+                self.parameters[netId] = jax.tree_util.tree_multimap( 
+                                            jax.lax.add, self.parameters[netId], 
                                             newParams[netId] 
-                                        )
-                                    )
+                                         )
 
         else:             # FOR COMPLEX NET
             
             # Compute new parameters
             newParams = jax.tree_util.tree_multimap( 
-                            jax.lax.add, self.net.params, 
+                            jax.lax.add, self.parameters, 
                             self._param_unflatten_cpx(deltaP)
                         )
 
             # Update model parameters
-            self.net = self.net.replace(params=newParams)
+            self.parameters = newParams
                 
     # **  end def update_parameters
 
@@ -335,14 +339,12 @@ class NQS:
 
             # Update model parameters
             for netId in [0,1]:
-                self.net[netId] = self.net[netId].replace( params = newP[netId] )
+                self.parameters[netId] = newP[netId]
 
         else:             # FOR COMPLEX NET
 
             # Update model parameters
-            self.net = self.net.replace(
-                            params = self._param_unflatten_cpx(P)
-                          )
+            self.parameters = self._param_unflatten_cpx(P)
 
     # **  end def set_parameters
 
@@ -395,7 +397,7 @@ class NQS:
 
             start = 0
             for netId in [0,1]:
-                parameters, _ = tree_flatten( self.net[netId].params )
+                parameters, _ = tree_flatten( self.parameters[netId] )
                 # Flatten parameters to give a single vector
                 for p in parameters:
                     numParams = p.size
@@ -406,7 +408,7 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.net.params)[0]])
+            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]])
 
             if self.holomorphic:
                 paramOut = jnp.concatenate([paramOut.real, paramOut.imag])            
@@ -416,27 +418,41 @@ class NQS:
     # **  end def set_parameters
 
 
-    def sample(self, numSamples, key):
+    def sample(self, numSamples, key, parameters=None):
 
         if self._isGenerator:
-            samples, logP = self._sample_jitd(self.net[0], numSamples, jax.random.split(key,jax.device_count()))
-            return samples, self(samples)
 
-        return None, None
+            net, params = self.get_sampler_net()
+            
+            if parameters is not None:
+                params = parameters
+
+            numSamplesStr = str(numSamples)
+
+            # check whether _get_samples is already compiled for given number of samples
+            if not numSamplesStr in self._sample_jitd:
+                self._sample_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(lambda p,n,x: net.apply(p,n,x,method=net.sample),
+                                                                                   static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
+
+            samples = self._sample_jitd[numSamplesStr](params, numSamples, key)
+
+            return samples
+
+        return None
     
     # **  end def sample
 
 
-    def _sample(self, net, numSamples, key):
+    def _sample(self, net, params, numSamples, key):
 
-        return net.sample(numSamples, key)
+        return net.apply(params,numSamples, key, method=net.sample)
 
 
     @property
     def is_generator(self):
         return self._isGenerator
 
-    def _eval_real(self, net, s, batchSize):
+    def _eval_real(self, net, params, s, batchSize):
         def create_batches(configs, b):
 
             append=b*((configs.shape[0]+b-1)//b)-configs.shape[0]
@@ -447,14 +463,14 @@ class NQS:
         sb = create_batches(s, batchSize)
         
         def scan_fun(c,x):
-            return c, jax.vmap(lambda m,n: jnp.real(m(n)), in_axes=(None, 0))(net,x)
+            return c, jax.vmap(lambda y: jnp.real(net.apply(params,y)), in_axes=(0,))(x)
 
         res = jax.lax.scan(scan_fun, None, jnp.array(sb))[1].reshape((-1,))
 
         return res[:s.shape[0]]
 
 
-    def _eval(self, net, s, batchSize):
+    def _eval(self, net, params, s, batchSize):
         
         def create_batches(configs, b):
 
@@ -466,7 +482,7 @@ class NQS:
         sb = create_batches(s, batchSize)
 
         def scan_fun(c,x):
-            return c, jax.vmap(lambda m,n: m(n), in_axes=(None, 0))(net,x)
+            return c, jax.vmap(lambda y: net.apply(params,y), in_axes=(0,))(x)
 
         res = jax.lax.scan(scan_fun, None, jnp.array(sb))[1].reshape((-1,))
 
@@ -478,26 +494,26 @@ class NQS:
 
 # Register NQS class as new pytree node
 
-def flatten_nqs(nqs):
-    auxReal = nqs.realNets
-    if auxReal:
-        flatNet1, auxNet1 = jax.tree_util.tree_flatten(nqs.net[0])
-        flatNet2, auxNet2 = jax.tree_util.tree_flatten(nqs.net[1])
-        return (flatNet1, flatNet2), (auxReal, auxNet1, auxNet2)
-    else:
-        flatNet, auxNet = jax.tree_util.tree_flatten(nqs.net)
-        return (flatNet,), (auxReal, auxNet)
-
-def unflatten_nqs(aux,treeData):
-    if aux[0]:
-        net1 = jax.tree_util.tree_unflatten(aux[1], treeData[0])
-        net2 = jax.tree_util.tree_unflatten(aux[2], treeData[1])
-        return NQS(net1, net2)
-    else:
-        net = jax.tree_util.tree_unflatten(aux[1], treeData[0])
-        return NQS(net)
-
-jax.tree_util.register_pytree_node(NQS, flatten_nqs, unflatten_nqs)
+#def flatten_nqs(nqs):
+#    auxReal = nqs.realNets
+#    if auxReal:
+#        flatNet1, auxNet1 = jax.tree_util.tree_flatten(nqs.net[0])
+#        flatNet2, auxNet2 = jax.tree_util.tree_flatten(nqs.net[1])
+#        return (flatNet1, flatNet2), (auxReal, auxNet1, auxNet2)
+#    else:
+#        flatNet, auxNet = jax.tree_util.tree_flatten(nqs.net)
+#        return (flatNet,), (auxReal, auxNet)
+#
+#def unflatten_nqs(aux,treeData):
+#    if aux[0]:
+#        net1 = jax.tree_util.tree_unflatten(aux[1], treeData[0])
+#        net2 = jax.tree_util.tree_unflatten(aux[2], treeData[1])
+#        return NQS(net1, net2)
+#    else:
+#        net = jax.tree_util.tree_unflatten(aux[1], treeData[0])
+#        return NQS(net)
+#
+#jax.tree_util.register_pytree_node(NQS, flatten_nqs, unflatten_nqs)
 
 
 # Register NQS class for flax serialization

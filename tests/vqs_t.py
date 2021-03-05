@@ -33,14 +33,13 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
-            _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
-            rbmModel = nn.Model(rbm,params)
+            rbmModel = nets.CpxRBM(numHidden=2,bias=True)
+            params = rbmModel.init(random.PRNGKey(0), jnp.zeros((3,), dtype=np.int32))
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
             
-            psiC = NQS(rbmModel)
+            psiC = NQS(rbmModel,params)
             psi0 = psiC(s)
             G = psiC.gradients(s)
             delta=1e-5
@@ -65,18 +64,16 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            rbm1 = nets.RBM.partial(numHidden=2,bias=True)
-            _,params1 = rbm1.init_by_shape(random.PRNGKey(0),[(1,3)])
-            rbmModel1 = nn.Model(rbm1,params1)
-            rbm2 = nets.RBM.partial(numHidden=3,bias=True)
-            _,params2 = rbm2.init_by_shape(random.PRNGKey(0),[(1,3)])
-            rbmModel2 = nn.Model(rbm2,params2)
+            rbmModel1 = nets.RBM(numHidden=2,bias=True)
+            params1 = rbmModel1.init(random.PRNGKey(0), jnp.zeros((3,), dtype=np.int32))
+            rbmModel2 = nets.RBM(numHidden=3,bias=True)
+            params2 = rbmModel2.init(random.PRNGKey(1), jnp.zeros((3,), dtype=np.int32))
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
             
-            psi = NQS((rbmModel1,rbmModel2))
+            psi = NQS((rbmModel1,rbmModel2),(params1,params2))
             psi0 = psi(s)
             G = psi.gradients(s)
             delta=1e-5
@@ -101,15 +98,14 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            net = nets.CpxRNN.partial(L=3)
-            _,params1 = net.init_by_shape(random.PRNGKey(0),[(3,)])
-            model = nn.Model(net,params1)
+            model = nets.CpxRNN(L=3)
+            params = model.init(random.PRNGKey(0), jnp.zeros((3,), dtype=np.int32))
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
             
-            psi = NQS(model)
+            psi = NQS(model,params)
             psi0 = psi(s)
             G = psi.gradients(s)
             delta=1e-5
@@ -136,14 +132,13 @@ class TestEvaluation(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
-            _,params = rbm.init_by_shape(random.PRNGKey(0),[(4,3)])
-            rbmModel = nn.Model(rbm,params)
+            rbmModel = nets.CpxRBM(numHidden=2,bias=True)
+            params = rbmModel.init(random.PRNGKey(0), jnp.zeros((3,), dtype=np.int32))
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
             
-            psiC = NQS(rbmModel)
+            psiC = NQS(rbmModel,params)
             cpxCoeffs = psiC(s)
             realCoeffs = psiC.real_coefficients(s)
             

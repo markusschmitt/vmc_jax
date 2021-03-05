@@ -2,7 +2,7 @@ import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
 import flax
-from flax import nn
+import flax.linen as nn
 import numpy as np
 import jax.numpy as jnp
 
@@ -11,53 +11,62 @@ import jVMC.global_defs as global_defs
 from functools import partial
 
 class RNNCell2D(nn.Module):
+    hiddenSize: int = 10
+    outDim: int = 2
+    actFun: callable = nn.elu
+    initScale: float = 1.0
 
-    def apply(self, carryH, carryV, state, hiddenSize=10, outDim=2, actFun=nn.elu, initScale=1.0):
+    @nn.compact
+    def __call__(self, carryH, carryV, state):
         
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
                                     dtype=global_defs.tReal)
-        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=initScale, mode="fan_in", distribution="uniform"),
+        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_in", distribution="uniform"),
                                     dtype=global_defs.tReal)
 
-        cellIn = nn.Dense.partial(features=hiddenSize,
-                                    bias=False, dtype=global_defs.tReal,
+        cellIn = nn.Dense(features=self.hiddenSize,
+                                    use_bias=False, dtype=global_defs.tReal,
                                     kernel_init=initFunctionCell)
-        cellCarryH = nn.Dense.partial(features=hiddenSize,
-                                    bias=False,
+        cellCarryH = nn.Dense(features=self.hiddenSize,
+                                    use_bias=False,
                                     kernel_init=initFunctionCell, dtype=global_defs.tReal,
                                     bias_init=partial(jax.nn.initializers.zeros,dtype=global_defs.tReal))
-        cellCarryV = nn.Dense.partial(features=hiddenSize,
-                                    bias=True,
+        cellCarryV = nn.Dense(features=self.hiddenSize,
+                                    use_bias=True,
                                     kernel_init=initFunctionCell, dtype=global_defs.tReal,
                                     bias_init=partial(jax.nn.initializers.zeros,dtype=global_defs.tReal))
 
-        outputDense = nn.Dense.partial(features=outDim,
+        outputDense = nn.Dense(features=self.outDim,
                                       kernel_init=initFunctionOut, dtype=global_defs.tReal,
                                       bias_init=jax.nn.initializers.normal(stddev=0.1,dtype=global_defs.tReal))
         
-        newCarry = actFun(cellCarryH(carryH) + cellCarryV(carryV) + cellIn(state))
+        newCarry = self.actFun(cellCarryH(carryH) + cellCarryV(carryV) + cellIn(state))
         out = outputDense(newCarry)
+
         return newCarry, out
 
 # ** end class RNNCell
 
 
 class RNNCellStack2D(nn.Module):
+    hiddenSize: int = 10
+    outDim: int = 2
+    passDim: int = outDim
+    actFun: callable = nn.elu
+    initScale: float = 1.0
 
-    def apply(self, carryH, carryV, stateH, stateV, hiddenSize=10, outDim=2, passDim=None, actFun=nn.elu, initScale=1.0):
+    @nn.compact
+    def __call__(self, carryH, carryV, stateH, stateV):
 
-        if passDim is None:
-            passDim = outDim
-
-        outDims = [passDim] * carryH.shape[0]
-        outDims[-1] = outDim
+        outDims = [self.passDim] * carryH.shape[0]
+        outDims[-1] = self.outDim
 
         newCarry = [None] * carryH.shape[0]
         
         newR = jnp.concatenate((stateH,stateV), axis=0)
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j in range(carryH.shape[0]):
-            newCarry[j], newR = RNNCell2D(carryH[j], carryV[j], newR, hiddenSize=hiddenSize, outDim=outDims[j], actFun=actFun, initScale=initScale)
+            newCarry[j], newR = RNNCell2D(hiddenSize=self.hiddenSize, outDim=outDims[j], actFun=self.actFun, initScale=self.initScale)(carryH[j], carryV[j], newR)
 
         return jnp.array(newCarry), newR
 
@@ -67,80 +76,78 @@ class RNNCellStack2D(nn.Module):
 class RNN2D(nn.Module):
     """Recurrent neural network for two-dimensional input.
     """
+    L: int = 10
+    hiddenSize: int = 10
+    depth: int=1
+    inputDim: int=2
+    passDim: int = inputDim
+    actFun: callable = nn.elu
+    initScale: float = 1.0
+    logProbFactor: float = 0.5
+
+    def setup(self):
+        
+        self.rnnCell = RNNCellStack2D(hiddenSize=self.hiddenSize,
+                                      outDim=self.inputDim,
+                                      passDim=self.passDim,
+                                      actFun=self.actFun,
+                                      initScale=self.initScale, name="myCell")
+
 
     def reverse_line(self, line, b):
         return jax.lax.cond(b==1, lambda z : z, lambda z : jnp.flip(z,0), line)
 
-    def apply(self, x, L=10, hiddenSize=10, depth=1, inputDim=2, passDim=None, actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+
+    def __call__(self, x):
         
-        if passDim is None:
-            passDim = inputDim
-
-        rnnCell = RNNCellStack2D.shared(hiddenSize=hiddenSize, outDim=inputDim, passDim=passDim, actFun=actFun, initScale=initScale, name="myCell")
-
         # Scan directions for zigzag path
-        direction = np.ones(L,dtype=np.int32)
+        direction = np.ones(self.L,dtype=np.int32)
         direction[1::2] = -1
         direction = jnp.asarray(direction)
-
-        def rnn_cell_H(carry, x):
-            newCarry, out = rnnCell(carry,x[0],x[1],x[2])
-            return newCarry, (newCarry, nn.log_softmax(out))
       
-        def rnn_cell_V(carry, x):
-            _, out = jax.lax.scan(rnn_cell_H, jnp.zeros((depth, hiddenSize)),
-                                    (self.reverse_line(carry[0], x[1]),
-                                     jnp.concatenate((jnp.zeros((1,inputDim)),self.reverse_line(x[0],x[1])), axis=0)[:-1],
-                                     self.reverse_line(carry[1], x[1]))
-                                 )
-            
-            logProb = jnp.sum( self.reverse_line(out[1], x[1]) * x[0], axis=-1 )
-            return (self.reverse_line(out[0], x[1]), x[0]), jnp.nan_to_num(logProb, nan=-35)
 
-        _, probs = jax.lax.scan(rnn_cell_V,
-                                (jnp.zeros((L,depth, hiddenSize)), jnp.zeros((L,inputDim))),
-                                (jax.nn.one_hot(x,inputDim), direction)
+        _, probs = self.rnn_cell_V(
+                                (jnp.zeros((self.L,self.depth, self.hiddenSize)), jnp.zeros((self.L,self.inputDim))),
+                                (jax.nn.one_hot(x,self.inputDim), direction)
                                )
 
-        return logProbFactor * jnp.sum(probs)
+        return self.logProbFactor * jnp.sum(probs)
+        
+
+    @partial(nn.transforms.scan,
+                variable_broadcast='params',
+                split_rngs={'params':False})
+    def rnn_cell_V(self,carry, x):
+        _, out = self.rnn_cell_H(jnp.zeros((self.depth, self.hiddenSize)),
+                                (self.reverse_line(carry[0], x[1]),
+                                 jnp.concatenate((jnp.zeros((1,self.inputDim)),self.reverse_line(x[0],x[1])), axis=0)[:-1],
+                                 self.reverse_line(carry[1], x[1]))
+                             )
+        
+        logProb = jnp.sum( self.reverse_line(out[1], x[1]) * x[0], axis=-1 )
+        return (self.reverse_line(out[0], x[1]), x[0]), jnp.nan_to_num(logProb, nan=-35)
 
 
-    @nn.module_method
-    def sample(self,batchSize,key,L,hiddenSize=10,depth=1,inputDim=2,passDim=None,actFun=nn.elu, initScale=1.0, logProbFactor=0.5):
+    @partial(nn.transforms.scan,
+                variable_broadcast='params',
+                split_rngs={'params':False})
+    def rnn_cell_H(self,carry, x):
+        newCarry, out = self.rnnCell(carry,x[0],x[1],x[2])
+        return newCarry, (newCarry, nn.log_softmax(out))
+
+    def sample(self,batchSize,key):
         """sampler
         """
         
-        if passDim is None:
-            passDim = inputDim
-        
-        rnnCell = RNNCellStack2D.shared(hiddenSize=hiddenSize, outDim=inputDim, passDim=passDim, actFun=actFun, initScale=initScale, name="myCell")
-        
         # Scan directions for zigzag path
-        direction = np.ones(L,dtype=np.int32)
+        direction = np.ones(self.L,dtype=np.int32)
         direction[1::2] = -1
         direction = jnp.asarray(direction)
 
-        def rnn_cell_H(carry, x):
-            newCarry, out = rnnCell(carry[0],x[0],carry[1],x[1])
-            sampleOut=jax.random.categorical(x[2],out)
-            return (newCarry, jax.nn.one_hot(sampleOut,inputDim)), (newCarry, sampleOut)
-      
-        def rnn_cell_V(carry, x):
-            keys = jax.random.split(x[0],L)
-            _, out = jax.lax.scan(rnn_cell_H, (jnp.zeros((depth,hiddenSize)), jnp.zeros(inputDim)),
-                                    (self.reverse_line(carry[0], x[1]),
-                                     self.reverse_line(carry[1], x[1]),
-                                     keys)
-                                 )
-
-            configLine = self.reverse_line(out[1],x[1])
-            
-            return (self.reverse_line(out[0], x[1]), jax.nn.one_hot(configLine, inputDim)), configLine
-
         def generate_sample(key):
-            myKeys = jax.random.split(key,L)
-            _, sample = jax.lax.scan(rnn_cell_V,
-                                     (jnp.zeros((L,depth,hiddenSize)), jnp.zeros((L,inputDim))),
+            myKeys = jax.random.split(key,self.L)
+            _, sample = self.rnn_cell_V_sample(
+                                     (jnp.zeros((self.L,self.depth,self.hiddenSize)), jnp.zeros((self.L,self.inputDim))),
                                      (myKeys, direction)
                                     )
             return sample
@@ -148,6 +155,30 @@ class RNN2D(nn.Module):
         keys = jax.random.split(key,batchSize)
 
         return jax.vmap(generate_sample)(keys)
+    
+  
+    @partial(nn.transforms.scan,
+                variable_broadcast='params',
+                split_rngs={'params':False})
+    def rnn_cell_V_sample(self,carry, x):
+        keys = jax.random.split(x[0],self.L)
+        _, out = self.rnn_cell_H_sample((jnp.zeros((self.depth,self.hiddenSize)), jnp.zeros(self.inputDim)),
+                                (self.reverse_line(carry[0], x[1]),
+                                 self.reverse_line(carry[1], x[1]),
+                                 keys)
+                             )
+
+        configLine = self.reverse_line(out[1],x[1])
+        
+        return (self.reverse_line(out[0], x[1]), jax.nn.one_hot(configLine, self.inputDim)), configLine
+
+    @partial(nn.transforms.scan,
+                variable_broadcast='params',
+                split_rngs={'params':False})
+    def rnn_cell_H_sample(self,carry, x):
+        newCarry, out = self.rnnCell(carry[0],x[0],carry[1],x[1])
+        sampleOut=jax.random.categorical(x[2],out)
+        return (newCarry, jax.nn.one_hot(sampleOut,self.inputDim)), (newCarry, sampleOut)
 
 # ** end class RNN2D
 

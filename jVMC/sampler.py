@@ -62,7 +62,7 @@ class MCMCSampler:
     * ``sweepSteps``: Number of proposed updates per sweep.
     """
 
-    def __init__(self, key, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
+    def __init__(self, key, net, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
                     numSamples=100, thermalizationSweeps=10, sweepSteps=10):
         """Initializes the MCMCSampler class.
 
@@ -85,6 +85,8 @@ class MCMCSampler:
 
         self.sampleShape = sampleShape
 
+        self.net = net
+
         stateShape = (numChains,) + sampleShape
         if global_defs.usePmap:
             stateShape = (global_defs.device_count(),) + stateShape
@@ -104,7 +106,6 @@ class MCMCSampler:
 
         # jit'd member functions
         self._get_samples_jitd = {} # will hold a jit'd function for each number of samples
-        self._get_samples_gen_jitd = {} # will hold a jit'd function for each number of samples
 
 
     def set_number_of_samples(self, N):
@@ -144,7 +145,7 @@ class MCMCSampler:
         return mpi.globNumSamples
 
 
-    def sample(self, net, numSamples=None, multipleOf=1):
+    def sample(self, parameters=None, numSamples=None, multipleOf=1):
         """Generate random samples from wave function.
 
         If supported by ``net``, direct sampling is peformed. Otherwise, MCMC is run \
@@ -170,20 +171,19 @@ class MCMCSampler:
         if numSamples is None:
             numSamples = self.numSamples
 
+        if self.net.is_generator:
 
-        if net.is_generator:
+            configs = self._get_samples_gen(parameters, numSamples, multipleOf)
 
-            configs = self._get_samples_gen(net, numSamples, multipleOf)
-
-            return configs, net(configs), None
+            return configs, self.net(configs), None
 
 
-        configs, logPsi = self._get_samples_mcmc(net, numSamples, multipleOf)
+        configs, logPsi = self._get_samples_mcmc(parameters, numSamples, multipleOf)
 
         return configs, logPsi, None
 
 
-    def _get_samples_gen(self, net, numSamples, multipleOf=1):
+    def _get_samples_gen(self, params, numSamples, multipleOf=1):
         
         def dc():
             if global_defs.usePmap:
@@ -191,14 +191,6 @@ class MCMCSampler:
             return 1
         
         numSamples = mpi.distribute_sampling(numSamples, localDevices=dc(), numChainsPerDevice=multipleOf)
-        numSamplesStr = str(numSamples)
-
-        # check whether _get_samples is already compiled for given number of samples
-        if not numSamplesStr in self._get_samples_gen_jitd:
-            if global_defs.usePmap:
-                self._get_samples_gen_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(lambda x,y,z: x.sample(y,z), static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
-            else:
-                self._get_samples_gen_jitd[numSamplesStr] = global_defs.jit_for_my_device(lambda x,y,z: x.sample(y,z), static_argnums=(1,))
 
         tmpKey = None
         if global_defs.usePmap:
@@ -208,13 +200,18 @@ class MCMCSampler:
         else:
             tmpKey, self.key = random.split(self.key)
 
-        return self._get_samples_gen_jitd[numSamplesStr](net.get_sampler_net(), numSamples, tmpKey)
+        return self.net.sample(numSamples, tmpKey, parameters=params)
 
 
-    def _get_samples_mcmc(self, net, numSamples, multipleOf=1):
+    def _get_samples_mcmc(self, params, numSamples, multipleOf=1):
+
+        net, netParams = self.net.get_sampler_net()
+
+        if params is None:
+            params = netParams
 
         # Initialize sampling stuff
-        self._mc_init(net)
+        self._mc_init(self.net)
         
         def dc():
             if global_defs.usePmap:
@@ -227,23 +224,23 @@ class MCMCSampler:
         # check whether _get_samples is already compiled for given number of samples
         if not numSamplesStr in self._get_samples_jitd:
             if global_defs.usePmap:
-                self._get_samples_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(partial(self._get_samples, sweepFunction=self._sweep),
+                self._get_samples_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(partial(self._get_samples, sweepFunction=partial(self._sweep, net=net)),
                                                                     static_broadcasted_argnums=(1,2,3,9,11),
                                                                     in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None, None))
             else:
-                self._get_samples_jitd[numSamplesStr] = global_defs.jit_for_my_device(partial(self._get_samples, sweepFunction=self._sweep),
+                self._get_samples_jitd[numSamplesStr] = global_defs.jit_for_my_device(partial(self._get_samples, sweepFunction=self._sweep, net=net),
                                                                     static_argnums=(1,2,3,9,11))
 
         (self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted), configs =\
-            self._get_samples_jitd[numSamplesStr](net.get_sampler_net(), numSamples, self.thermalizationSweeps, self.sweepSteps,
+            self._get_samples_jitd[numSamplesStr](params, numSamples, self.thermalizationSweeps, self.sweepSteps,
                                                     self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted,
                                                     self.updateProposer, self.updateProposerArg, self.sampleShape)
 
         #return configs, None
-        return configs, net(configs)
+        return configs, self.net(configs)
 
 
-    def _get_samples(self, net, numSamples,
+    def _get_samples(self, params, numSamples,
                             thermSweeps, sweepSteps,
                             states, logPsiSq, key, 
                             numProposed, numAccepted,
@@ -252,13 +249,13 @@ class MCMCSampler:
 
         # Thermalize
         states, logPsiSq, key, numProposed, numAccepted =\
-            sweepFunction(states, logPsiSq, key, numProposed, numAccepted, net, thermSweeps*sweepSteps, updateProposer, updateProposerArg)
+            sweepFunction(states, logPsiSq, key, numProposed, numAccepted, params, thermSweeps*sweepSteps, updateProposer, updateProposerArg)
 
         # Collect samples
         def scan_fun(c, x):
 
             states, logPsiSq, key, numProposed, numAccepted =\
-                sweepFunction(c[0], c[1], c[2], c[3], c[4], net, sweepSteps, updateProposer, updateProposerArg)
+                sweepFunction(c[0], c[1], c[2], c[3], c[4], params, sweepSteps, updateProposer, updateProposerArg)
 
             return (states, logPsiSq, key, numProposed, numAccepted), states
 
@@ -267,8 +264,8 @@ class MCMCSampler:
         #return meta, configs.reshape((configs.shape[0]*configs.shape[1], -1))
         return meta, configs.reshape((configs.shape[0]*configs.shape[1],) + sampleShape)
 
-    def _sweep(self, states, logPsiSq, key, numProposed, numAccepted, net, numSteps, updateProposer, updateProposerArg):
-        
+    def _sweep(self, states, logPsiSq, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
+       
         def perform_mc_update(i, carry):
             
             # Generate update proposals
@@ -278,7 +275,8 @@ class MCMCSampler:
             #newStates = carry[0] 
 
             # Compute acceptance probabilities
-            newLogPsiSq = jax.vmap(lambda x,y: 2.*jnp.real(x(y)), in_axes=(None,0))(net,newStates)
+            #newLogPsiSq = jax.vmap(lambda x,y: 2.*jnp.real(x(y)), in_axes=(None,0))(net,newStates)
+            newLogPsiSq = jax.vmap(lambda y: 2.*jnp.real(net.apply(params,y)), in_axes=(0,))(newStates)
             P = jnp.exp( newLogPsiSq - carry[1] )
 
             # Roll dice
