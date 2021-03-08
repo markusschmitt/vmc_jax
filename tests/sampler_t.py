@@ -50,13 +50,13 @@ class TestMCMC(unittest.TestCase):
         psi.set_parameters(weights)
 
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi,L)
         
         # Set up MCMC sampler
         mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
 
         # Compute exact probabilities
-        _, _, pex = exactSampler.sample(psi)
+        _, _, pex = exactSampler.sample()
 
         # Get samples from MCMC sampler
         numSamples=500000
@@ -90,13 +90,13 @@ class TestMCMC(unittest.TestCase):
         ps=psi.get_parameters()
         psi.update_parameters(ps)
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
         mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
         
         # Compute exact probabilities
-        _, _, pex = exactSampler.sample(psi)
+        _, _, pex = exactSampler.sample()
 
         numSamples=500000
         smc,p,_=mcSampler.sample(numSamples=numSamples)
@@ -131,13 +131,13 @@ class TestMCMC(unittest.TestCase):
         psi = NQS((rnn, rbm),(rnnParams,rbmParams))
        
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
         mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
         
         # Compute exact probabilities
-        _, logPsi, pex = exactSampler.sample(psi)
+        _, logPsi, pex = exactSampler.sample()
 
         numSamples=1000000
         smc,p,_=mcSampler.sample(numSamples=numSamples)
@@ -172,13 +172,13 @@ class TestMCMC(unittest.TestCase):
         psi = NQS((rnn, rbm),(rnnParams,rbmParams))
        
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
         mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
         
         # Compute exact probabilities
-        _, logPsi, pex = exactSampler.sample(psi)
+        _, logPsi, pex = exactSampler.sample()
 
         numSamples=1000000
         smc,p,_=mcSampler.sample(numSamples=numSamples)
@@ -208,13 +208,13 @@ class TestMCMC(unittest.TestCase):
         psi = NQS((rnn,rnn),(params,params))
         
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler((L,L))
+        exactSampler=sampler.ExactSampler(psi, (L,L))
         
         # Set up MCMC sampler
         mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
         
         # Compute exact probabilities
-        _, logPsi, pex = exactSampler.sample(psi)
+        _, logPsi, pex = exactSampler.sample()
 
         self.assertTrue(jnp.abs(jnp.sum(pex)-1.) < 1e-12)
 

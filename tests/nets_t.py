@@ -18,24 +18,22 @@ import flax.nn as nn
 class TestCNN(unittest.TestCase):
     
     def test_cnn_1d(self):
-        cnn = nets.CNN.partial(F=(4,), channels=[3,2,5])
-        _,params = cnn.init_by_shape(random.PRNGKey(0),[(5,)])
-        cnnModel = nn.Model(cnn,params)
+        cnn = nets.CNN(F=(4,), channels=[3,2,5])
+        params = cnn.init(random.PRNGKey(0),jnp.zeros((5,), dtype=np.int32))
  
         S0=jnp.pad(jnp.array([1,0,1,1,0]),(0,4),'wrap')
         S=jnp.array(
                 [S0[i:i+5]for i in range(5)]
             )
-        psiS=jax.vmap(cnnModel)(S)
+        psiS=jax.vmap(lambda s: cnn.apply(params,s))(S)
         psiS=psiS-psiS[0]
 
         self.assertTrue( jnp.max( jnp.abs( psiS ) ) < 1e-12 )
     
 
     def test_cnn_2d(self):
-        cnn = nets.CNN.partial(F=(3,3), channels=[3,2,5], strides=[1,1])
-        _,params = cnn.init_by_shape(random.PRNGKey(0),[(4,4)])
-        cnnModel = nn.Model(cnn,params)
+        cnn = nets.CNN(F=(3,3), channels=[3,2,5], strides=[1,1])
+        params = cnn.init(random.PRNGKey(0),jnp.zeros((4,4), dtype=np.int32))
   
         S0=jnp.array(
                 [[1,0,1,1],
@@ -47,7 +45,7 @@ class TestCNN(unittest.TestCase):
         S=jnp.array(
                 [S0[i:i+4, j:j+4] for i in range(4) for j in range(4)]
             )
-        psiS=jax.vmap(cnnModel)(S)
+        psiS=jax.vmap(lambda s:cnn.apply(params,s))(S)
         psiS=psiS-psiS[0]
 
         self.assertTrue( jnp.max( jnp.abs( psiS ) ) < 1e-12 )

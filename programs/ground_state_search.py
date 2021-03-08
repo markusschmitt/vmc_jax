@@ -7,7 +7,8 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 import jax.random as random
-import flax
+import jax.numpy as jnp
+import numpy as np
 
 import jVMC
 
@@ -15,21 +16,20 @@ L = 10
 g = -0.7
 
 # Initialize net
-net = jVMC.nets.CpxCNN.partial(F=[10,], channels=[6], bias=False)
-_, params = net.init_by_shape(jax.random.PRNGKey(1234),[(L,)])
-model = flax.nn.Model(net,params)
+net = jVMC.nets.CpxCNN(F=[10,], channels=[6], bias=False)
+params = net.init(jax.random.PRNGKey(1234),jnp.zeros((L,), dtype=np.int32))
 
-psi = jVMC.vqs.NQS(model) # Variational wave function
+psi = jVMC.vqs.NQS(net,params) # Variational wave function
 
 # Set up hamiltonian
-hamiltonian = jVMC.operator.Operator()
+hamiltonian = jVMC.operator.BranchFreeOperator()
 for l in range(L):
     hamiltonian.add( jVMC.operator.scal_opstr( -1., ( jVMC.operator.Sz(l), jVMC.operator.Sz((l+1)%L) ) ) )
     hamiltonian.add( jVMC.operator.scal_opstr( g, ( jVMC.operator.Sx(l), ) ) )
 
 # Set up sampler
-sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(4321), jVMC.sampler.propose_spin_flip_Z2, (L,),
-                                    numChains=50, sweepSteps=L,
+sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(4321), psi, jVMC.sampler.propose_spin_flip_Z2, (L,),
+                                    numChains=100, sweepSteps=L,
                                     numSamples=1000, thermalizationSweeps=25 )
 
 # Set up TDVP

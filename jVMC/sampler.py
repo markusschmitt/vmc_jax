@@ -344,8 +344,9 @@ class ExactSampler:
     * lDim: Local Hilbert space dimension.
     """
 
-    def __init__(self, sampleShape, lDim=2):
+    def __init__(self, psi, sampleShape, lDim=2):
 
+        self.psi = psi
         self.N = jnp.prod(jnp.asarray(sampleShape))
         self.sampleShape = sampleShape
         self.lDim = lDim
@@ -448,7 +449,7 @@ class ExactSampler:
             return p/nrm
 
 
-    def sample(self, net, numSamples=None, multipleOf=None):
+    def sample(self, numSamples=None, multipleOf=None):
         """Return all computational basis states.
 
         Sampling is automatically distributed accross MPI processes and available \
@@ -466,7 +467,7 @@ class ExactSampler:
             :math:`|\psi(s)|^2` (normalized).
         """
 
-        logPsi = net(self.basis)
+        logPsi = self.psi(self.basis)
 
         p = self._compute_probabilities_pmapd(logPsi, self.lastNorm, self.numStatesPerDevice)
 

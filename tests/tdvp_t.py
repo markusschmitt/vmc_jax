@@ -36,10 +36,9 @@ class TestGsSearch(unittest.TestCase):
 
         for hx,exE in zip(hxs,exEs):
             # Set up variational wave function
-            rbm = nets.CpxRBM.partial(numHidden=6,bias=False)
-            _, params = rbm.init_by_shape(random.PRNGKey(1),[(1,L)])
-            rbmModel = nn.Model(rbm,params)
-            psi = NQS(rbmModel)
+            rbm = nets.CpxRBM(numHidden=6,bias=False)
+            params = rbm.init(random.PRNGKey(1),jnp.zeros((L,), dtype=np.int32))
+            psi = NQS(rbm, params)
 
             # Set up hamiltonian for ground state search
             hamiltonianGS = op.BranchFreeOperator()
@@ -48,7 +47,7 @@ class TestGsSearch(unittest.TestCase):
                 hamiltonianGS.add( op.scal_opstr( hx, ( op.Sx(l), ) ) )
 
             # Set up exact sampler
-            exactSampler=sampler.ExactSampler(L)
+            exactSampler=sampler.ExactSampler(psi,L)
 
             delta=2
             tdvpEquation = jVMC.tdvp.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
@@ -74,10 +73,9 @@ class TestTimeEvolution(unittest.TestCase):
                 )
 
         # Set up variational wave function
-        rbm = nets.CpxRBM.partial(numHidden=2,bias=False)
-        _, params = rbm.init_by_shape(random.PRNGKey(0),[(1,L)])
-        rbmModel = nn.Model(rbm,params)
-        psi = NQS(rbmModel)
+        rbm = nets.CpxRBM(numHidden=2,bias=False)
+        params = rbm.init(random.PRNGKey(0),jnp.zeros((L,), dtype=np.int32))
+        psi = NQS(rbm, params)
         psi.set_parameters(weights)
 
         # Set up hamiltonian for time evolution
@@ -92,7 +90,7 @@ class TestTimeEvolution(unittest.TestCase):
             ZZ.add( ( op.Sz(l), op.Sz((l+1)%L) ) )
 
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi,L)
 
         # Set up adaptive time stepper
         stepper = jVMCstepper.AdaptiveHeun(timeStep=1e-3, tol=1e-5)
