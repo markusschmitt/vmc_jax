@@ -231,7 +231,7 @@ class PhaseRNN(nn.Module):
                 variable_broadcast='params',
                 split_rngs={'params':False})
     def rnn_cell(self, carry, x):
-        newCarry, out = rnnCell(carry[0],carry[1])
+        newCarry, out = self.rnnCell(carry[0],carry[1])
         return (newCarry, x), out
 
 # ** end class PhaseRNN

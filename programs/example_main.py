@@ -59,13 +59,13 @@ L = inp["system"]["L"]
 outp = OutputManager(wdir+inp["general"]["data_output"], append=inp["general"]["append_data"])
 
 # Set up variational wave function
-psi = init_net(inp["network"], [(L,)])
+psi = init_net(inp["network"], (L,))
 
 outp.print("** Network properties")
 outp.print("    Number of parameters: %d" % (len(psi.get_parameters())))
 
 # Set up hamiltonian for ground state search
-hamiltonianGS = op.Operator()
+hamiltonianGS = op.BranchFreeOperator()
 hz0 = 0.0
 if "hz0" in inp["system"].keys():
     hz0 = inp["system"]["hz0"]
@@ -76,7 +76,7 @@ for l in range(L):
         hamiltonianGS.add( op.scal_opstr( hz0, ( op.Sz(l), ) ) )
 
 # Set up hamiltonian
-hamiltonian = op.Operator()
+hamiltonian = op.BranchFreeOperator()
 lbda = 0.0
 if "lambda" in inp["system"].keys():
     lbda = inp["system"]["lambda"]
@@ -94,9 +94,9 @@ for l in range(L):
 # Set up observables
 observables = {
     "energy" : hamiltonianGS,
-    "X" : op.Operator(),
-    "Z" : op.Operator(),
-    "ZZ" : [op.Operator() for d in range((L+1)//2)]
+    "X" : op.BranchFreeOperator(),
+    "Z" : op.BranchFreeOperator(),
+    "ZZ" : [op.BranchFreeOperator() for d in range((L+1)//2)]
 }
 for l in range(L):
     observables["X"].add( op.scal_opstr( 1./L, ( op.Sx(l), ) ) )
@@ -107,14 +107,15 @@ for l in range(L):
 sampler = None
 if inp["sampler"]["type"] == "MC":
     # Set up MCMC sampler
-    sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip_Z2, (L,),
+    sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(inp["sampler"]["seed"]), psi,
+                                        jVMC.sampler.propose_spin_flip_Z2, (L,),
                                         numChains=inp["sampler"]["numChains"],
                                         numSamples=inp["sampler"]["numSamples"],
                                         thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],
                                         sweepSteps=4*L )
 else:
     # Set up exact sampler
-    sampler=jVMC.sampler.ExactSampler(L)
+    sampler=jVMC.sampler.ExactSampler(psi, L)
 
 tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"], 
                                        svdTol=inp["time_evol"]["svd_tolerance"],

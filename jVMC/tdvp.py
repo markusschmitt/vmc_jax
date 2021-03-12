@@ -186,6 +186,10 @@ class TDVP:
             outp = rhsArgs["outp"]
         self.outp = outp
 
+        numSamples = None
+        if "numSamples" in rhsArgs:
+            numSamples = rhsArgs["numSamples"]
+
         def start_timing(outp, name):
             if outp is not None:
                 outp.start_timing(name)
@@ -198,7 +202,7 @@ class TDVP:
 
         # Get sample
         start_timing(outp, "sampling")
-        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( rhsArgs['numSamples'] )
+        sampleConfigs, sampleLogPsi, p =  self.sampler.sample( numSamples )
         stop_timing(outp, "sampling", waitFor=sampleConfigs)
 
         # Evaluate local energy

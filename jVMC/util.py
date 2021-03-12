@@ -53,9 +53,9 @@ def init_net(descr, dims, seed=0):
 
     def get_net(descr, dims, seed):
 
-        net = netTypes[descr["type"]].partial(**descr["parameters"])
-        _, params = net.init_by_shape(random.PRNGKey(seed),dims)
-        return nn.Model(net,params)
+        net = netTypes[descr["type"]](**descr["parameters"])
+        params = net.init(random.PRNGKey(seed),jnp.zeros(dims, dtype=np.int32))
+        return net, params
 
 
     if "actFun" in descr["net1"]["parameters"]:
@@ -74,9 +74,9 @@ def init_net(descr, dims, seed=0):
 
     if not "net2" in descr:
 
-        model = get_net(descr["net1"], dims, seed)
+        model, params = get_net(descr["net1"], dims, seed)
     
-        return jVMC.vqs.NQS(model, batchSize=descr["gradient_batch_size"])
+        return jVMC.vqs.NQS(model, params, batchSize=descr["gradient_batch_size"])
 
     else:
 
@@ -84,19 +84,16 @@ def init_net(descr, dims, seed=0):
 
             descr["net2"]["parameters"]["actFun"] = get_activation_functions(descr["net2"]["parameters"]["actFun"])
         
-        model1 = get_net(descr["net1"], dims, seed)
-        model2 = get_net(descr["net2"], dims, seed)
+        model1, params1 = get_net(descr["net1"], dims, seed)
+        model2, params2 = get_net(descr["net2"], dims, seed)
 
-        return jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"])
+        return jVMC.vqs.NQS((model1, model2), (params1, params2), batchSize=descr["gradient_batch_size"])
 
 
 def measure(observables, psi, sampler, numSamples=None):
     
     # Get sample
-    sampleConfigs, sampleLogPsi, p =  sampler.sample( psi, numSamples )
-    #sampleConfigs = jax.pmap(lambda x: jnp.concatenate([x, 1-x], axis=0))(sampleConfigs)
-    #sampleLogPsi = jax.pmap(lambda x: jnp.concatenate([x, x], axis=0))(sampleLogPsi)
-    #mpi.globNumSamples *= 2
+    sampleConfigs, sampleLogPsi, p =  sampler.sample( numSamples )
 
     result = {}
     

@@ -8,7 +8,7 @@ This example shows a basic implementation of ground state search with stochastic
 Code
 ====
 
-.. literalinclude:: ../../../programs/ground_state_search.py
+.. literalinclude:: ../../../examples/ex0_ground_state_search.py
         :linenos:
         :language: python
         :lines: 1-
