@@ -181,6 +181,8 @@ class NQS:
 
         Returns:
             Logarithmic wave function coefficients :math:`\ln\psi(s)`.
+
+        :meta public:
         """
 
         if self.realNets:

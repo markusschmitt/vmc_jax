@@ -47,6 +47,21 @@ def Sx(idx):
     return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.0,1.0],dtype=opDtype), 'diag': False}
 
 
+def Sy(idx):
+    """Returns a :math:`\hat\sigma^x` Pauli operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`\hat\sigma^x` Pauli operator
+
+    """
+
+    return {'idx': idx, 'map': jnp.array([1,0],dtype=np.int32), 'matEls':jnp.array([1.j,-1.j],dtype=opDtype), 'diag': False}
+
+
 def Sz(idx):
     """Returns a :math:`\hat\sigma^z` Pauli operator
 
@@ -145,7 +160,7 @@ class BranchFreeOperator(Operator):
 
 
     def compile(self):
-        """Compiles a operator mapping functino from the given operator strings.
+        """Compiles a operator mapping function from the given operator strings.
 
         """
 

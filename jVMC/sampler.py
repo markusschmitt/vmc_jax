@@ -49,6 +49,7 @@ class MCMCSampler:
     Initializer arguments:
     
     * ``key``: An instance of ``jax.random.PRNGKey``.
+    * ``net``: Network defining the probability distribution.
     * ``updateProposer``: A function to propose updates for the MCMC algorithm. \
     It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
     ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
@@ -158,11 +159,14 @@ class MCMCSampler:
 
         Args:
 
-        * ``net``: Variational wave function, instance of ``jVMC.NQS`` class.
         * ``numSamples``: Number of samples to generate. When running multiple processes \
         or on multiple devices per process, the number of samples returned is \
         ``numSamples`` or more. If ``None``, the default number of samples is returned \
         (see ``set_number_of_samples()`` member function).
+        * ``multipleOf``: This argument allows to choose the number of samples returned to \
+        be the smallest multiple of ``multipleOf`` larger than ``numSamples``. This feature \
+        is useful to distribute a total number of samples across multiple processors in such \
+        a way that the number of samples per processor is identical for each processor.
 
         Returns:
             A sample of computational basis configurations drawn from :math:`|\\psi(s)|^2`.
@@ -340,13 +344,14 @@ class ExactSampler:
 
     Initialization arguments:
     
-    * sampleShape: Shape of computational basis states.
-    * lDim: Local Hilbert space dimension.
+    * ``net``: Network defining the probability distribution.
+    * ``sampleShape``: Shape of computational basis states.
+    * ``lDim``: Local Hilbert space dimension.
     """
 
-    def __init__(self, psi, sampleShape, lDim=2):
+    def __init__(self, net, sampleShape, lDim=2):
 
-        self.psi = psi
+        self.psi = net
         self.N = jnp.prod(jnp.asarray(sampleShape))
         self.sampleShape = sampleShape
         self.lDim = lDim
