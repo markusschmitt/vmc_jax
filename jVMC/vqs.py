@@ -61,9 +61,10 @@ class NQS:
 
     Initializer arguments:
 
-        * ``nets``: Variational network or tuple of networks.\
-            A network has to be registered as pytree node and provide \
-            a ``__call__`` function for evaluation.
+        * ``nets``: Variational network or tuple of networks.
+        * ``parameters``: Set of variational parameters of the network(s). \
+            If two networks are given, the parameters for each of them are \
+            needed.
         * ``batchSize``: Batch size for batched network evaluation. Choice \
             of this parameter impacts performance: with too small values performance \
             is limited by memory access overheads, too large values can lead \
