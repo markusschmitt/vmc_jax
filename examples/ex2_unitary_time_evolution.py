@@ -18,6 +18,7 @@ import time
 
 import jVMC
 from jVMC.util import measure
+import jVMC.operator as op
 
 import matplotlib.pyplot as plt
 
