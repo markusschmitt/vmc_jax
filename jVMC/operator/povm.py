@@ -8,11 +8,83 @@ import sys
 sys.path.append(sys.path[0] + "/../..")
 
 import jVMC.global_defs as global_defs
+import jVMC.mpi_wrapper as mpi
 from . import Operator
 
 import functools
 
 opDtype = global_defs.tReal
+
+
+def measure_povm(povm, sampler, p, sampleConfigs=None, probs=None, observables=None, numSamples=None):
+    """For a set of sampled configurations, compute the associated expectation values
+    for a given set of observables. If none is provided, magnetizations and correlations for X, Y and Z are computed
+    Args:
+        * ``povm``: the povm that holds the jitted evaluation function
+        * ``sampler``: the sampler used for the computation of expectation values
+        * ``p``: the model, instance of VQS
+        * ``sampleConfigs``: optional, if configurations have already been generated
+        * ``probs``: optional, the associated probabilities
+        * ``observables``: optional, observables for which expectation values are computed
+        * ``numSamples``: optional, number of samples used for stochastic estimation
+    """
+    if sampleConfigs == None:
+        sampleConfigs, sampleLogPsi, probs = sampler.sample(p, numSamples)
+    if observables == None:
+        observables = povm.observables
+    result = {}
+
+    for name, ops in observables.items():
+        results = povm.evaluate_observable(ops, sampleConfigs)
+        result[name] = {}
+        if probs is not None:
+            result[name]["mean"] = jnp.array(mpi.global_mean(results[0], probs))
+            result[name]["variance"] = jnp.array(mpi.global_variance(results[0], probs))
+            result[name]["MC_error"] = jnp.array(0)
+
+        else:
+            result[name]["mean"] = jnp.array(mpi.global_mean(results[0]))
+            result[name]["variance"] = jnp.array(mpi.global_variance(results[0]))
+            result[name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
+
+        for key, value in results[1].items():
+            result_name = name + "_corr_L" + str(key)
+            result[result_name] = {}
+            if probs is not None:
+                result[result_name]["mean"] = jnp.array(mpi.global_mean(value, probs) - result[name]["mean"]**2)
+                result[result_name]["variance"] = jnp.array(mpi.global_variance(value, probs))
+                result[result_name]["MC_error"] = jnp.array(0.)
+            else:
+                result[result_name]["mean"] = jnp.array(mpi.global_mean(value) - result[name]["mean"]**2)
+                result[result_name]["variance"] = jnp.array(mpi.global_variance(value))
+                result[result_name]["MC_error"] = jnp.array(result[result_name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
+
+    return result
+
+
+def get_1_particle_distributions(state, povm):
+    """compute 1 particle POVM-representations, mainly used for defining initial states
+    Args:
+        * ``state``: the desired state on the bloch-sphere
+        * ``povm``: the povm for which the distribution is desired
+    """
+    M = povm.M
+    probs = jnp.zeros(4)
+    if state == "z_up":
+        s = jnp.array([1, 0])
+    elif state == "z_down":
+        s = jnp.array([0, 1])
+    elif state == "x_up":
+        s = jnp.array([1, 1]) / jnp.sqrt(2)
+    elif state == "x_down":
+        s = jnp.array([1, -1]) / jnp.sqrt(2)
+    elif state == "y_up":
+        s = jnp.array([1, 1.j]) / jnp.sqrt(2)
+    elif state == "y_down":
+        s = jnp.array([1, -1.j]) / jnp.sqrt(2)
+    for (idx, ele) in enumerate(M):
+        probs = jax.ops.index_add(probs, jax.ops.index[idx], jnp.real(jnp.dot(jnp.conj(jnp.transpose(s)), jnp.dot(ele, s))))
+    return probs
 
 
 def get_paulis():
@@ -131,7 +203,7 @@ def get_observables(M, T_inv):
     return observables_POVM
 
 
-class POVM:
+class POVM():
     """This class provides POVM - operators and related matrices
 
     Initializer arguments:
@@ -141,13 +213,31 @@ class POVM:
         * ``ǹame``: specifier of the POVM
     """
 
-    def __init__(self, theta=0, phi=0, name='SIC'):
+    def __init__(self, theta=0, phi=0, name='SIC', system_data={"dim": "1D", "corrLens": jnp.arange(3)}):
         """Initialize ``POVM``
         """
         self.theta = theta
         self.phi = phi
         self.name = name
+        self.system_data = system_data
         self.set_standard_povm_operators()
+
+        if global_defs.usePmap:
+            self._evaluate_mean_magnetization_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda ops, idx: jnp.sum(
+                self._evaluate_observable(ops, idx)) / idx.shape[0], in_axes=(None, 0)), in_axes=(None, 0))
+            self._evaluate_magnetization_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda ops, idx:
+                                                                                          self._evaluate_observable(ops, idx), in_axes=(None, 0)), in_axes=(None, 0))
+            self._evaluate_correlators_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda resPerSamplePerSpin, corrLen: resPerSamplePerSpin *
+                                                                                        jnp.roll(resPerSamplePerSpin, corrLen, axis=0), in_axes=(0, None)), in_axes=(0, None))
+            self._spin_average_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda obsPerSamplePerSpin: jnp.mean(obsPerSamplePerSpin, axis=-1), in_axes=(0,)), in_axes=(0,))
+        else:
+            self._evaluate_mean_magnetization_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda ops, idx: jnp.sum(
+                self._evaluate_observable(ops, idx)) / idx.shape[0], in_axes=(None, 0)), in_axes=(None, 0))
+            self._evaluate_magnetization_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda ops, idx:
+                                                                                        self._evaluate_observable(ops, idx), in_axes=(None, 0)), in_axes=(None, 0))
+            self._evaluate_correlators_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda resPerSamplePerSpin, corrLen: resPerSamplePerSpin *
+                                                                                      jnp.roll(resPerSamplePerSpin, corrLen), in_axes=(0, None)), in_axes=(0, None))
+            self._spin_average_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda obsPerSamplePerSpin: jnp.mean(obsPerSamplePerSpin, axis=-1), in_axes=(0,)), in_axes=(0,))
 
     def set_standard_povm_operators(self):
         """Obtain all relevant matrices
@@ -159,6 +249,27 @@ class POVM:
         self.unitaries = get_unitaries(self.M, self.T_inv)
         self.operators = {**self.unitaries, **self.dissipators}
         self.observables = get_observables(self.M, self.T_inv)
+
+    @partial(jax.vmap, in_axes=(None, None, 0))
+    def _evaluate_observable(self, obs, idx):
+        return obs[idx]
+
+    def evaluate_observable(self, operator, states):
+        if self.system_data["dim"] == "1D":
+            resPerSamplePerSpin = self._evaluate_magnetization_pmapd(operator, states)
+
+            correlators = {}
+            for corrLen in self.system_data["corrLens"]:
+                corrPerSamplePerSpin = self._evaluate_correlators_pmapd(resPerSamplePerSpin, corrLen)
+                correlators[corrLen] = self._spin_average_pmapd(corrPerSamplePerSpin)
+            return self._spin_average_pmapd(resPerSamplePerSpin), correlators
+        else:
+            resPerSamplePerSpin = self._evaluate_magnetization_pmapd(operator, states.reshape(1, -1, self.L**2)).reshape(1, -1, self.L, self.L)
+            correlators = {}
+            for corrLen in self.corrLens:
+                corrPerSamplePerSpin = self._evaluate_correlators_pmapd(resPerSamplePerSpin, corrLen)
+                correlators[corrLen] = self._spin_average_pmapd(corrPerSamplePerSpin.reshape(1, -1, self.L**2))
+            return self._spin_average_pmapd(resPerSamplePerSpin.reshape(1, -1, self.L**2)), correlators
 
 
 class POVMOperator(Operator):
