@@ -4,12 +4,13 @@ import numpy as np
 
 import sys
 # Find jVMC package
-sys.path.append(sys.path[0]+"/..")
+sys.path.append(sys.path[0] + "/..")
 import jVMC.global_defs as global_defs
 
 import jVMC.operator
 
 import functools
+
 
 class SxOperator(jVMC.operator.Operator):
     """Define a `\hat\sigma_l^x` operator."""
@@ -18,8 +19,7 @@ class SxOperator(jVMC.operator.Operator):
 
         self.siteIdx = siteIdx
 
-        super().__init__() # Constructor of base class Operator has to be called!
-
+        super().__init__()  # Constructor of base class Operator has to be called!
 
     def compile(self):
 
@@ -31,9 +31,9 @@ class SxOperator(jVMC.operator.Operator):
             sp = sp.ravel()
 
             # Define matrix element
-            matEl = jnp.array([1.,], dtype=global_defs.tCpx)
-            # Define mapping of Sx: 0->1, 1->0 
-            sMap = jnp.array([1,0])
+            matEl = jnp.array([1., ], dtype=global_defs.tCpx)
+            # Define mapping of Sx: 0->1, 1->0
+            sMap = jnp.array([1, 0])
             # Perform mapping
             sp = jax.ops.index_update(sp, jax.ops.index[idx], sMap[s[idx]])
 
@@ -52,7 +52,7 @@ mySx = SxOperator(siteIdx=1)
 testFunction = mySx.compile()
 
 # Simple test configuration s=|0000>
-testConfig=jnp.array([0,0,0,0], dtype=np.int32)
+testConfig = jnp.array([0, 0, 0, 0], dtype=np.int32)
 
 # Get connected s' and matrix elements <s'|Sx|s>
 sp, matEl = testFunction(testConfig)

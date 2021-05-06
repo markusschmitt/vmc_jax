@@ -1,7 +1,7 @@
 import os
 import sys
 # Find jVMC package
-sys.path.append(sys.path[0]+"/..")
+sys.path.append(sys.path[0] + "/..")
 
 import jax
 from jax.config import config
@@ -18,29 +18,29 @@ g = -0.7
 
 # Initialize net
 # net = jVMC.nets.CpxCNN(F=[15,], channels=[100], bias=False)
-orbit = jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
+orbit = jnp.array([jnp.roll(jnp.identity(L, dtype=np.int32), l, axis=1) for l in range(L)])
 net = jVMC.nets.RNNsym(hiddenSize=15, L=L, depth=5, orbit=orbit)
-params = net.init(jax.random.PRNGKey(1234),jnp.zeros((L,), dtype=np.int32))
+params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=np.int32))
 
-psi = jVMC.vqs.NQS(net,params, batchSize=500) # Variational wave function
+psi = jVMC.vqs.NQS(net, params, batchSize=500)  # Variational wave function
 print(f"The variational ansatz has {psi.numParameters} parameters.")
 
 # Set up hamiltonian
 hamiltonian = jVMC.operator.BranchFreeOperator()
 for l in range(L):
-    hamiltonian.add( jVMC.operator.scal_opstr( -1., ( jVMC.operator.Sz(l), jVMC.operator.Sz((l+1)%L) ) ) )
-    hamiltonian.add( jVMC.operator.scal_opstr( g, ( jVMC.operator.Sx(l), ) ) )
+    hamiltonian.add(jVMC.operator.scal_opstr(-1., (jVMC.operator.Sz(l), jVMC.operator.Sz((l + 1) % L))))
+    hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(l), )))
 
 # Set up sampler
-sampler = jVMC.sampler.MCMCSampler( random.PRNGKey(4321), psi, jVMC.sampler.propose_spin_flip_Z2, (L,),
-                                    numChains=50, sweepSteps=L,
-                                    numSamples=300000, thermalizationSweeps=0)
+sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(4321), psi, jVMC.sampler.propose_spin_flip_Z2, (L,),
+                                   numChains=50, sweepSteps=L,
+                                   numSamples=300000, thermalizationSweeps=0)
 
 # Set up TDVP
 tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=1.,
                               svdTol=1e-8, diagonalShift=10, makeReal='real')
 
-stepper = jVMC.stepper.Euler(timeStep=1e-2) # ODE integrator
+stepper = jVMC.stepper.Euler(timeStep=1e-2)  # ODE integrator
 
 # Set up OutputManager
 wdir = "./benchmarks/"
