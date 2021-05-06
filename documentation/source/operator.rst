@@ -120,4 +120,57 @@ Detailed documentation
 POVM operator class
 ^^^^^^^^^^^^^^^^^^^
 
-Coming soon.
+The POVM-formalism builds on the observation that a density matrix :math:`\rho` may equivalently (without information loss) be represented as a probability distribution :math:`P` with :math:`4^N` entries.
+Elements of this distribution are obtained as expectation values of the density matrix :math:`P^\textbf{a}=\mathrm{tr}(\rho M^\textbf{a})` for the product POVM-operators :math:`M^\textbf{a}=M^{a_1}\otimes M^{a_2}\otimes..\otimes M^{a_N}`. In order to simulate dissipative dynamics in Open Quantum Systems (OQS) the Lindbladian evolution is expressed as :math:`\dot{P}^\textbf{a}=\mathcal{L}^\textbf{ab}P^\textbf{b}`, where :math:`\mathcal{L}` is the operator that generates the evolution.
+The POVM operator class comprises an implementation of :math:`\mathcal{L}^\textbf{ab}`, whose main purpose it is to output all off-diagonal configurations :math:`\textbf{b}=b_1b_2..b_N` associated with an input configuration :math:`\textbf{a}=a_1a_2..a_N`. This is achieved by building on the sparsity that is typically present in many-body systems, as this sparsity crucially is preserved in the POVM-formalism allowing the described operations to scale linearly in the system size :math:`N`.
+
+Elementary operators
+--------------------
+
+Elementary operators in the POVM-formalism are build by reexpressing the equation of motion of the density operator :math:`\dot{\rho}=\mathcal{L}[\rho]` in terms of :math:`P`, \
+resulting in 
+
+    :math:`\dot{P}^\textbf{a} = \mathrm{tr}(\mathcal{L}[M^\textbf{c}]M^\textbf{a}) T^{-1\textbf{cb}} P^\textbf{b} = \mathcal{L}^\textbf{ab}P^\textbf{b}`.
+
+Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored.
+Frequently encountered unitary and dissipative operators are pre-defined and can be constructed as explained below.
+
+Assembling operators
+--------------------
+
+Consider again the above example of a spin-1/2 quantum Ising chain of length :math:`L` (here with periodic boundary conditions),
+
+    :math:`\hat H=-\sum_{l=1}^{L}\hat\sigma_l^z\hat\sigma_{(l+1) \% L}^z-g\sum_{l=1}^{L}\hat\sigma_l^x`.
+
+However, let us now additionally assume a single-qubit decay on each spin in the chain, \
+such that the time-derivative of the density matrix is
+
+    :math:`\dot{\rho} = -i[H, \rho] + \gamma \sum_i \sigma^-_i\rho\sigma^+_i - \frac{1}{2}\lbrace \sigma^+_i\sigma^-_i,\rho\rbrace`
+
+Using the POVM-operator class, the expression for the operator that corresponds to these dynamics reads::
+
+    Lindbladian = jVMC.operator.POVMOperator()
+    for l in range(L):
+        Lindbladian.add({"name": "ZZ", "strength": -1.0, "sites": (l, (l + 1) % L)})
+        Lindbladian.add({"name": "X", "strength": -g, "sites": (l,)})
+        Lindbladian.add({"name": "decaydown", "strength": gamma, "sites": (l,)})
+
+Adding terms to the Lindbladian is done using dictionaries, which have three entries: The name of the operator to be added, its prefactor and the site-ids that are involved.
+Valid names that are recognized are the unitary 2-body (1-body) operators [``"XX"``, ``"YY"``, ``"ZZ"``] ([``"X"``, ``"Y"``, ``"Z"``]) corresponding to couplings and external magnetic fields aswell as the single-particle dissipation terms [``"dephasing"``, ``"decaydown"``, ``"decayup"``] corresponding to the dissipation operators [:math:`\sigma^z`, :math:`\sigma^-`, :math:`\sigma^+`].
+
+Detailed documentation
+----------------------
+
+.. autoclass:: jVMC.operator.POVM
+    :members:
+
+.. autoclass:: jVMC.operator.POVMOperator
+    :members:
+
+.. autofunction:: jVMC.operator.measure_povm
+.. autofunction:: jVMC.operator.get_M
+.. autofunction:: jVMC.operator.get_dissipators
+.. autofunction:: jVMC.operator.get_unitaries
+.. autofunction:: jVMC.operator.get_observables
+.. autofunction:: jVMC.operator.get_1_particle_distributions
+.. autofunction:: jVMC.operator.get_paulis
