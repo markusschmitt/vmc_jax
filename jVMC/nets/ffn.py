@@ -21,11 +21,11 @@ class FFN(nn.Module):
     @nn.compact
     def __call__(self, s):
 
-        activationFunctions = [f for f in actFun]
+        activationFunctions = [f for f in self.actFun]
         for l in range(len(activationFunctions), len(self.layers) + 1):
             activationFunctions.append(self.actFun[-1])
 
-        s = 2 * s - 1
+        s = 2 * s.ravel() - 1
         for l, fun in zip(self.layers, activationFunctions[:-1]):
             s = fun(
                 nn.Dense(features=l, use_bias=self.bias, dtype=global_defs.tReal,
@@ -33,7 +33,7 @@ class FFN(nn.Module):
                          bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))(s)
             )
 
-        return jnp.sum(activationFunctions[-1](nn.Dense(features=1, bias=bias, dtype=global_defs.tReal,
+        return jnp.sum(activationFunctions[-1](nn.Dense(features=1, use_bias=self.bias, dtype=global_defs.tReal,
                                                         kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
                                                         bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))(s)
                                                ))
