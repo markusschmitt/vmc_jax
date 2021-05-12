@@ -190,7 +190,7 @@ class TDVP:
 
         # Get sample
         start_timing(outp, "sampling")
-        sampleConfigs, sampleLogPsi, p = self.sampler.sample(numSamples)
+        sampleConfigs, sampleLogPsi, p = self.sampler.sample(numSamples=numSamples)
         stop_timing(outp, "sampling", waitFor=sampleConfigs)
 
         # Evaluate local energy

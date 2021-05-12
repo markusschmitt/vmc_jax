@@ -415,7 +415,6 @@ class NQS:
     def sample(self, numSamples, key, parameters=None):
 
         if self._isGenerator:
-
             net, params = self.get_sampler_net()
 
             if parameters is not None:
