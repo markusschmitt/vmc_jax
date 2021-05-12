@@ -207,13 +207,13 @@ class BranchFreeOperator(Operator):
 
         numOps = idxC.shape[0]
         matEl = jnp.ones(numOps, dtype=matElsC.dtype)
-        sp = jnp.vstack([s] * numOps)
+        sp = jnp.array([s] * numOps)
 
         def apply_fun(config, configMatEl, idx, sMap, matEls):
 
             configShape = config.shape
             config = config.ravel()
-            configMatEl = configMatEl * matEls[s[idx]]
+            configMatEl = configMatEl * matEls[config[idx]]
             config = jax.ops.index_update(config, jax.ops.index[idx], sMap[config[idx]])
 
             return config.reshape(configShape), configMatEl

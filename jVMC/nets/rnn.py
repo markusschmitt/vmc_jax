@@ -161,7 +161,7 @@ class RNNsym(nn.Module):
     hiddenSize: int = 10
     depth: int = 1
     inputDim: int = 2
-    passDim: int = inputDim
+    #passDim: int = inputDim
     actFun: callable = nn.elu
     initScale: float = 1.0
     logProbFactor: float = 0.5
@@ -171,7 +171,7 @@ class RNNsym(nn.Module):
     def setup(self):
 
         self.rnn = RNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
-                       inputDim=self.inputDim, passDim=self.passDim,
+                       inputDim=self.inputDim,# passDim=self.passDim,
                        actFun=self.actFun, initScale=self.initScale,
                        logProbFactor=self.logProbFactor, name='myRNN')
 
@@ -220,12 +220,13 @@ class PhaseRNN(nn.Module):
     inputDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
-    passDim: int = inputDim
+    #passDim: int = inputDim
 
     def setup(self):
 
         self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize, outDim=self.inputDim,
-                                    passDim=self.passDim, actFun=self.actFun, initScale=self.initScale)
+                                    #passDim=self.passDim, 
+                                    actFun=self.actFun, initScale=self.initScale)
 
         self.dense = nn.Dense(features=8, dtype=global_defs.tReal,
                               kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
@@ -262,13 +263,14 @@ class PhaseRNNsym(nn.Module):
     initScale: float = 1.0
     orbit: any = None
     z2sym: bool = False
-    passDim: int = inputDim
+    #passDim: int = inputDim
 
     @nn.compact
     def __call__(self, x):
 
         self.rnn = PhaseRNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
-                            inputDim=self.inputDim, passDim=self.passDim, actFun=aself.ctFun,
+                            inputDim=self.inputDim, #passDim=self.passDim,
+                            actFun=aself.ctFun,
                             initScale=self.initScale, name='myRNN')
 
         x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit, x)
@@ -305,7 +307,7 @@ class CpxRNN(nn.Module):
                                   kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
                                   bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
-        self.phaseDense1 = nn.Dense(features=6, dtype=global_defs.tReal,
+        self.phaseDense1 = nn.Dense(features=4, dtype=global_defs.tReal,
                                     kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
                                     bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
@@ -319,20 +321,19 @@ class CpxRNN(nn.Module):
 
         _, (probs, phaseOut) = self.rnn_cell((state, jnp.zeros(self.inputDim)), jax.nn.one_hot(x, self.inputDim))
 
-        phase = self.phaseDense1(phaseOut)
-        phase = self.actFun(phase)
-        phase = self.phaseDense2(phaseOut)
+        phase = self.actFun(self.phaseDense2(phaseOut))
 
-        return self.logProbFactor * jnp.sum(probs, axis=0) + 1.j * jnp.mean(self.actFun(phase))
+        return self.logProbFactor * jnp.sum(probs, axis=0) + 1.j * jnp.mean(phase)
 
     @partial(nn.transforms.scan,
              variable_broadcast='params',
              split_rngs={'params': False})
     def rnn_cell(self, carry, x):
-        newCarry, out = self.rnnCell(carry[0], carry[1])
-        logProb = nn.log_softmax(self.actFun(self.probDense(out)))
+        newCarry = self.rnnCell(carry[0], carry[1])
+        logProb = nn.log_softmax(self.actFun(self.probDense(newCarry)))
         logProb = jnp.sum(logProb * x, axis=-1)
-        return (newCarry, x), (jnp.nan_to_num(logProb, nan=-35), out)
+        phaseOut = self.actFun(self.phaseDense1(newCarry))
+        return (newCarry, x), (jnp.nan_to_num(logProb, nan=-35), phaseOut)
 
     def sample(self, batchSize, key):
         """sampler
@@ -354,8 +355,8 @@ class CpxRNN(nn.Module):
     def rnn_cell_sampler(carry, x):
 
         def eval_cell(x, y):
-            newCarry, out = self.rnnCell(x, y)
-            return newCarry, actFun(self.probDense(out))
+            newCarry = self.rnnCell(x, y)
+            return newCarry, actFun(self.probDense(newCarry))
 
         newCarry, logits = jax.vmap(eval_cell)(carry[0], carry[1])
         sampleOut = jax.random.categorical(x, logits)

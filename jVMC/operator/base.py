@@ -128,7 +128,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         # Compute matrix elements
         self.sp, self.matEl = self._get_s_primes_pmapd(s)
-
+        
         # Get only non-zero contributions
         idx, self.numNonzero = self._find_nonzero_pmapd(self.matEl)
         self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[..., :jnp.max(self.numNonzero)], self.numNonzero)
@@ -136,10 +136,11 @@ class Operator(metaclass=abc.ABCMeta):
 
         return self._flatten_pmapd(self.sp), self.matEl
 
+
     def _get_O_loc(self, matEl, logPsiS, logPsiSP):
 
-        # return jax.vmap(lambda x,y,z: jnp.sum(x * jnp.exp(z-y)), in_axes=(1,0,1))(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
         return jax.vmap(lambda x, y, z: jnp.sum(x * jnp.exp(z - y)), in_axes=(0, 0, 0))(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
+
 
     def get_O_loc(self, logPsiS, logPsiSP):
         """Compute :math:`O_{loc}(s)`.

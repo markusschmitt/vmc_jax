@@ -194,12 +194,18 @@ class TDVP:
         stop_timing(outp, "sampling", waitFor=sampleConfigs)
 
         # Evaluate local energy
+        ham = None
+        if callable(rhsArgs['hamiltonian']):
+            ham = rhsArgs['hamiltonian'](t)
+        else:
+            ham = rhsArgs['hamiltonian']            
+
         start_timing(outp, "compute Eloc")
-        sampleOffdConfigs, matEls = rhsArgs['hamiltonian'].get_s_primes(sampleConfigs)
+        sampleOffdConfigs, matEls = ham.get_s_primes(sampleConfigs)
         start_timing(outp, "evaluate off-diagonal")
         sampleLogPsiOffd = rhsArgs['psi'](sampleOffdConfigs)
         stop_timing(outp, "evaluate off-diagonal", waitFor=sampleLogPsiOffd)
-        Eloc = rhsArgs['hamiltonian'].get_O_loc(sampleLogPsi, sampleLogPsiOffd)
+        Eloc = ham.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
         stop_timing(outp, "compute Eloc", waitFor=Eloc)
 
         # Evaluate gradients
