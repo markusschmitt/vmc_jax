@@ -102,14 +102,13 @@ class RNN2D(nn.Module):
                                       outDim=self.inputDim,
                                       passDim=self.passDim,
                                       actFun=self.actFun,
-                                      initScale=self.initScale, name="myCell")
+                                      initScale=self.initScale)
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
                                    dtype=global_defs.tReal)
         self.outputDense = nn.Dense(features=self.inputDim,
                                     use_bias=True,
                                     kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal),
-                                    name="myOutput")
+                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
     def reverse_line(self, line, b):
         return jax.lax.cond(b == 1, lambda z: z, lambda z: jnp.flip(z, 0), line)
@@ -211,7 +210,7 @@ class RNN2Dsym(nn.Module):
         self.rnn = RNN2D(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
                          inputDim=self.inputDim,
                          actFun=self.actFun, initScale=self.initScale,
-                         logProbFactor=self.logProbFactor, name='myRNN')
+                         logProbFactor=self.logProbFactor)
 
     def __call__(self, x):
 

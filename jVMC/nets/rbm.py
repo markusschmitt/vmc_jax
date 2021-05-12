@@ -29,7 +29,7 @@ class CpxRBM(nn.Module):
     @nn.compact
     def __call__(self, s):
 
-        layer = nn.Dense(self.numHidden, name='rbm_layer', use_bias=self.bias, dtype=global_defs.tCpx,
+        layer = nn.Dense(self.numHidden, use_bias=self.bias, dtype=global_defs.tCpx,
                          kernel_init=jVMC.nets.initializers.cplx_init,
                          bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tCpx))
 
@@ -53,7 +53,7 @@ class RBM(nn.Module):
     @nn.compact
     def __call__(self, s):
 
-        layer = nn.Dense(self.numHidden, name='rbm_layer', use_bias=self.bias, dtype=global_defs.tReal,
+        layer = nn.Dense(self.numHidden, use_bias=self.bias, dtype=global_defs.tReal,
                          kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
                          bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 

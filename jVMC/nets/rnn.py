@@ -96,15 +96,13 @@ class RNN(nn.Module):
                                     # outDim=self.inputDim,
                                     # passDim=self.passDim,
                                     actFun=self.actFun,
-                                    initScale=self.initScale,
-                                    name="myCell")
+                                    initScale=self.initScale)
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
                                    dtype=global_defs.tReal)
         self.outputDense = nn.Dense(features=self.inputDim,
                                     use_bias=True,
                                     kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal),
-                                    name="myOutput")
+                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
     def __call__(self, x):
 
@@ -173,7 +171,7 @@ class RNNsym(nn.Module):
         self.rnn = RNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
                        inputDim=self.inputDim,# passDim=self.passDim,
                        actFun=self.actFun, initScale=self.initScale,
-                       logProbFactor=self.logProbFactor, name='myRNN')
+                       logProbFactor=self.logProbFactor)
 
     def __call__(self, x):
 
@@ -271,7 +269,7 @@ class PhaseRNNsym(nn.Module):
         self.rnn = PhaseRNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
                             inputDim=self.inputDim, #passDim=self.passDim,
                             actFun=aself.ctFun,
-                            initScale=self.initScale, name='myRNN')
+                            initScale=self.initScale)
 
         x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit, x)
 
@@ -301,9 +299,9 @@ class CpxRNN(nn.Module):
     def setup(self):
 
         self.rnnCell = RNNCell(hiddenSize=self.hiddenSize, outDim=self.hiddenSize,
-                               actFun=self.actFun, initScale=self.initScale, name="myCell")
+                               actFun=self.actFun, initScale=self.initScale)
 
-        self.probDense = nn.Dense(features=self.inputDim, name="probDense", dtype=global_defs.tReal,
+        self.probDense = nn.Dense(features=self.inputDim, dtype=global_defs.tReal,
                                   kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
                                   bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 

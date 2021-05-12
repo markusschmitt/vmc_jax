@@ -38,7 +38,7 @@ class LSTM(nn.Module):
 
     def setup(self):
 
-        self.lstmCell = LSTMCell(name="myCell", inputDim=self.inputDim, actFun=self.actFun)
+        self.lstmCell = LSTMCell(inputDim=self.inputDim, actFun=self.actFun)
 
     def __call__(self, x):
 
@@ -97,7 +97,7 @@ class LSTMsym(nn.Module):
 
     def setup(self):
 
-        self.lstm = LSTM.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun, name='myLSTM')
+        self.lstm = LSTM.shared(L=L, hiddenSize=hiddenSize, inputDim=inputDim, actFun=actFun)
 
     def __call__(self, x, L=10, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5, orbit=None):
 
