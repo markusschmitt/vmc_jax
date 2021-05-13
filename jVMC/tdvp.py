@@ -56,7 +56,7 @@ class TDVP:
 
     def _get_tdvp_error(self, update):
 
-        return jnp.abs(1. + jnp.real(update.dot(self.S0.dot(update)) - 2. * jnp.real(update.dot(self.F0))) / self.ElocVar0)
+        return jnp.abs(1. + jnp.real(update.dot(self.S0.dot(update)) - 2. * jnp.real(update.dot(self.F0))) / self.ElocVar)
 
     def get_residuals(self):
 
@@ -158,7 +158,7 @@ class TDVP:
 
         update = jnp.real(jnp.dot(self.V, (self.invEv * regularizer * self.VtF)))
 
-        return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F)
+        return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F), self.S, F
 
     def S_dot(self, v):
 
@@ -198,7 +198,7 @@ class TDVP:
         if callable(rhsArgs['hamiltonian']):
             ham = rhsArgs['hamiltonian'](t)
         else:
-            ham = rhsArgs['hamiltonian']            
+            ham = rhsArgs['hamiltonian']
 
         start_timing(outp, "compute Eloc")
         sampleOffdConfigs, matEls = ham.get_s_primes(sampleConfigs)
@@ -214,7 +214,15 @@ class TDVP:
         stop_timing(outp, "compute gradients", waitFor=sampleGradients)
 
         start_timing(outp, "solve TDVP eqn.")
-        update, solverResidual = self.solve(Eloc, sampleGradients, p)
+        if p != None:
+            update_1, _, _, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2], p[:, 0::2])
+            _, _, S2, F2 = self.solve(Eloc[:, 1::2], sampleGradients[:, 1::2], p[:, 1::2])
+        else:
+            update_1, _, _, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2])
+            _, _, S2, F2 = self.solve(Eloc[:, 1::2], sampleGradients[:, 1::2])
+        validation_tdvpErr = self._get_tdvp_error(update_1)
+        update, solverResidual, _, _ = self.solve(Eloc, sampleGradients, p)
+        validation_residual = (jnp.linalg.norm(S2.dot(update_1) - F2) / jnp.linalg.norm(F2)) / solverResidual
         stop_timing(outp, "solve TDVP eqn.")
 
         if outp is not None:
@@ -228,6 +236,8 @@ class TDVP:
                 self.ElocVar0 = self.ElocVar
                 self.tdvpError = self._get_tdvp_error(update)
                 self.solverResidual = solverResidual
+                self.crossValidationFactor_residual = validation_residual
+                self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.tdvpError
                 self.snr0 = self.snr
                 self.ev0 = self.ev
                 self.S0 = self.S
