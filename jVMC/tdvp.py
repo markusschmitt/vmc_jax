@@ -20,13 +20,14 @@ def imagFun(x):
 
 class TDVP:
 
-    def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., diagonalizeOnDevice=True):
+    def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
 
         self.sampler = sampler
         self.snrTol = snrTol
         self.svdTol = svdTol
         self.diagonalShift = diagonalShift
         self.rhsPrefactor = rhsPrefactor
+        self.crossValidation = crossValidation
 
         self.diagonalizeOnDevice = diagonalizeOnDevice
 
@@ -54,9 +55,12 @@ class TDVP:
     def set_diagonal_shift(self, delta):
         self.diagonalShift = delta
 
+    def set_cross_validation(self, crossValidation=True):
+        self.crossValidation = crossValidation
+
     def _get_tdvp_error(self, update):
 
-        return jnp.abs(1. + jnp.real(update.dot(self.S0.dot(update)) - 2. * jnp.real(update.dot(self.F0))) / self.ElocVar)
+        return jnp.abs(1. + jnp.real(update.dot(self.S0.dot(update)) - 2. * jnp.real(update.dot(self.F0))) / self.ElocVar0)
 
     def get_residuals(self):
 
@@ -158,7 +162,7 @@ class TDVP:
 
         update = jnp.real(jnp.dot(self.V, (self.invEv * regularizer * self.VtF)))
 
-        return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F), self.S, F
+        return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F)
 
     def S_dot(self, v):
 
@@ -214,15 +218,7 @@ class TDVP:
         stop_timing(outp, "compute gradients", waitFor=sampleGradients)
 
         start_timing(outp, "solve TDVP eqn.")
-        if p != None:
-            update_1, _, _, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2], p[:, 0::2])
-            _, _, S2, F2 = self.solve(Eloc[:, 1::2], sampleGradients[:, 1::2], p[:, 1::2])
-        else:
-            update_1, _, _, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2])
-            _, _, S2, F2 = self.solve(Eloc[:, 1::2], sampleGradients[:, 1::2])
-        validation_tdvpErr = self._get_tdvp_error(update_1)
-        update, solverResidual, _, _ = self.solve(Eloc, sampleGradients, p)
-        validation_residual = (jnp.linalg.norm(S2.dot(update_1) - F2) / jnp.linalg.norm(F2)) / solverResidual
+        update, solverResidual = self.solve(Eloc, sampleGradients, p)
         stop_timing(outp, "solve TDVP eqn.")
 
         if outp is not None:
@@ -232,14 +228,30 @@ class TDVP:
 
         if "intStep" in rhsArgs:
             if rhsArgs["intStep"] == 0:
+                
                 self.ElocMean0 = self.ElocMean
                 self.ElocVar0 = self.ElocVar
                 self.tdvpError = self._get_tdvp_error(update)
                 self.solverResidual = solverResidual
-                self.crossValidationFactor_residual = validation_residual
-                self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.tdvpError
                 self.snr0 = self.snr
                 self.ev0 = self.ev
-                self.S0 = self.S
+
+                if self.crossValidation:
+
+                    if p != None:
+                        update_1, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2], p[:, 0::2])
+                        S2, F2, _ = self.get_tdvp_equation(Eloc[:, 1::2], sampleGradients[:, 1::2], p[:, 1::2])
+                    else:
+                        update_1, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2])
+                        S2, F2, _ = self.get_tdvp_equation(Eloc[:, 1::2], sampleGradients[:, 1::2])
+
+                    validation_tdvpErr = self._get_tdvp_error(update_1)
+                    update, solverResidual = self.solve(Eloc, sampleGradients, p)
+                    validation_residual = (jnp.linalg.norm(S2.dot(update_1) - F2) / jnp.linalg.norm(F2)) / solverResidual
+
+                    self.crossValidationFactor_residual = validation_residual
+                    self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.tdvpError
+                        
+                    self.S, _, _ = self.get_tdvp_equation(Eloc, sampleGradients, p)
 
         return update
