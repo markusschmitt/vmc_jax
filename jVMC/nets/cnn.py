@@ -23,6 +23,7 @@ class CNN(nn.Module):
     actFun: Sequence[callable] = (nn.elu,)
     bias: bool = True
     firstLayerBias: bool = False
+    periodicBoundary: bool = True
 
     @nn.compact
     def __call__(self, x):
@@ -51,7 +52,11 @@ class CNN(nn.Module):
         #x = jnp.expand_dims(2*x-1, axis=-1)
         x = jnp.expand_dims(jnp.expand_dims(2 * x - 1, axis=0), axis=-1)
         for c, fun, b in zip(self.channels, activationFunctions, bias):
-            x = jnp.pad(x, pads, 'wrap')
+            if self.periodicBoundary:
+                x = jnp.pad(x, pads, 'wrap')
+            else:
+                x = jnp.pad(x, pads, 'constant', constant_values=0)
+
             x = fun(nn.Conv(features=c, kernel_size=tuple(self.F),
                             strides=self.strides, padding=[(0, 0)] * len(self.strides),
                             use_bias=b, dtype=global_defs.tReal,
