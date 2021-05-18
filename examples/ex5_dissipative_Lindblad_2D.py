@@ -41,7 +41,7 @@ print(f"The variational ansatz has {psi.numParameters} parameters.")
 # Set up hamiltonian
 system_data = {"dim": dim, "L": L}
 povm = jVMC.operator.POVM(system_data)
-Lindbladian = jVMC.operator.POVMOperator(povm:)
+Lindbladian = jVMC.operator.POVMOperator(povm)
 for x in range(L):
     for y in range(L):
         Lindbladian.add({"name": "ZZ", "strength": 1.0, "sites": (xy_to_id(x, y, L), xy_to_id((x + 1) % L, y, L))})
@@ -54,8 +54,8 @@ prob_dist = jVMC.operator.povm.get_1_particle_distributions("z_up", Lindbladian.
 biases = jnp.log(prob_dist)
 params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
 
-params["params"]["myOutput"]["bias"] = biases
-params["params"]["myOutput"]["kernel"] = 1e-15 * params["params"]["myOutput"]["kernel"]
+params["params"]["outputDense"]["bias"] = biases
+params["params"]["outputDense"]["kernel"] = 1e-15 * params["params"]["outputDense"]["kernel"]
 params = jnp.concatenate([p.ravel()
                           for p in jax.tree_util.tree_flatten(params)[0]])
 psi.set_parameters(params)
