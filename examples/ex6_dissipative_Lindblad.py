@@ -9,6 +9,7 @@ import sys
 sys.path.append(sys.path[0] + "/..")
 # Find jVMC package
 import jVMC
+from functools import partial
 config.update("jax_enable_x64", True)
 
 
@@ -22,13 +23,17 @@ def copy_dict(a):
     return b
 
 
+def norm_fun(v, df=lambda x: x):
+    return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
+
+
 L = 5
 dim = "1D"
 logProbFactor = 1
 
 # Initialize net
-net = jVMC.nets.RNN(inputDim=4, logProbFactor=logProbFactor, hiddenSize=6, L=L, depth=2)
-# net = jVMC.nets.CNN(F=[L, ])
+orbit = jVMC.util.get_1d_orbit(L)
+net = jVMC.nets.RNNsym(inputDim=4, logProbFactor=logProbFactor, hiddenSize=6, L=L, depth=2, orbit=orbit)
 params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=jnp.int32))
 psi = jVMC.vqs.NQS(net, params)  # Variational wave function
 print(f"The variational ansatz has {psi.numParameters} parameters.")
@@ -39,29 +44,28 @@ povm = jVMC.operator.POVM(system_data)
 Lindbladian = jVMC.operator.POVMOperator(povm)
 for l in range(L):
     Lindbladian.add({"name": "ZZ", "strength": 1.0, "sites": (l, (l + 1) % L)})
-    Lindbladian.add({"name": "X", "strength": 0.5, "sites": (l,)})
-    Lindbladian.add({"name": "dephasing", "strength": 0.2, "sites": (l,)})
-    # Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (l,)})
+    Lindbladian.add({"name": "X", "strength": 3.0, "sites": (l,)})
+    Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (l,)})
 
-prob_dist = jVMC.operator.povm.get_1_particle_distributions("x_up", Lindbladian.povm)
+prob_dist = jVMC.operator.povm.get_1_particle_distributions("z_up", Lindbladian.povm)
 biases = jnp.log(prob_dist)
 params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
 
-params["params"]["outputDense"]["bias"] = biases
-params["params"]["outputDense"]["kernel"] = 1e-15 * params["params"]["outputDense"]["kernel"]
+params["params"]["rnn"]["outputDense"]["bias"] = biases
+params["params"]["rnn"]["outputDense"]["kernel"] = 1e-15 * params["params"]["rnn"]["outputDense"]["kernel"]
 params = jnp.concatenate([p.ravel()
                           for p in jax.tree_util.tree_flatten(params)[0]])
 psi.set_parameters(params)
 
 # Set up sampler
 sampler = jVMC.sampler.ExactSampler(psi, (L,), lDim=4, logProbFactor=logProbFactor)
-sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), psi, jVMC.sampler.propose_POVM_outcome, (L,), numSamples=1000)
+# sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), psi, jVMC.sampler.propose_POVM_outcome, (L,), numSamples=1000)
 
 # Set up TDVP
 tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=-1.,
-                              svdTol=1e-6, diagonalShift=0, makeReal='real')
+                              svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-1)  # ODE integrator
+stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-3)  # ODE integrator
 
 res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
        "Y_corr_L1": [], "Z_corr_L1": []}
@@ -75,12 +79,13 @@ while t < 5:
         res[dim].append(result[dim]["mean"])
         res[dim + "_corr_L1"].append(result[dim + "_corr_L1"]["mean"])
 
-    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=Lindbladian, psi=psi)
+    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=Lindbladian, psi=psi, normFunction=partial(norm_fun, df=tdvpEquation.S_dot))
     t += dt
     psi.set_parameters(dp)
     print(f"t = {t:.3f}, \t dt = {dt:.2e}")
-    print(f"Cross-Validation-Factor_residual = {tdvpEquation.crossValidationFactor_residual:.3f}")
-    print(f"Cross-Validation-Factor_tdvpErr = {tdvpEquation.crossValidationFactor_tdvpErr:.3f}")
+    if tdvpEquation.crossValidation:
+        print(f"Cross-Validation-Factor_residual = {tdvpEquation.crossValidationFactor_residual:.3f}")
+        print(f"Cross-Validation-Factor_tdvpErr = {tdvpEquation.crossValidationFactor_tdvpErr:.3f}")
 
 
 plt.plot(times, res["X"], label=r"$\langle X \rangle$")

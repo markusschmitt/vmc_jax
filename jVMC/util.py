@@ -32,23 +32,23 @@ def get_point_orbit(L):
 
     trafos = []
 
-    idx = np.arange(L*L).reshape((L,L))
+    idx = np.arange(L * L).reshape((L, L))
 
     for _ in range(2):
         for _ in range(4):
-            idx = np.array(list(zip(*idx[::-1]))) # rotation
+            idx = np.array(list(zip(*idx[::-1])))  # rotation
             trafos.append(idx)
-        idx = np.transpose(idx) # reflection
+        idx = np.transpose(idx)  # reflection
 
     orbit = []
 
-    idx = np.arange(L*L)
+    idx = np.arange(L * L)
 
     for t in trafos:
 
-        o = np.zeros((L*L,L*L), dtype=np.int32)
+        o = np.zeros((L * L, L * L), dtype=np.int32)
 
-        o[idx,t.ravel()] = 1
+        o[idx, t.ravel()] = 1
 
         orbit.append(o)
 
@@ -56,9 +56,10 @@ def get_point_orbit(L):
 
     return orbit
 
+
 def get_translation_orbit(L):
 
-    idx = np.arange(L**2, dtype=np.int32).reshape((L,L))
+    idx = np.arange(L**2, dtype=np.int32).reshape((L, L))
 
     trafos = []
 
@@ -73,13 +74,13 @@ def get_translation_orbit(L):
 
     orbit = []
 
-    idx = np.arange(L*L)
+    idx = np.arange(L * L)
 
     for t in trafos:
 
-        o = np.zeros((L*L,L*L), dtype=np.int32)
+        o = np.zeros((L * L, L * L), dtype=np.int32)
 
-        o[idx,t.ravel()] = 1
+        o[idx, t.ravel()] = 1
 
         orbit.append(o)
 
@@ -87,21 +88,39 @@ def get_translation_orbit(L):
 
     return orbit
 
+
 def get_2d_orbit(L):
 
     po = get_point_orbit(L)
 
     to = get_translation_orbit(L)
 
-    orbit = jax.vmap(lambda x,y: jax.vmap(lambda a,b: jnp.dot(b,a), in_axes=(None,0))(x,y), in_axes=(0,None))(to,po)
+    orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(b, a), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
 
-    orbit = orbit.reshape((-1,L**2,L**2))
+    orbit = orbit.reshape((-1, L**2, L**2))
 
     newOrbit = [tuple(x.ravel()) for x in orbit]
 
-    uniqueOrbit = np.unique(newOrbit,axis=0).reshape(-1,L**2,L**2)
+    uniqueOrbit = np.unique(newOrbit, axis=0).reshape(-1, L**2, L**2)
 
     return jnp.array(uniqueOrbit)
+
+
+def get_1d_orbit(L):
+    def get_point_orbit_1D(L):
+        return jnp.array([jnp.eye(L), jnp.fliplr(jnp.eye(L))])
+
+    def get_translation_orbit_1D(L):
+        to = np.array([np.eye(L)] * L)
+        for idx, t in enumerate(to):
+            to[idx] = np.roll(t, idx, axis=1)
+        return jnp.array(to)
+
+    po = get_point_orbit_1D(L)
+    to = get_translation_orbit_1D(L)
+    orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(a, b), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
+    orbit = orbit.reshape((-1, L, L))
+    return orbit
 
 
 def init_net(descr, dims, seed=0):

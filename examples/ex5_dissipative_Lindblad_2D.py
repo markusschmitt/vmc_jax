@@ -10,6 +10,7 @@ sys.path.append(sys.path[0] + "/..")
 # Find jVMC package
 import jVMC
 config.update("jax_enable_x64", True)
+from functools import partial
 
 
 def copy_dict(a):
@@ -20,6 +21,10 @@ def copy_dict(a):
         else:
             b[key] = value
     return b
+
+
+def norm_fun(v, df=lambda x: x):
+    return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
 
 
 def xy_to_id(x, y, L):
@@ -33,7 +38,8 @@ dim = "2D"
 
 # Initialize net
 sample_shape = (L, L)
-net = jVMC.nets.RNN2D(inputDim=inputDim, logProbFactor=logProbFactor, hiddenSize=20, L=L, depth=2)
+orbit = jVMC.util.get_2d_orbit(L)
+net = jVMC.nets.RNN2Dsym(inputDim=inputDim, logProbFactor=logProbFactor, hiddenSize=5, L=L, depth=2, orbit=orbit)
 params = net.init(jax.random.PRNGKey(1234), jnp.zeros(sample_shape, dtype=jnp.int32))
 psi = jVMC.vqs.NQS(net, params)  # Variational wave function
 print(f"The variational ansatz has {psi.numParameters} parameters.")
@@ -48,14 +54,13 @@ for x in range(L):
         Lindbladian.add({"name": "ZZ", "strength": 1.0, "sites": (xy_to_id(x, y, L), xy_to_id(x, (y + 1) % L, L))})
         Lindbladian.add({"name": "X", "strength": 3, "sites": (xy_to_id(x, y, L),)})
         Lindbladian.add({"name": "dephasing", "strength": .5, "sites": (xy_to_id(x, y, L),)})
-        # Lindbladian.add({"name": "Z", "strength": 1.0, "sites": (xy_to_id(x, y, L),)})
 
 prob_dist = jVMC.operator.povm.get_1_particle_distributions("z_up", Lindbladian.povm)
 biases = jnp.log(prob_dist)
 params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
 
-params["params"]["outputDense"]["bias"] = biases
-params["params"]["outputDense"]["kernel"] = 1e-15 * params["params"]["outputDense"]["kernel"]
+params["params"]["rnn"]["outputDense"]["bias"] = biases
+params["params"]["rnn"]["outputDense"]["kernel"] = 1e-15 * params["params"]["rnn"]["outputDense"]["kernel"]
 params = jnp.concatenate([p.ravel()
                           for p in jax.tree_util.tree_flatten(params)[0]])
 psi.set_parameters(params)
@@ -69,7 +74,7 @@ sampler = jVMC.sampler.ExactSampler(psi, sample_shape, lDim=inputDim, logProbFac
 tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=-1.,
                               svdTol=1e-6, diagonalShift=0, makeReal='real')
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-1)  # ODE integrator
+stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-2)  # ODE integrator
 
 res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
        "Y_corr_L1": [], "Z_corr_L1": []}
@@ -77,14 +82,14 @@ res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
 times = []
 t = 0
 
-while t < 5 * 1e-1:
+while t < 5 * 1e-0:
     times.append(t)
     result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler, psi)
     for dim in ["X", "Y", "Z"]:
         res[dim].append(result[dim]["mean"])
         res[dim + "_corr_L1"].append(result[dim + "_corr_L1"]["mean"])
 
-    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=Lindbladian, psi=psi)
+    dp, dt = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=Lindbladian, psi=psi, normFunction=partial(norm_fun, df=tdvpEquation.S_dot))
     t += dt
     psi.set_parameters(dp)
     print(f"t = {t:.3f}, \t dt = {dt:.2e}")
