@@ -16,4 +16,6 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 
 ## Installation
 
+[Installing dependencies and setting up jVMC](documentation/readme/installation_instructions.md)
+
 [How to compile JAX on a supercomputing cluster](documentation/readme/compile_jax_on_cluster.md)
