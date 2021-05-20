@@ -24,7 +24,6 @@ import jVMC
 import jVMC.operator as op
 from jVMC.util import measure, ground_state_search, OutputManager, init_net
 import jVMC.mpi_wrapper as mpi
-import jVMC.activation_functions as act_funs
 import jVMC.global_defs as global_defs
 
 from functools import partial
@@ -117,7 +116,7 @@ else:
     # Set up exact sampler
     sampler = jVMC.sampler.ExactSampler(psi, L)
 
-tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
+tdvpEquation = jVMC.util.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
                               svdTol=inp["time_evol"]["svd_tolerance"],
                               rhsPrefactor=1.,
                               diagonalShift=inp["gs_search"]["init_regularizer"], makeReal='real')
@@ -156,7 +155,7 @@ if "tdvp_make_real" in inp["time_evol"]:
     reim = inp["time_evol"]["tdvp_make_real"]
 
 observables["energy"] = hamiltonian
-tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
+tdvpEquation = jVMC.util.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
                               svdTol=inp["time_evol"]["svd_tolerance"],
                               rhsPrefactor=1.j, diagonalShift=0., makeReal=reim)
 
@@ -165,7 +164,7 @@ def norm_fun(v, df=lambda x: x):
     return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
 
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
+stepper = jVMC.util.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
 
 tmax = inp["time_evol"]["t_final"]
 

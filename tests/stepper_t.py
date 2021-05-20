@@ -4,7 +4,7 @@ sys.path.append(sys.path[0]+"/..")
 
 import unittest
 
-import jVMC.stepper as st
+import jVMC.util.stepper as st
 
 import jax
 import jax.random as random

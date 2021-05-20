@@ -10,18 +10,20 @@
 
 .. toctree::
    :hidden:
+   :glob:
    :maxdepth: 2
-   :caption: API documentation:
+   :caption: API documentation
 
    operator
    vqs
-   nets
    sampler
+   nets
+   util
 
 .. toctree::
     :hidden:
     :maxdepth: 1
-    :caption: Examples:
+    :caption: Examples
 
     examples
 

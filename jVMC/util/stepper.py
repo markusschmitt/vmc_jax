@@ -4,6 +4,8 @@ import numpy as np
 
 
 class Euler:
+    ''' This class implements Euler integration
+    '''
 
     def __init__(self, timeStep=1e-3):
 
@@ -19,6 +21,8 @@ class Euler:
 
 
 class AdaptiveHeun:
+    ''' This class implements an adaptive second order consistent integration scheme.
+    '''
 
     def __init__(self, timeStep=1e-3, tol=1e-8, maxStep=1):
         self.dt = timeStep

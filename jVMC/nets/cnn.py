@@ -6,7 +6,7 @@ import flax.linen as nn
 import jax.numpy as jnp
 
 import jVMC.global_defs as global_defs
-import jVMC.activation_functions as act_funs
+import jVMC.nets.activation_functions as act_funs
 
 from functools import partial
 from typing import List, Sequence

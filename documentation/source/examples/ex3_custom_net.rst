@@ -9,8 +9,6 @@ This example shows exemplarily how to define a custom complex RBM architecture, 
 
 with :math:`b_i, W_{ij}\in\mathbb C`.
 
-Code
-====
 
 .. literalinclude:: ../../../examples/ex3_custom_net.py
         :linenos:

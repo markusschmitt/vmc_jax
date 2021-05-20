@@ -5,7 +5,7 @@
         "append_data" : false
     },
     "system" : {
-        "L" : 8,
+        "L" : 6,
         "J0" : -1.0,
         "hx0" : -0.0,
         "hz0" : -1.0,
@@ -35,7 +35,7 @@
     },
     "network" : {
         "gradient_batch_size" : 500,
-        "net1" : { "type" : "RNNsym", "parameters" : {"L": 8, "depth": 3, "hiddenSize":7, "passDim":5, "actFun":"tanh", "z2sym":false} },
-        "net2" : { "type" : "PhaseRNNsym", "parameters" : {"L": 8, "depth": 3, "hiddenSize":7, "passDim":5, "actFun":"elu", "z2sym":false} }
+        "net1" : { "type" : "RNNsym", "parameters" : {"L": 6, "depth": 3, "hiddenSize":7, "actFun":"tanh", "z2sym":false} },
+        "net2" : { "type" : "PhaseRNNsym", "parameters" : {"L": 6, "depth": 3, "hiddenSize":7, "actFun":"elu", "z2sym":false} }
     }
 }
