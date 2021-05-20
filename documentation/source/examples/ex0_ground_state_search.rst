@@ -5,9 +5,6 @@ Stochastic reconfiguration for ground state search
 
 This example shows a basic implementation of ground state search with stochastic reconfiguration.
 
-Code
-====
-
 .. literalinclude:: ../../../examples/ex0_ground_state_search.py
         :linenos:
         :language: python

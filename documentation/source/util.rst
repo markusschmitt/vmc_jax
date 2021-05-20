@@ -10,3 +10,6 @@ Utilities
 
     util/*
 
+
+.. automodule:: jVMC.util.util
+    :members:

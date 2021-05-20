@@ -5,7 +5,6 @@ import time
 
 class OutputManager:
     '''This class provides functionality for I/O and timing.
-
     '''
 
     def __init__(self, dataFileName, group="/", append=False):

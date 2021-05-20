@@ -102,7 +102,35 @@ def init_net(descr, dims, seed=0):
 
 
 def measure(observables, psi, sampler, numSamples=None):
+    ''' This function measures expectation values of a given set of operators given a pure state.
 
+    Arguments:
+        * ``observables``: Dictionary of the form with operator names as keys and (lists of) operators as values, e.g.:
+
+            .. code-block:: python
+                
+                { "op_name_1": [operator1, operator2], "op_name_2": operator3 }
+            
+        * ``psi``: Variational wave function (instance of ``jVMC.vqs.NQS``)
+        * ``sampler``: Instance of ``jVMC.sampler`` used for sampling.
+        * ``numSamples``: Number of samples (optional)
+
+    Returns:
+        A dictionary holding expectation values, variances, and MC error estimates for each operator. E.g. for the
+        exemplary operator input given in `Arguments`:
+
+        .. code-block:: python
+
+            { 
+                "op_name_1": { "mean": [mean1, mean2],
+                               "variance": [var1, var2],
+                               "MC_error": [err1, err2] },
+                "op_name_2": { "mean": [mean3],
+                               "variance": [var3],
+                               "MC_error": [err3] }
+            }
+
+    '''
     # Get sample
     sampleConfigs, sampleLogPsi, p = sampler.sample(numSamples)
 
@@ -137,6 +165,19 @@ def measure(observables, psi, sampler, numSamples=None):
 
 
 def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceTol=1e-10, stepSize=1e-2, observables=None, outp=None):
+    ''' This function performs a ground state search by Stochastic Reconfiguration.
+
+    Arguments:
+        * ``psi``: Variational wave function (``jVMC.vqs.NQS``)
+        * ``ham``: Hamiltonian operator
+        * ``tdvpEquation``: An instance of ``jVMC.util.TDVP``
+        * ``numSteps``: Maximal number of steps
+        * ``varianceTol``: Stopping criterion
+        * ``stepSize``: Update step size (learning rate)
+        * ``observables``: Observables to be measured during ground state search
+        * ``outp``: ``None`` or instance of ``jVMC.util.OutputManager``.
+
+    '''
 
     delta = tdvpEquation.diagonalShift
 

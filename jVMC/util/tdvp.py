@@ -19,6 +19,8 @@ def imagFun(x):
 
 
 class TDVP:
+    ''' This class provides functionality to solve a time-dependent variational principle (TDVP).
+    '''
 
     def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
 
