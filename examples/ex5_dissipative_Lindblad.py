@@ -47,7 +47,7 @@ for l in range(L):
     Lindbladian.add({"name": "X", "strength": 3.0, "sites": (l,)})
     Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (l,)})
 
-prob_dist = jVMC.operator.povm.get_1_particle_distributions("z_up", Lindbladian.povm)
+prob_dist = jVMC.operator.povm.get_1_particle_distributions("y_up", Lindbladian.povm)
 biases = jnp.log(prob_dist)
 params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
 
@@ -72,7 +72,7 @@ res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
 
 times = []
 t = 0
-while t < 5:
+while t < 5 * 1e-2:
     times.append(t)
     result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler, psi)
     for dim in ["X", "Y", "Z"]:
