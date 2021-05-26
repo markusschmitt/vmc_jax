@@ -44,7 +44,7 @@ def propose_spin_flip_Z2(key, s, info):
     return jax.lax.cond(doFlip == 0, lambda x: 1 - x, lambda x: x, s)
 
 
-class MCMCSampler:
+class MCSampler:
     """A sampler class.
 
     This class provides functionality to sample computational basis states from \
@@ -55,46 +55,47 @@ class MCMCSampler:
     devices.
 
     Initializer arguments:
-
-    * ``key``: An instance of ``jax.random.PRNGKey``.
-    * ``net``: Network defining the probability distribution.
-    * ``updateProposer``: A function to propose updates for the MCMC algorithm. \
-    It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
-    ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
-    are optional additional arguments.
-    * ``sampleShape``: Shape of computational basis configurations.
-    * ``numChains``: Number of Markov chains, which are run in parallel.
-    * ``updateProposerArg``: An optional argument that will be passed to the ``updateProposer`` \
-    as ``kwargs``.
-    * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
-    * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
-    * ``sweepSteps``: Number of proposed updates per sweep.
-    """
-
-    def __init__(self, key, net, updateProposer, sampleShape, numChains=1, updateProposerArg=None,
-                 numSamples=100, thermalizationSweeps=10, sweepSteps=10):
-        """Initializes the MCMCSampler class.
-
-        Args:
-
+        * ``net``: Network defining the probability distribution.
+        * ``sampleShape``: Shape of computational basis configurations.
         * ``key``: An instance of ``jax.random.PRNGKey``.
         * ``updateProposer``: A function to propose updates for the MCMC algorithm. \
         It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
         ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
-        are optional additional arguments. The function is supposed to return a computational basis \
-        state that is used as update proposal in the MCMC algorithm.
-        * ``sampleShape``: Shape of computational basis configurations.
+        are optional additional arguments.
         * ``numChains``: Number of Markov chains, which are run in parallel.
         * ``updateProposerArg``: An optional argument that will be passed to the ``updateProposer`` \
         as ``kwargs``.
         * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
         * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
         * ``sweepSteps``: Number of proposed updates per sweep.
+    """
+
+    def __init__(self, net, sampleShape, key, updateProposer=None, numChains=1, updateProposerArg=None,
+                 numSamples=100, thermalizationSweeps=10, sweepSteps=10):
+        """Initializes the MCSampler class.
+
+        Arguments:
+            * ``net``: Network defining the probability distribution.
+            * ``sampleShape``: Shape of computational basis configurations.
+            * ``key``: An instance of ``jax.random.PRNGKey``.
+            * ``updateProposer``: A function to propose updates for the MCMC algorithm. \
+            It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
+            ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
+            are optional additional arguments. The function is supposed to return a computational basis \
+            state that is used as update proposal in the MCMC algorithm.
+            * ``numChains``: Number of Markov chains, which are run in parallel.
+            * ``updateProposerArg``: An optional argument that will be passed to the ``updateProposer`` \
+            as ``kwargs``.
+            * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
+            * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
+            * ``sweepSteps``: Number of proposed updates per sweep.
         """
 
         self.sampleShape = sampleShape
 
         self.net = net
+        if (not net.is_generator) and (updateProposer is None):
+            raise RuntimeError("Instantiation of MCSampler: No `updateProposer` is `None` and cannot be used for MCMC sampling.")
 
         stateShape = (numChains,) + sampleShape
         if global_defs.usePmap:
@@ -119,9 +120,8 @@ class MCMCSampler:
     def set_number_of_samples(self, N):
         """Set default number of samples.
 
-        Args:
-
-        * ``N``: Number of samples.
+        Arguments:
+            * ``N``: Number of samples.
         """
 
         self.numSamples = N
@@ -130,8 +130,7 @@ class MCMCSampler:
         """Set key for pseudo random number generator.
 
         Args:
-
-        * ``key``: Key (jax.random.PRNGKey)
+            * ``key``: Key (jax.random.PRNGKey)
         """
 
         self.key = key
@@ -161,16 +160,16 @@ class MCMCSampler:
         Sampling is automatically distributed accross MPI processes and available \
         devices. In that case the number of samples returned might exceed ``numSamples``.
 
-        Args:
-
-        * ``numSamples``: Number of samples to generate. When running multiple processes \
-        or on multiple devices per process, the number of samples returned is \
-        ``numSamples`` or more. If ``None``, the default number of samples is returned \
-        (see ``set_number_of_samples()`` member function).
-        * ``multipleOf``: This argument allows to choose the number of samples returned to \
-        be the smallest multiple of ``multipleOf`` larger than ``numSamples``. This feature \
-        is useful to distribute a total number of samples across multiple processors in such \
-        a way that the number of samples per processor is identical for each processor.
+        Arguments:
+            * ``parameters``: Network parameters to use for sampling.
+            * ``numSamples``: Number of samples to generate. When running multiple processes \
+            or on multiple devices per process, the number of samples returned is \
+            ``numSamples`` or more. If ``None``, the default number of samples is returned \
+            (see ``set_number_of_samples()`` member function).
+            * ``multipleOf``: This argument allows to choose the number of samples returned to \
+            be the smallest multiple of ``multipleOf`` larger than ``numSamples``. This feature \
+            is useful to distribute a total number of samples across multiple processors in such \
+            a way that the number of samples per processor is identical for each processor.
 
         Returns:
             A sample of computational basis configurations drawn from :math:`|\\psi(s)|^2`.
@@ -341,10 +340,9 @@ class ExactSampler:
     sampling.
 
     Initialization arguments:
-
-    * ``net``: Network defining the probability distribution.
-    * ``sampleShape``: Shape of computational basis states.
-    * ``lDim``: Local Hilbert space dimension.
+        * ``net``: Network defining the probability distribution.
+        * ``sampleShape``: Shape of computational basis states.
+        * ``lDim``: Local Hilbert space dimension.
     """
 
     def __init__(self, net, sampleShape, lDim=2, logProbFactor=0.5):
@@ -448,17 +446,19 @@ class ExactSampler:
 
         return p / nrm
 
-    def sample(self, numSamples=None, multipleOf=None):
+    def sample(self, parameters=None, numSamples=None, multipleOf=None):
         """Return all computational basis states.
 
         Sampling is automatically distributed accross MPI processes and available \
         devices.
 
-        Args:
-
-        * ``net``: Variational wave function, instance of ``jVMC.NQS`` class.
-        * ``numSamples``: Dummy argument to provde identical interface as the \
-        ``MCMCSampler`` class.
+        Arguments:
+            * ``parameters``: Dummy argument to provde identical interface as the \
+            ``MCSampler`` class.
+            * ``numSamples``: Dummy argument to provde identical interface as the \
+            ``MCSampler`` class.
+            * ``multipleOf``: Dummy argument to provde identical interface as the \
+            ``MCSampler`` class.
 
         Returns:
             ``configs, logPsi, p``: All computational basis configurations, \
@@ -490,7 +490,7 @@ if __name__ == "__main__":
     from flax import nn
 
     L = 128
-    sampler = MCMCSampler(random.PRNGKey(123), propose_spin_flip, (L,), numChains=500, sweepSteps=128)
+    sampler = MCSampler(random.PRNGKey(123), propose_spin_flip, (L,), numChains=500, sweepSteps=128)
     #sampler = ExactSampler((L,))
 
     rbm = nets.CpxRBM.partial(numHidden=128, bias=True)

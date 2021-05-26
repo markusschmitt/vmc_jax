@@ -106,8 +106,8 @@ for l in range(L):
 sampler = None
 if inp["sampler"]["type"] == "MC":
     # Set up MCMC sampler
-    sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(inp["sampler"]["seed"]), psi,
-                                       jVMC.sampler.propose_spin_flip_Z2, (L,),
+    sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(inp["sampler"]["seed"]),
+                                       updateProposer=jVMC.sampler.propose_spin_flip_Z2,
                                        numChains=inp["sampler"]["numChains"],
                                        numSamples=inp["sampler"]["numSamples"],
                                        thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],

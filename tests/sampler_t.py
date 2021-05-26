@@ -53,7 +53,7 @@ class TestMCMC(unittest.TestCase):
         exactSampler=sampler.ExactSampler(psi,L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
 
         # Compute exact probabilities
         _, _, pex = exactSampler.sample()
@@ -93,7 +93,7 @@ class TestMCMC(unittest.TestCase):
         exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
         
         # Compute exact probabilities
         _, _, pex = exactSampler.sample()
@@ -134,7 +134,7 @@ class TestMCMC(unittest.TestCase):
         exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), numChains=777)
         
         # Compute exact probabilities
         _, logPsi, pex = exactSampler.sample()
@@ -175,7 +175,7 @@ class TestMCMC(unittest.TestCase):
         exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), numChains=777)
         
         # Compute exact probabilities
         _, logPsi, pex = exactSampler.sample()
@@ -211,7 +211,7 @@ class TestMCMC(unittest.TestCase):
         exactSampler=sampler.ExactSampler(psi, (L,L))
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),psi,jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,L), random.PRNGKey(0), numChains=777)
         
         # Compute exact probabilities
         _, logPsi, pex = exactSampler.sample()

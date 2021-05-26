@@ -59,7 +59,7 @@ psi.set_parameters(params)
 
 # Set up sampler
 sampler = jVMC.sampler.ExactSampler(psi, (L,), lDim=4, logProbFactor=logProbFactor)
-# sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(123), psi, jVMC.sampler.propose_POVM_outcome, (L,), numSamples=1000)
+# sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(123), updateProposer=jVMC.sampler.propose_POVM_outcome, numSamples=1000)
 
 # Set up TDVP
 tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=-1.,

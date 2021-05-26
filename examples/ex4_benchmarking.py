@@ -32,7 +32,7 @@ for l in range(L):
     hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(l), )))
 
 # Set up sampler
-sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(4321), psi, jVMC.sampler.propose_spin_flip_Z2, (L,),
+sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(4321), updateProposer=jVMC.sampler.propose_spin_flip_Z2,
                                    numChains=50, sweepSteps=L,
                                    numSamples=300000, thermalizationSweeps=0)
 
