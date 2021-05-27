@@ -42,5 +42,10 @@ class TestMPI(unittest.TestCase):
 
         self.assertTrue( jnp.sum(mpi.global_variance(myData)-jnp.var(data,axis=0)) < 1e-10 )
 
+    def test_bcast(self):
+        data=np.zeros(10, dtype=np.int32)
+        with self.assertRaises(TypeError) as context:
+            mpi.bcast_unknown_size(data)
+
 if __name__ == "__main__":
     unittest.main()

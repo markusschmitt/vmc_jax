@@ -14,10 +14,11 @@
    :maxdepth: 2
    :caption: API documentation
 
-   operator
    vqs
+   operator
    sampler
    nets
+   mpi
    util
 
 .. toctree::
