@@ -148,19 +148,19 @@ for l in range(L):
 sampler = None
 if inp["sampler"]["type"] == "MC":
     # Set up MCMC sampler
-    sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip_Z2, (L,),
-                                       numChains=inp["sampler"]["numChains"],
-                                       numSamples=inp["sampler"]["numSamples"],
-                                       thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],
-                                       sweepSteps=4 * L)
+    sampler = jVMC.sampler.MCSampler(random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip_Z2, (L,),
+                                     numChains=inp["sampler"]["numChains"],
+                                     numSamples=inp["sampler"]["numSamples"],
+                                     thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],
+                                     sweepSteps=4 * L)
 else:
     # Set up exact sampler
     sampler = jVMC.sampler.ExactSampler(L)
 
-tdvpEquation = jVMC.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
-                              svdTol=inp["time_evol"]["svd_tolerance"],
-                              rhsPrefactor=1.,
-                              diagonalShift=inp["gs_search"]["init_regularizer"], makeReal='real')
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, snrTol=inp["time_evol"]["snr_tolerance"],
+                                   svdTol=inp["time_evol"]["svd_tolerance"],
+                                   rhsPrefactor=1.,
+                                   diagonalShift=inp["gs_search"]["init_regularizer"], makeReal='real')
 
 t = inp["time_evol"]["t_init"]
 
@@ -205,7 +205,7 @@ def norm_fun(v, df=lambda x: x):
     return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
 
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
+stepper = jVMC.util.stepper.AdaptiveHeun(timeStep=inp["time_evol"]["time_step"], tol=inp["time_evol"]["stepper_tolerance"])
 
 tmax = inp["time_evol"]["t_final"]
 

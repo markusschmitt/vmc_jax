@@ -236,18 +236,18 @@ for i in range(L):
         hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(i * L + j), )))
 
 # Set up sampler
-sampler = jVMC.sampler.MCMCSampler(random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip_Z2, inputShape,
-                                   numChains=inp["sampler"]["numChains"],
-                                   numSamples=inp["sampler"]["numSamples"],
-                                   thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],
-                                   sweepSteps=L * L)
+sampler = jVMC.sampler.MCSampler(random.PRNGKey(inp["sampler"]["seed"]), jVMC.sampler.propose_spin_flip_Z2, inputShape,
+                                 numChains=inp["sampler"]["numChains"],
+                                 numSamples=inp["sampler"]["numSamples"],
+                                 thermalizationSweeps=inp["sampler"]["num_thermalization_sweeps"],
+                                 sweepSteps=L * L)
 
 # Set up TDVP
 delta = inp["search"]["init_regularizer"]
-tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=1.,
-                              svdTol=1e-8, diagonalShift=delta, makeReal='real', diagonalizeOnDevice=False)
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=1.,
+                                   svdTol=1e-8, diagonalShift=delta, makeReal='real', diagonalizeOnDevice=False)
 
-stepper = jVMC.stepper.Euler(timeStep=1e-2)  # ODE integrator
+stepper = jVMC.util.stepper.Euler(timeStep=1e-2)  # ODE integrator
 
 for n in range(inp["search"]["num_steps"]):
 
