@@ -57,14 +57,14 @@ sampler = None
 sampler = jVMC.sampler.ExactSampler(psi, L)
 
 # Set up TDVP
-tdvpEquation = jVMC.tdvp.TDVP(sampler, svdTol=1e-8,
-                              rhsPrefactor=1.j,
-                              makeReal='imag')
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, svdTol=1e-8,
+                                   rhsPrefactor=1.j,
+                                   makeReal='imag')
 
 t = 0.0  # Initial time
 
 # Set up stepper
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=dt, tol=integratorTol)
+stepper = jVMC.util.stepper.AdaptiveHeun(timeStep=dt, tol=integratorTol)
 
 # Measure initial observables
 obs = measure(observables, psi, sampler)

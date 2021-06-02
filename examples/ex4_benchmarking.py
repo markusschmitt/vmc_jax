@@ -33,14 +33,14 @@ for l in range(L):
 
 # Set up sampler
 sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(4321), updateProposer=jVMC.sampler.propose_spin_flip_Z2,
-                                   numChains=50, sweepSteps=L,
-                                   numSamples=300000, thermalizationSweeps=0)
+                                 numChains=50, sweepSteps=L,
+                                 numSamples=300000, thermalizationSweeps=0)
 
 # Set up TDVP
-tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=1.,
-                              svdTol=1e-8, diagonalShift=10, makeReal='real')
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=1.,
+                                   svdTol=1e-8, diagonalShift=10, makeReal='real')
 
-stepper = jVMC.stepper.Euler(timeStep=1e-2)  # ODE integrator
+stepper = jVMC.util.stepper.Euler(timeStep=1e-2)  # ODE integrator
 
 # Set up OutputManager
 wdir = "./benchmarks/"

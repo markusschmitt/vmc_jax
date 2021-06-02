@@ -27,15 +27,16 @@ def norm_fun(v, df=lambda x: x):
     return jnp.real(jnp.conj(jnp.transpose(v)).dot(df(v)))
 
 
-L = 5
+L = 4
 dim = "1D"
 logProbFactor = 1
+inputDim = 4
 
 # Initialize net
-orbit = jVMC.util.get_1d_orbit(L)
-net = jVMC.nets.RNNsym(inputDim=4, logProbFactor=logProbFactor, hiddenSize=6, L=L, depth=2, orbit=orbit)
-params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=jnp.int32))
-psi = jVMC.vqs.NQS(net, params)  # Variational wave function
+sample_shape = (L,)
+psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1":
+                               {"type": "RNNsym", "parameters": {"inputDim": inputDim, "logProbFactor": logProbFactor, "hiddenSize": 6, "L": L, "depth": 2}}},
+                              sample_shape, 1234)
 print(f"The variational ansatz has {psi.numParameters} parameters.")
 
 # Set up hamiltonian
@@ -62,17 +63,17 @@ sampler = jVMC.sampler.ExactSampler(psi, (L,), lDim=4, logProbFactor=logProbFact
 # sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(123), updateProposer=jVMC.sampler.propose_POVM_outcome, numSamples=1000)
 
 # Set up TDVP
-tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=-1.,
-                              svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=-1.,
+                                   svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-3)  # ODE integrator
+stepper = jVMC.util.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-3)  # ODE integrator
 
 res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
        "Y_corr_L1": [], "Z_corr_L1": []}
 
 times = []
 t = 0
-while t < 5 * 1e-2:
+while t < 5 * 1e-0:
     times.append(t)
     result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler, psi)
     for dim in ["X", "Y", "Z"]:

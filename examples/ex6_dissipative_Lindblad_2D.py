@@ -38,10 +38,12 @@ dim = "2D"
 
 # Initialize net
 sample_shape = (L, L)
-orbit = jVMC.util.get_2d_orbit(L)
-net = jVMC.nets.RNN2Dsym(inputDim=inputDim, logProbFactor=logProbFactor, hiddenSize=5, L=L, depth=2, orbit=orbit)
-params = net.init(jax.random.PRNGKey(1234), jnp.zeros(sample_shape, dtype=jnp.int32))
-psi = jVMC.vqs.NQS(net, params)  # Variational wave function
+# orbit = jVMC.util.get_2d_orbit(L)
+# net = jVMC.nets.RNN2Dsym(inputDim=inputDim, logProbFactor=logProbFactor, hiddenSize=5, L=L, depth=2, orbit=orbit)
+# params = net.init(jax.random.PRNGKey(1234), jnp.zeros(sample_shape, dtype=jnp.int32))
+# psi = jVMC.vqs.NQS(net, params)  # Variational wave function
+psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1": {"type": "RNN2Dsym", "parameters": {"inputDim": inputDim, "logProbFactor": logProbFactor, "hiddenSize": 5, "L": L, "depth": 2}}},
+                              sample_shape, 1234)
 print(f"The variational ansatz has {psi.numParameters} parameters.")
 
 # Set up hamiltonian
@@ -71,10 +73,10 @@ sampler = jVMC.sampler.ExactSampler(psi, sample_shape, lDim=inputDim, logProbFac
 
 
 # Set up TDVP
-tdvpEquation = jVMC.tdvp.TDVP(sampler, rhsPrefactor=-1.,
-                              svdTol=1e-6, diagonalShift=0, makeReal='real')
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=-1.,
+                                   svdTol=1e-6, diagonalShift=0, makeReal='real')
 
-stepper = jVMC.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-2)  # ODE integrator
+stepper = jVMC.util.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-2)  # ODE integrator
 
 res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
        "Y_corr_L1": [], "Z_corr_L1": []}
