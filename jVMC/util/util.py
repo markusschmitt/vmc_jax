@@ -67,21 +67,32 @@ def init_net(descr, dims, seed=0):
 
     if descr["net1"]["type"][-3:] == "sym":
         L = descr["net1"]["parameters"]["L"]
+
+        # set symmetries ON - turn each one off manually
+        kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
+        for key in kwargs_sym.keys():
+            if key in descr["net1"]:
+                kwargs_sym[key] = descr["net1"]["key"]
+
         if descr["net1"]["type"][-5:-3] == "2D":
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L)
+            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, kwargs_sym)
         else:
-            # Generate orbit of 1D translations for RNNsym net
-            descr["net1"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L, dtype=np.int32), l, axis=1) for l in range(L)])
+            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_1d(L, kwargs_sym)
 
     if "net2" in descr:
         if descr["net2"]["type"][-3:] == "sym":
+
+            # set symmetries ON - turn each one off manually
+            kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
+            for key in kwargs_sym.keys():
+                if key in descr["net2"]:
+                    kwargs_sym[key] = descr["net2"]["key"]
+
             L = descr["net2"]["parameters"]["L"]
             if descr["net2"]["type"][-5:-3] == "2D":
-                # Generate orbit of 2D translations for RNNsym net
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L)
+                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, kwargs_sym)
             else:
-                # Generate orbit of 1D translations for RNNsym net
-                descr["net2"]["parameters"]["orbit"] = jnp.array([jnp.roll(jnp.identity(L, dtype=np.int32), l, axis=1) for l in range(L)])
+                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_1d(L, kwargs_sym)
 
     if not "net2" in descr:
 
@@ -108,9 +119,9 @@ def measure(observables, psi, sampler, numSamples=None):
         * ``observables``: Dictionary of the form with operator names as keys and (lists of) operators as values, e.g.:
 
             .. code-block:: python
-                
+
                 { "op_name_1": [operator1, operator2], "op_name_2": operator3 }
-            
+
         * ``psi``: Variational wave function (instance of ``jVMC.vqs.NQS``)
         * ``sampler``: Instance of ``jVMC.sampler`` used for sampling.
         * ``numSamples``: Number of samples (optional)
@@ -215,4 +226,3 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
             outp.print("   Energy variance: %f" % (varE))
             outp.print_timings(indent="   ")
             outp.print("   == Time for step: %fs" % (time.perf_counter() - tic))
-
