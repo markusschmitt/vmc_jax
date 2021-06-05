@@ -16,18 +16,16 @@ import functools
 opDtype = global_defs.tReal
 
 
-def measure_povm(povm, sampler, p, sampleConfigs=None, probs=None, observables=None, numSamples=None):
+def measure_povm(povm, sampler, sampleConfigs=None, probs=None, observables=None):
     """For a set of sampled configurations, compute the associated expectation values
     for a given set of observables. If none is provided, magnetizations and correlations for X, Y and Z are computed
 
     Args:
         * ``povm``: the povm that holds the jitted evaluation function
         * ``sampler``: the sampler used for the computation of expectation values
-        * ``p``: the model, instance of VQS
         * ``sampleConfigs``: optional, if configurations have already been generated
         * ``probs``: optional, the associated probabilities
         * ``observables``: optional, observables for which expectation values are computed
-        * ``numSamples``: optional, number of samples used for stochastic estimation
     """
     if sampleConfigs == None:
         # sampleConfigs, sampleLogPsi, probs = sampler.sample(p, numSamples)

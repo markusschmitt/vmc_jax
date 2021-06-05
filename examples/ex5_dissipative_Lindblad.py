@@ -75,7 +75,7 @@ times = []
 t = 0
 while t < 5 * 1e-0:
     times.append(t)
-    result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler, psi)
+    result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler)
     for dim in ["X", "Y", "Z"]:
         res[dim].append(result[dim]["mean"])
         res[dim + "_corr_L1"].append(result[dim + "_corr_L1"]["mean"])

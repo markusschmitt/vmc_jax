@@ -38,10 +38,6 @@ dim = "2D"
 
 # Initialize net
 sample_shape = (L, L)
-# orbit = jVMC.util.get_2d_orbit(L)
-# net = jVMC.nets.RNN2Dsym(inputDim=inputDim, logProbFactor=logProbFactor, hiddenSize=5, L=L, depth=2, orbit=orbit)
-# params = net.init(jax.random.PRNGKey(1234), jnp.zeros(sample_shape, dtype=jnp.int32))
-# psi = jVMC.vqs.NQS(net, params)  # Variational wave function
 psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1": {"type": "RNN2Dsym", "parameters": {"inputDim": inputDim, "logProbFactor": logProbFactor, "hiddenSize": 5, "L": L, "depth": 2}}},
                               sample_shape, 1234)
 print(f"The variational ansatz has {psi.numParameters} parameters.")
@@ -86,7 +82,7 @@ t = 0
 
 while t < 5 * 1e-0:
     times.append(t)
-    result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler, psi)
+    result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler)
     for dim in ["X", "Y", "Z"]:
         res[dim].append(result[dim]["mean"])
         res[dim + "_corr_L1"].append(result[dim + "_corr_L1"]["mean"])
