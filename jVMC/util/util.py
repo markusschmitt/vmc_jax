@@ -72,7 +72,7 @@ def init_net(descr, dims, seed=0):
         kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
         for key in kwargs_sym.keys():
             if key in descr["net1"]:
-                kwargs_sym[key] = descr["net1"]["key"]
+                kwargs_sym[key] = descr["net1"][key]
 
         if descr["net1"]["type"][-5:-3] == "2D":
             descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, kwargs_sym)
@@ -86,7 +86,7 @@ def init_net(descr, dims, seed=0):
             kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
             for key in kwargs_sym.keys():
                 if key in descr["net2"]:
-                    kwargs_sym[key] = descr["net2"]["key"]
+                    kwargs_sym[key] = descr["net2"][key]
 
             L = descr["net2"]["parameters"]["L"]
             if descr["net2"]["type"][-5:-3] == "2D":
