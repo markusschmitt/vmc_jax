@@ -10,7 +10,8 @@ sys.path.append(sys.path[0] + "/..")
 # Find jVMC package
 import jVMC
 from functools import partial
-config.update("jax_enable_x64", True)
+# config.update("jax_enable_x64", True)
+# config.update("jax_disable_jit", False)
 
 
 def copy_dict(a):
@@ -60,7 +61,7 @@ psi.set_parameters(params)
 
 # Set up sampler
 sampler = jVMC.sampler.ExactSampler(psi, (L,), lDim=4, logProbFactor=logProbFactor)
-# sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(123), updateProposer=jVMC.sampler.propose_POVM_outcome, numSamples=1000)
+sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(123), numSamples=1000)
 
 # Set up TDVP
 tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=-1.,

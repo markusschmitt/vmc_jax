@@ -132,8 +132,10 @@ class RNN(nn.Module):
         state = jnp.zeros((batchSize, self.depth, self.hiddenSize))
 
         keys = jax.random.split(key, self.L)
-        _, res = self.rnn_cell_sample((state, jnp.zeros((batchSize, self.inputDim))), keys)
+        _, res = self.rnn_cell_sample((state, jnp.zeros((batchSize, self.inputDim), dtype=jnp.int32)), keys)
 
+        print(jnp.transpose(res[1]).shape)
+        print(jnp.transpose(res[1]).dtype)
         return jnp.transpose(res[1])  # , 0.5 * jnp.sum(res[0], axis=0)
 
     @partial(nn.transforms.scan,
@@ -145,7 +147,7 @@ class RNN(nn.Module):
         logProb = nn.log_softmax(self.outputDense(logits))
 
         sampleOut = jax.random.categorical(x, logProb)
-        sample = jax.nn.one_hot(sampleOut, self.inputDim)
+        sample = jax.nn.one_hot(sampleOut, self.inputDim, dtype=jnp.int32)
         logProb = jnp.sum(logProb * sample, axis=1)
         return (newCarry, sample), (jnp.nan_to_num(logProb, nan=-35), sampleOut)
 
@@ -159,7 +161,7 @@ class RNNsym(nn.Module):
     hiddenSize: int = 10
     depth: int = 1
     inputDim: int = 2
-    #passDim: int = inputDim
+    # passDim: int = inputDim
     actFun: callable = nn.elu
     initScale: float = 1.0
     logProbFactor: float = 0.5
@@ -169,7 +171,7 @@ class RNNsym(nn.Module):
     def setup(self):
 
         self.rnn = RNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
-                       inputDim=self.inputDim,# passDim=self.passDim,
+                       inputDim=self.inputDim,  # passDim=self.passDim,
                        actFun=self.actFun, initScale=self.initScale,
                        logProbFactor=self.logProbFactor)
 
@@ -218,12 +220,12 @@ class PhaseRNN(nn.Module):
     inputDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
-    #passDim: int = inputDim
+    # passDim: int = inputDim
 
     def setup(self):
 
         self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize, outDim=self.inputDim,
-                                    #passDim=self.passDim, 
+                                    # passDim=self.passDim,
                                     actFun=self.actFun, initScale=self.initScale)
 
         self.dense = nn.Dense(features=8, dtype=global_defs.tReal,
@@ -261,13 +263,13 @@ class PhaseRNNsym(nn.Module):
     initScale: float = 1.0
     orbit: any = None
     z2sym: bool = False
-    #passDim: int = inputDim
+    # passDim: int = inputDim
 
     @nn.compact
     def __call__(self, x):
 
         self.rnn = PhaseRNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
-                            inputDim=self.inputDim, #passDim=self.passDim,
+                            inputDim=self.inputDim,  # passDim=self.passDim,
                             actFun=aself.ctFun,
                             initScale=self.initScale)
 

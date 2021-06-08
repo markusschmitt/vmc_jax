@@ -182,11 +182,11 @@ class MCSampler:
 
             configs = self._get_samples_gen(parameters, numSamples, multipleOf)
 
-            return configs.astype(np.int32), self.net(configs), None
+            return configs, self.net(configs), None
 
         configs, logPsi = self._get_samples_mcmc(parameters, numSamples, multipleOf)
 
-        return configs.astype(np.int32), logPsi, None
+        return configs, logPsi, None
 
     def _get_samples_gen(self, params, numSamples, multipleOf=1):
 
@@ -205,6 +205,7 @@ class MCSampler:
         else:
             tmpKey, self.key = random.split(self.key)
 
+        print(self.net.sample(numSamples, tmpKey, parameters=params).dtype)
         return self.net.sample(numSamples, tmpKey, parameters=params)
 
     def _get_samples_mcmc(self, params, numSamples, multipleOf=1):
