@@ -72,7 +72,6 @@ class TestMCMC(unittest.TestCase):
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
         
         # Compare histogram to exact probabilities
-        print(mcSampler.get_last_number_of_samples())
         self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16] ) ) < 2e-3 )
     
 

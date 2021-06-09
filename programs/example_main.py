@@ -49,7 +49,7 @@ if mpi.rank == 0:
     else:
         print("Successfully created the directory %s " % wdir)
 
-global_defs.set_pmap_devices(jax.devices()[mpi.rank % jax.device_count()])
+jVMC.set_pmap_devices(jax.devices()[mpi.rank % jax.device_count()])
 print(" -> Rank %d working with device %s" % (mpi.rank, global_defs.devices()), flush=True)
 
 L = inp["system"]["L"]
