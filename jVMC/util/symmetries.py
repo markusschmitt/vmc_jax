@@ -133,4 +133,4 @@ def get_orbit_1d(L, translation=True, reflection=True, **kwargs):
     orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(a, b), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
 
     orbit = orbit.reshape((-1, L, L))
-    return orbit
+    return orbit.astype(np.int32)

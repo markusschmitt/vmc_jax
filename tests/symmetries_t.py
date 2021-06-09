@@ -33,6 +33,7 @@ class TestSymmetries(unittest.TestCase):
                 for translation in [True, False]:
                     orbit = symmetries.get_orbit_2d_square(L, rotation=rotation, reflection=reflection, translation=translation)
                     self.assertTrue(orbit.shape[0] == (rotation_f if rotation else 1) * (reflection_f if reflection else 1) * (translation_f if translation else 1))
+                    self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
 
     def test_symmetries1D(self):
         L = 3
@@ -42,6 +43,7 @@ class TestSymmetries(unittest.TestCase):
             for reflection in [True, False]:
                 orbit = symmetries.get_orbit_1d(L, reflection=reflection, translation=translation)
                 self.assertTrue(orbit.shape[0] == (reflection_f if reflection else 1) * (translation_f if translation else 1))
+                self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
 
 
 if __name__ == "__main__":
