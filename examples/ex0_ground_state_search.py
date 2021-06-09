@@ -12,25 +12,28 @@ import numpy as np
 
 import jVMC
 
-L = 10
+DMRG_energies = {"10": -1.0465761512947138, "20":-1.0851894140492975, "100":-1.0971658187080988}
+
+L = 100
 g = -0.7
 
 # Initialize net
-net = jVMC.nets.CpxCNN(F=[10, ], channels=[6], bias=False)
+net = jVMC.nets.CpxRBM(numHidden=8, bias=False)
 params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=np.int32))
 
 psi = jVMC.vqs.NQS(net, params)  # Variational wave function
 
 # Set up hamiltonian
 hamiltonian = jVMC.operator.BranchFreeOperator()
-for l in range(L):
+for l in range(L-1):
     hamiltonian.add(jVMC.operator.scal_opstr(-1., (jVMC.operator.Sz(l), jVMC.operator.Sz((l + 1) % L))))
     hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(l), )))
+hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(L-1), )))
 
 # Set up sampler
 sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(4321), updateProposer=jVMC.sampler.propose_spin_flip_Z2,
                                  numChains=100, sweepSteps=L,
-                                 numSamples=1000, thermalizationSweeps=25)
+                                 numSamples=5000, thermalizationSweeps=25)
 
 # Set up TDVP
 tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=1.,
@@ -39,7 +42,7 @@ tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=1.,
 stepper = jVMC.util.stepper.Euler(timeStep=1e-2)  # ODE integrator
 
 res = []
-for n in range(200):
+for n in range(300):
 
     dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=hamiltonian, psi=psi, numSamples=None)
     psi.set_parameters(dp)
@@ -51,9 +54,18 @@ for n in range(200):
 import numpy as np
 res = np.array(res)
 import matplotlib.pyplot as plt
-plt.plot(res[:, 0], res[:, 1] + 1.1272225, '-')
-plt.legend()
+
+fig, ax = plt.subplots(2,1, sharex=True, figsize=[4.8,4.8])
+if str(L) in DMRG_energies:
+    ax[0].semilogy(res[:, 0], res[:, 1] - DMRG_energies[str(L)], '-', label=r"$L="+str(L)+"$")
+    ax[0].set_ylabel(r'$(E-E_0)/L$')
+else:
+    ax[0].plot(res[:, 0], res[:, 1], '-')
+    ax[0].set_ylabel(r'$E/L$')
+
+ax[1].semilogy(res[:, 0], res[:, 2], '-')
+ax[1].set_ylabel(r'Var$(E)/L^2$')
+ax[0].legend()
 plt.xlabel('iteration')
-plt.ylabel(r'$(E-E_0)/L$')
 plt.tight_layout()
 plt.savefig('gs_search.pdf')
