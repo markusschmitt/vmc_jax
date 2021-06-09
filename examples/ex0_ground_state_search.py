@@ -12,7 +12,7 @@ import numpy as np
 
 import jVMC
 
-DMRG_energies = {"10": -1.0465761512947138, "20":-1.0851894140492975, "100":-1.0971658187080988}
+DMRG_energies = {"10": -1.0465761512947138, "20":-1.0851894140492975, "100":-1.1160796689826018}
 
 L = 100
 g = -0.7
@@ -47,9 +47,9 @@ for n in range(300):
     dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=hamiltonian, psi=psi, numSamples=None)
     psi.set_parameters(dp)
 
-    print(n, jax.numpy.real(tdvpEquation.ElocMean0) / L, tdvpEquation.ElocVar0 / L**2)
+    print(n, jax.numpy.real(tdvpEquation.ElocMean0) / L, tdvpEquation.ElocVar0 / L)
 
-    res.append([n, jax.numpy.real(tdvpEquation.ElocMean0) / L, tdvpEquation.ElocVar0 / L**2])
+    res.append([n, jax.numpy.real(tdvpEquation.ElocMean0) / L, tdvpEquation.ElocVar0 / L])
 
 import numpy as np
 res = np.array(res)
@@ -64,7 +64,7 @@ else:
     ax[0].set_ylabel(r'$E/L$')
 
 ax[1].semilogy(res[:, 0], res[:, 2], '-')
-ax[1].set_ylabel(r'Var$(E)/L^2$')
+ax[1].set_ylabel(r'Var$(E)/L$')
 ax[0].legend()
 plt.xlabel('iteration')
 plt.tight_layout()
