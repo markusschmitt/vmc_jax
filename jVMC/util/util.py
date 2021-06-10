@@ -66,7 +66,7 @@ def init_net(descr, dims, seed=0):
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
     if descr["net1"]["type"][-3:] == "sym":
-        L = descr["net1"]["parameters"]["L"]
+        L = dims[0]
 
         # set symmetries ON - turn each one off manually
         kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
@@ -88,7 +88,7 @@ def init_net(descr, dims, seed=0):
                 if key in descr["net2"]:
                     kwargs_sym[key] = descr["net2"][key]
 
-            L = descr["net2"]["parameters"]["L"]
+            L = dims[0]
             if descr["net2"]["type"][-5:-3] == "2D":
                 descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, kwargs_sym)
             else:
