@@ -35,7 +35,10 @@ class CNN(nn.Module):
         # Padding size must be 1 - filter diameter
         pads = [(0, 0)]
         for f in self.F:
-            pads.append((0, f - 1))
+            if self.periodicBoundary:
+                pads.append((0, f - 1))
+            else:
+                pads.append((f - 1, f - 1))
         pads.append((0, 0))
 
         bias = [self.bias] * len(self.channels)
@@ -49,7 +52,6 @@ class CNN(nn.Module):
         reduceDims = tuple([-i - 1 for i in range(len(self.strides) + 2)])
 
         # Add feature dimension
-        #x = jnp.expand_dims(2*x-1, axis=-1)
         x = jnp.expand_dims(jnp.expand_dims(2 * x - 1, axis=0), axis=-1)
         for c, fun, b in zip(self.channels, activationFunctions, bias):
             if self.periodicBoundary:
@@ -90,7 +92,10 @@ class CpxCNN(nn.Module):
         # Padding size must be 1 - filter diameter
         pads = [(0, 0)]
         for f in self.F:
-            pads.append((0, f - 1))
+            if self.periodicBoundary:
+                pads.append((0, f - 1))
+            else:
+                pads.append((f - 1, f - 1))
         pads.append((0, 0))
 
         bias = [self.bias] * len(self.channels)
@@ -108,13 +113,14 @@ class CpxCNN(nn.Module):
         for c, f, b in zip(self.channels, activationFunctions, bias):
             if self.periodicBoundary:
                 x = jnp.pad(x, pads, 'wrap')
-            else:
-                x = jnp.pad(x, pads, 'constant', constant_values=0)
+            #else:
+            #    x = jnp.pad(x, pads, 'constant', constant_values=0)
             x = f(nn.Conv(features=c, kernel_size=tuple(self.F),
-                          strides=self.strides, padding=[(0, 0)] * len(self.strides),
+                          strides=self.strides,
                           use_bias=b, dtype=global_defs.tCpx,
                           kernel_init=initFunction)(x))
 
+        # strides=self.strides, padding=[(0, 0)] * len(self.strides),
         nrm = jnp.sqrt(jnp.prod(jnp.array(x.shape[reduceDims[-1]:])))
 
         return jnp.sum(x, axis=reduceDims) / nrm

@@ -89,7 +89,7 @@ class TDVP:
         return self.S
 
     def get_tdvp_equation(self, Eloc, gradients, p=None):
-
+        
         self.ElocMean = mpi.global_mean(Eloc, p)
         self.ElocVar = jnp.real(mpi.global_variance(Eloc, p))
         Eloc = self.subtract_helper_Eloc(Eloc, self.ElocMean)
