@@ -12,6 +12,28 @@ class Euler:
         self.dt = timeStep
 
     def step(self, t, f, yInitial, **rhsArgs):
+        """ This function performs an integration time step.
+
+        For a first order ordinary differential equation (ODE) of the form
+
+        :math:`\\frac{dy}{dt} = f(y, t, p)`
+
+        where :math:`t` denotes the time and :math:`p` denotes further external parameters
+        this function computes the Euler integration step
+
+        :math:`y_{n+1} = y_n+\\Delta t f(y_n,t_n,p)`
+
+        Arguments:
+            * ``t``: Initial time.
+            * ``f``: Right hand side of the ODE. This callable will be called as ``f(y, t, **rhsArgs, intStep=k)``, \
+                    where k is an integer indicating the step number of the underlying Runge-Kutta integration scheme.
+            * ``y``: Initial value of :math:`y`.
+            * ``**rhsArgs``: Further static arguments :math:`p` that will be passed to the right hand side function \
+                    ``f(y, t, **rhsArgs, intStep=k)``.
+
+        Returns:
+            New value of :math:`y` and time step used :math:`\\Delta t`.
+        """
 
         dy = f(yInitial, t, **rhsArgs, intStep=0)
 
@@ -21,19 +43,49 @@ class Euler:
 
 
 class AdaptiveHeun:
-    ''' This class implements an adaptive second order consistent integration scheme.
-    '''
+    """ This class implements an adaptive second order consistent integration scheme.
+
+    Initializer arguments:
+        * ``timeStep``: Initial time step (will be adapted automatically)
+        * ``tol``: Tolerance for integration errors.
+        * ``maxStep``: Maximal allowed time step.
+    """
 
     def __init__(self, timeStep=1e-3, tol=1e-8, maxStep=1):
         self.dt = timeStep
         self.tolerance = tol
         self.maxStep = maxStep
 
-    def step(self, t, f, yInitial, normFunction=jnp.linalg.norm, **rhsArgs):
+    def step(self, t, f, y, normFunction=jnp.linalg.norm, **rhsArgs):
+        """ This function performs an integration time step.
+
+        For a first order ordinary differential equation (ODE) of the form
+
+        :math:`\\frac{dy}{dt} = f(y, t, p)`
+
+        where :math:`t` denotes the time and :math:`p` denotes further external parameters
+        this function computes a second-order consistent integration step for :math:`y`.
+        The time step :math:`\\Delta t` is chosen such that the integration error (quantified
+        by a given norm) is smaller than the given tolerance.
+
+        Arguments:
+            * ``t``: Initial time.
+            * ``f``: Right hand side of the ODE. This callable will be called as ``f(y, t, **rhsArgs, intStep=k)``, \
+                    where k is an integer indicating the step number of the underlying Runge-Kutta integration scheme.
+            * ``y``: Initial value of :math:`y`.
+            * ``normFunction``: Norm function to be used to quantify the magnitude of errors.
+            * ``**rhsArgs``: Further static arguments :math:`p` that will be passed to the right hand side function \
+                    ``f(y, t, **rhsArgs, intStep=k)``.
+
+        Returns:
+            New value of :math:`y` and time step used :math:`\\Delta t`.
+        """
 
         fe = 0.5
 
         dt = self.dt
+
+        yInitial = y.copy()
 
         while fe < 1.:
 
