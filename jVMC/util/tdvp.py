@@ -19,8 +19,8 @@ def imagFun(x):
 
 
 class TDVP:
-    ''' This class provides functionality to solve a time-dependent variational principle (TDVP).
-    '''
+    """ This class provides functionality to solve a time-dependent variational principle (TDVP).
+    """
 
     def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
 
@@ -170,10 +170,34 @@ class TDVP:
 
         return jnp.dot(self.S0, v)
 
-    def __call__(self, netParameters, t, **rhsArgs):
+    def __call__(self, netParameters, t, *, psi, hamiltonian, **rhsArgs):
+        """ For given network parameters this function solves the TDVP equation.
 
-        tmpParameters = rhsArgs['psi'].get_parameters()
-        rhsArgs['psi'].set_parameters(netParameters)
+        This function returns :math:`\\dot\\theta=S^{-1}F`. Thereby an instance of the ``TDVP`` class is a suited
+        callable for the right hand side of an ODE to be used in combination with the integration schemes 
+        implemented in ``jVMC.stepper``. Alternatively, the interface matches the scipy ODE solvers as well.
+
+        Arguments:
+            * ``netParameters``: Parameters of the NQS.
+            * ``t``: Current time.
+            * ``psi``: NQS ansatz. Instance of ``jVMC.vqs.NQS``.
+            * ``hamiltonian``: Hamiltonian operator. Either in instance of a derived class of ``jVMC.operator.Operator`` \
+                or a callable that takes the time ``t`` as argument and returns \
+                an instance of a derived class of ``jVMC.operator.Operator`` (in order to implement time-dependent Hamiltonians).
+
+        Further optional keyword arguments:
+            * ``numSamples``: Number of samples to be used by MC sampler.
+            * ``outp``: An instance of ``jVMC.OutputManager``. If ``outp`` is given, timings of the individual steps \
+                are recorded using the ``OutputManger``.
+            * ``intStep``: Integration step number of multi step method like Runge-Kutta. This information is used to store \
+                quantities like energy or residuals at the initial integration step.
+
+        Returns:
+            The solution of the TDVP equation, :math:`\\dot\\theta=S^{-1}F`.
+        """
+
+        tmpParameters = psi.get_parameters()
+        psi.set_parameters(netParameters)
 
         outp = None
         if "outp" in rhsArgs:
@@ -201,22 +225,22 @@ class TDVP:
 
         # Evaluate local energy
         ham = None
-        if callable(rhsArgs['hamiltonian']):
-            ham = rhsArgs['hamiltonian'](t)
+        if callable(hamiltonian):
+            ham = hamiltonian(t)
         else:
-            ham = rhsArgs['hamiltonian']
+            ham = hamiltonian
 
         start_timing(outp, "compute Eloc")
         sampleOffdConfigs, matEls = ham.get_s_primes(sampleConfigs)
         start_timing(outp, "evaluate off-diagonal")
-        sampleLogPsiOffd = rhsArgs['psi'](sampleOffdConfigs)
+        sampleLogPsiOffd = psi(sampleOffdConfigs)
         stop_timing(outp, "evaluate off-diagonal", waitFor=sampleLogPsiOffd)
         Eloc = ham.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
         stop_timing(outp, "compute Eloc", waitFor=Eloc)
 
         # Evaluate gradients
         start_timing(outp, "compute gradients")
-        sampleGradients = rhsArgs['psi'].gradients(sampleConfigs)
+        sampleGradients = psi.gradients(sampleConfigs)
         stop_timing(outp, "compute gradients", waitFor=sampleGradients)
 
         start_timing(outp, "solve TDVP eqn.")
@@ -226,7 +250,7 @@ class TDVP:
         if outp is not None:
             outp.add_timing("MPI communication", mpi.get_communication_time())
 
-        rhsArgs['psi'].set_parameters(tmpParameters)
+        psi.set_parameters(tmpParameters)
 
         if "intStep" in rhsArgs:
             if rhsArgs["intStep"] == 0:
