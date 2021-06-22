@@ -329,8 +329,9 @@ def bcast_unknown_size(data, root=0):
         On each MPI process the data received from the root process.
     """
 
-    if data.dtype != np.float64:
-        raise TypeError("Datatype has to be float64.")
+    if rank == root:
+        if data.dtype != np.float64:
+            raise TypeError("Datatype has to be float64.")
 
     dim = None
     buf = None
