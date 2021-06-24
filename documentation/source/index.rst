@@ -28,6 +28,13 @@
 
     examples
 
+.. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Installation
+
+    installation
+
 `jVMC`: Versatile and performant variational Monte Carlo
 ========================================================
 
