@@ -45,6 +45,7 @@ class TDVP:
             self.get_EO_p = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
                                                             in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
             self.transform_EO = global_defs.pmap_for_my_devices(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0, None))
+            self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
         else:
             self.subtract_helper_Eloc = global_defs.jit_for_my_device(lambda x, y: x - y)
             self.subtract_helper_grad = global_defs.jit_for_my_device(lambda x, y: x - y)
@@ -136,12 +137,13 @@ class TDVP:
             self.V = jnp.array(tmpV)
 
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)), F)
-
-        EOdata = self.transform_EO(EOdata, self.V)
+            
+        EOdata = self.transform_EO(self.makeReal_pmapd(EOdata), self.V)
         EOdata.block_until_ready()
         self.rhoVar = mpi.global_variance(EOdata)
 
         self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF) - 1.)))
+
 
     def solve(self, Eloc, gradients, p=None):
 
@@ -160,7 +162,7 @@ class TDVP:
 
         if p is None:
             # Construct a soft cutoff based on the SNR
-            regularizer *= 1. / (1. + (self.snrTol / (0.5 * (self.snr + self.snr[::-1])))**6)
+            regularizer *= 1. / (1. + (self.snrTol / self.snr)**6)
 
         update = jnp.real(jnp.dot(self.V, (self.invEv * regularizer * self.VtF)))
 
