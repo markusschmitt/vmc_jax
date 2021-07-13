@@ -33,7 +33,7 @@ class CpxRBM(nn.Module):
                          kernel_init=jVMC.nets.initializers.cplx_init,
                          bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tCpx))
 
-        return jnp.sum(jnp.log(jnp.cosh(layer(2 * s - 1))))
+        return jnp.sum(jnp.log(jnp.cosh(layer(2 * s.ravel() - 1))))
 
 # ** end class CpxRBM
 
