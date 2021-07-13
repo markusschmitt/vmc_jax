@@ -12,7 +12,8 @@ import numpy as np
 
 import jVMC
 
-DMRG_energies = {"10": -1.0465761512947138, "20":-1.0851894140492975, "100":-1.1160796689826018}
+# DMRG energies produced with the TeNPy library https://github.com/tenpy/tenpy
+DMRG_energies = {"10": -1.0545844370449059, "20":-1.0900383739, "100":-1.1194665474274852}
 
 L = 100
 g = -0.7
