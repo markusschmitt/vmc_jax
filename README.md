@@ -7,13 +7,6 @@ This is an impementation of Variational Monte Carlo (VMC) for quantum many-body 
 
 Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Documentation").
 
-## Required packages
-
-- `jax` and `jaxlib`
-- `flax`
-- `mpi4py`
-- `h5py`
-
 ## Installation
 
 ### Option 1: Clone and ``pip``-install
@@ -21,15 +14,15 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 1. Clone the jVMC repository and check out the development branch:
 
 ```
-	git clone https://github.com/markusschmitt/vmc_jax.git
+    git clone https://github.com/markusschmitt/vmc_jax.git
     cd vmc_jax
 ```
 
 2. We recommend you create a new conda environment to work with jVMC:
 
 ```
-	conda create -n jvmc python=3.8
-	conda activate jvmc
+    conda create -n jvmc python=3.8
+    conda activate jvmc
 ```
 
 3. Create a wheel and ``pip``-install the package
@@ -39,7 +32,7 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 ```
 Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
 
-### Option 2: Clone and ``pip``-install
+### Option 2: Manually install dependencies
 
 If you want to work on the jVMC code you might prefer to [install dependencies and set up jVMC](documentation/readme/installation_instructions.md) without ``pip``-install.
 
