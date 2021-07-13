@@ -20,6 +20,45 @@ def imagFun(x):
 
 class TDVP:
     """ This class provides functionality to solve a time-dependent variational principle (TDVP).
+
+    With the force vector
+
+        :math:`F_k=\langle \mathcal O_{\\theta_k}^* E_{loc}^{\\theta}\\rangle_c`
+
+    and the quantum Fisher matrix
+
+        :math:`S_{k,k'} = \langle \mathcal O_{\\theta_k} (\mathcal O_{\\theta_{k'}})^*\\rangle_c`
+
+    and for real parameters $\\theta\in\mathbb R$, the TDVP equation reads
+
+        :math:`q\\big(S_{k,k'}\\big)\\theta_{k'} = x q\\big(F_k\\big)`
+
+    Here, either :math:`q=\\text{Re}` or :math:`q=\\text{Im}` and :math:`x=-1` for ground state
+    search or :math:`x=i` (the imaginary unit) for real time dynamics.
+
+    For ground state search a regularization controlled by a parameter :math:`\\rho` can be included
+    by increasing the diagonal entries and solving
+
+        :math:`q\\big((1+\\rho\delta_{k,k'})S_{k,k'}\\big)\\theta_{k'} = -q\\big(F_k\\big)`
+
+    The `TDVP` class solves the TDVP equation by computing a pseudo-inverse of :math:`S` via
+    eigendecomposition yielding
+
+        :math:`S = V\Sigma V^\dagger`
+
+    with a diagonal matrix :math:`\Sigma_{kk}=\sigma_k`
+    Assuming that :math:`\sigma_1` is the smallest eigenvalue, the pseudo-inverse is constructed 
+    from the regularized inverted eigenvalues
+
+        :math:`\\tilde\sigma_k^{-1}=\\frac{1}{\\Big(1+\\big(\\frac{\epsilon_{SVD}}{\sigma_j/\sigma_1}\\big)^6\\Big)\\Big(1+\\big(\\frac{\epsilon_{SNR}}{\\text{SNR}(\\rho_k)}\\big)^6\\Big)}`
+
+    with :math:`\\text{SNR}(\\rho_k)` the signal-to-noise ratio of :math:`\\rho_k=V_{k,k'}^{\dagger}F_{k'}` (see [arXiv:1912.08828](https://arxiv.org/pdf/1912.08828.pdf) for details).
+
+    Initializer arguments:
+        * ``sampler``: A sampler object.
+        * ``snrTol``: Regularization parameter :math:`\epsilon_{SNR}`.
+        * ``svdTol``: Regularization parameter :math:`\epsilon_{SVD}`.
+        * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` or `'imag'` for :math:`q=\\text{Im}`.
     """
 
     def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
