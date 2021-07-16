@@ -425,3 +425,5 @@ class CpxRNN(nn.Module):
         sample = jax.nn.one_hot(sampleOut, self.inputDim)
         logProb = jnp.sum(nn.log_softmax(logits) * sample, axis=1)
         return (newCarry, sample), (jnp.nan_to_num(logProb, nan=-35), sampleOut)
+
+# ** end class CpxRNN

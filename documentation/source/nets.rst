@@ -19,3 +19,9 @@ This module provides implementations of standard neural network architectures.
         :no-inherited-members:
     .. autoclass:: RNN
         :no-inherited-members:
+
+.. autoclass:: jVMC.nets.RNN2Dsym
+    :noindex:
+
+.. autoclass:: jVMC.operator.POVMOperator
+    :noindex:
