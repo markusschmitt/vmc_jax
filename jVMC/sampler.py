@@ -453,11 +453,11 @@ class ExactSampler:
         devices.
 
         Arguments:
-            * ``parameters``: Dummy argument to provde identical interface as the \
+            * ``parameters``: Dummy argument to provide identical interface as the \
             ``MCSampler`` class.
-            * ``numSamples``: Dummy argument to provde identical interface as the \
+            * ``numSamples``: Dummy argument to provide identical interface as the \
             ``MCSampler`` class.
-            * ``multipleOf``: Dummy argument to provde identical interface as the \
+            * ``multipleOf``: Dummy argument to provide identical interface as the \
             ``MCSampler`` class.
 
         Returns:

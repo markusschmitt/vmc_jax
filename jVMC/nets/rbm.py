@@ -17,11 +17,14 @@ import jVMC.nets.initializers
 class CpxRBM(nn.Module):
     """Restricted Boltzmann machine with complex parameters.
 
-    Args:
+    Arguments:
 
         * ``s``: Computational basis configuration.
         * ``numHidden``: Number of hidden units.
         * ``bias``: ``Boolean`` indicating whether to use bias.
+
+    Returns:
+        Complex wave-function coefficient
     """
     numHidden: int = 2
     bias: bool = False
@@ -46,6 +49,9 @@ class RBM(nn.Module):
         * ``s``: Computational basis configuration.
         * ``numHidden``: Number of hidden units.
         * ``bias``: ``Boolean`` indicating whether to use bias.
+
+    Returns:
+        Wave function coefficient
     """
     numHidden: int = 2
     bias: bool = False

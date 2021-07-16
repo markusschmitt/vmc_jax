@@ -15,7 +15,19 @@ import jVMC.nets.initializers
 
 
 class CNN(nn.Module):
-    """Convolutional neural network.
+    """Convolutional neural network with real parameters.
+
+    Arguments:
+        * ``F``: Filter diameter
+        * ``channels``: Number of channels
+        * ``strides``: Number of pixels the filter shifts over
+        * ``actFun``: Non-linear activation function
+        * ``bias``: Whether to use biases
+        * ``firstLayerBias``: Whether to use biases in the first layer
+        * ``periodicBoundary``: Whether to use periodic boundary conditions
+
+    Returns:
+        Complex wave-function amplitude
     """
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)
@@ -73,6 +85,18 @@ class CNN(nn.Module):
 
 class CpxCNN(nn.Module):
     """Convolutional neural network with complex parameters.
+
+    Arguments:
+        * ``F``: Filter diameter
+        * ``channels``: Number of channels
+        * ``strides``: Number of pixels the filter shifts over
+        * ``actFun``: Non-linear activation function
+        * ``bias``: Whether to use biases
+        * ``firstLayerBias``: Whether to use biases in the first layer
+        * ``periodicBoundary``: Whether to use periodic boundary conditions
+
+    Returns:
+        Complex wave-function amplitude
     """
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)
@@ -113,7 +137,7 @@ class CpxCNN(nn.Module):
         for c, f, b in zip(self.channels, activationFunctions, bias):
             if self.periodicBoundary:
                 x = jnp.pad(x, pads, 'wrap')
-            #else:
+            # else:
             #    x = jnp.pad(x, pads, 'constant', constant_values=0)
             x = f(nn.Conv(features=c, kernel_size=tuple(self.F),
                           strides=self.strides,
@@ -129,7 +153,21 @@ class CpxCNN(nn.Module):
 
 
 class CpxCNNSym(nn.Module):
-    """Convolutional neural network with complex parameters including additional symmetries.
+    """
+    Complex symmetric CNN.
+    It uses the CpxCNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
+
+    Arguments:
+        * ``F``: Filter diameter
+        * ``channels``: Number of channels
+        * ``strides``: Number of pixels the filter shifts over
+        * ``actFun``: Non-linear activation function
+        * ``bias``: Whether to use biases
+        * ``firstLayerBias``: Whether to use biases in the first layer
+        * ``orbit``: orbits which define the symmetry operations
+
+    Returns:
+        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)

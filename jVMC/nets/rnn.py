@@ -12,8 +12,22 @@ from functools import partial
 
 
 class RNNCell(nn.Module):
+    """
+    Implementation of a 'vanilla' RNN-cell, that is part of an RNNCellStack which is scanned over an input sequence.
+    The RNNCell therefore receives two inputs, the hidden state (if it is in a deep part of the CellStack) or the 
+    input (if it is the first cell of the CellStack) aswell as the hidden state of the previous RNN-cell.
+    Both inputs are mapped to obtain a new hidden state, which is what the RNNCell implements.
+
+    Arguments: 
+        * ``hiddenSize``: size of the hidden state vector
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        new hidden state
+    """
+
     hiddenSize: int = 10
-    outDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
 
@@ -32,43 +46,40 @@ class RNNCell(nn.Module):
                                   kernel_init=initFunctionCell, dtype=global_defs.tReal,
                                   bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
 
-        # self.outputDense = nn.Dense(features=self.outDim,
-        #                               kernel_init=initFunctionOut, dtype=global_defs.tReal,
-        #                               bias_init=jax.nn.initializers.normal(stddev=0.1,dtype=global_defs.tReal))
-
     def __call__(self, carry, x):
 
         newCarry = self.actFun(self.cellCarry(carry) + self.cellIn(x))
-        # out = self.outputDense(newCarry)
-
-        # return newCarry, out
         return newCarry
 
 # ** end class RNNCell
 
 
 class RNNCellStack(nn.Module):
+    """
+    Implementation of a stack of RNN-cells which is scanned over an input sequence.
+    This is achieved by stacking multiple 'vanilla' RNN-cells to obtain a deep RNN.
+
+    Arguments: 
+        * ``hiddenSize``: size of the hidden state vector
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        New set of hidden states (one for each layer), as well as the last hidden state, that serves as input to the output layer
+    """
+
     hiddenSize: int = 10
-    # outDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
-    # passDim: int = outDim
 
     @nn.compact
     def __call__(self, carry, x):
-
-        # outDims = [self.passDim] * carry.shape[0]
-        # outDims[-1] = self.outDim
-
-        # newCarry = [None] * carry.shape[0]
         newCarry = jnp.zeros(shape=(carry.shape[0], self.hiddenSize), dtype=global_defs.tReal)
 
         newR = x
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j, c in enumerate(carry):
-            # newCarry[j] = RNNCell(hiddenSize=self.hiddenSize, outDim=outDims[j], actFun=self.actFun, initScale=self.initScale)(c, newR)
             newCarry = jax.ops.index_update(newCarry, j, RNNCell(hiddenSize=self.hiddenSize,
-                                                                 # outDim=outDims[j],
                                                                  actFun=self.actFun,
                                                                  initScale=self.initScale)(c, newR))
             newR = newCarry[j]
@@ -79,13 +90,27 @@ class RNNCellStack(nn.Module):
 
 
 class RNN(nn.Module):
-    """Recurrent neural network.
     """
+    Implementation of an RNN which consists of an RNNCellStack with an additional output layer.
+    This class defines how sequential input data is treated.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
+
+    Returns:
+        logarithmic wave-function coefficient or POVM-probability
+    """
+
     L: int = 10
     hiddenSize: int = 10
     depth: int = 1
     inputDim: int = 2
-    # passDim: int = inputDim
     actFun: callable = nn.elu
     initScale: float = 1.0
     logProbFactor: float = 0.5
@@ -93,8 +118,6 @@ class RNN(nn.Module):
     def setup(self):
 
         self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize,
-                                    # outDim=self.inputDim,
-                                    # passDim=self.passDim,
                                     actFun=self.actFun,
                                     initScale=self.initScale)
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
@@ -117,16 +140,11 @@ class RNN(nn.Module):
              split_rngs={'params': False})
     def rnn_cell(self, carry, x):
         newCarry, out = self.rnnCell(carry[0], carry[1])
-
-        # logProb = nn.log_softmax(out)
         logProb = nn.log_softmax(self.outputDense(out))
         logProb = jnp.sum(logProb * x, axis=-1)
         return (newCarry, x), jnp.nan_to_num(logProb, nan=-35)
 
     def sample(self, batchSize, key):
-        """sampler
-        """
-
         outputs = jnp.asarray(np.zeros((batchSize, self.L, self.L)))
 
         state = jnp.zeros((batchSize, self.depth, self.hiddenSize))
@@ -134,7 +152,7 @@ class RNN(nn.Module):
         keys = jax.random.split(key, self.L)
         _, res = self.rnn_cell_sample((state, jnp.zeros((batchSize, self.inputDim))), keys)
 
-        return jnp.transpose(res[1])  # , 0.5 * jnp.sum(res[0], axis=0)
+        return jnp.transpose(res[1])
 
     @partial(nn.transforms.scan,
              variable_broadcast='params',
@@ -153,13 +171,28 @@ class RNN(nn.Module):
 
 
 class RNNsym(nn.Module):
-    """Recurrent neural network with symmetries.
+    """
+    Implementation of an RNN which consists of an RNNCellStack with an additional output layer.
+    It uses the RNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
+        * ``orbit``: collection of maps that define symmetries
+        * ``z2sym``: for pure states; implement Z2 symmetry
+
+    Returns:
+        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     L: int = 10
     hiddenSize: int = 10
     depth: int = 1
     inputDim: int = 2
-    #passDim: int = inputDim
     actFun: callable = nn.elu
     initScale: float = 1.0
     logProbFactor: float = 0.5
@@ -169,7 +202,7 @@ class RNNsym(nn.Module):
     def setup(self):
 
         self.rnn = RNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
-                       inputDim=self.inputDim,# passDim=self.passDim,
+                       inputDim=self.inputDim,  # passDim=self.passDim,
                        actFun=self.actFun, initScale=self.initScale,
                        logProbFactor=self.logProbFactor)
 
@@ -210,7 +243,19 @@ class RNNsym(nn.Module):
 
 
 class PhaseRNN(nn.Module):
-    """Recurrent neural network.
+    """
+    Implementation of an RNN to encode the phase which consists of an RNNCellStack with an additional output layer.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        phase of the coefficient
     """
     L: int = 10
     hiddenSize: int = 10
@@ -218,12 +263,10 @@ class PhaseRNN(nn.Module):
     inputDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
-    #passDim: int = inputDim
 
     def setup(self):
 
         self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize, outDim=self.inputDim,
-                                    #passDim=self.passDim, 
                                     actFun=self.actFun, initScale=self.initScale)
 
         self.dense = nn.Dense(features=8, dtype=global_defs.tReal,
@@ -251,7 +294,19 @@ class PhaseRNN(nn.Module):
 
 
 class PhaseRNNsym(nn.Module):
-    """Recurrent neural network with symmetries.
+    """
+    Implementation of an RNN to encode the phase which consists of an RNNCellStack with an additional output layer.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        symmetry averaged phase of the coefficient
     """
     L: int = 10
     hiddenSize: int = 10
@@ -261,13 +316,12 @@ class PhaseRNNsym(nn.Module):
     initScale: float = 1.0
     orbit: any = None
     z2sym: bool = False
-    #passDim: int = inputDim
 
     @nn.compact
     def __call__(self, x):
 
         self.rnn = PhaseRNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
-                            inputDim=self.inputDim, #passDim=self.passDim,
+                            inputDim=self.inputDim,  # passDim=self.passDim,
                             actFun=aself.ctFun,
                             initScale=self.initScale)
 
@@ -287,7 +341,19 @@ class PhaseRNNsym(nn.Module):
 
 
 class CpxRNN(nn.Module):
-    """Recurrent neural network.
+    """
+    Implementation of an RNN to encode the phase which consists of an RNNCellStack with an additional output layer.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        complex coefficient
     """
     L: int = 10
     hiddenSize: int = 10

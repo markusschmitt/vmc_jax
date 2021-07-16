@@ -8,6 +8,8 @@ def get_point_orbit_2d_square(L, rotation, reflection):
 
     Arguments:
         * ``L``: Linear dimension of the lattice.
+        * ``rotation``: Boolean to indicate whether rotations are to be included
+        * ``reflection``: Boolean to indicate whether reflections are to be included
 
     Returns:
         A three-dimensional ``jax.numpy.array``, where the first dimension corresponds to the different
@@ -46,6 +48,7 @@ def get_translation_orbit_2d_square(L, translation):
 
     Arguments:
         * ``L``: Linear dimension of the lattice.
+        * ``translation``: Boolean to indicate whether translations are to be included
 
     Returns:
         A three-dimensional ``jax.numpy.array``, where the first dimension corresponds to the different
@@ -87,6 +90,9 @@ def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
 
     Arguments:
         * ``L``: Linear dimension of the lattice.
+        * ``rotation``: Boolean to indicate whether rotations are to be included
+        * ``reflection``: Boolean to indicate whether reflections are to be included
+        * ``translation``: Boolean to indicate whether translations are to be included
 
     Returns:
         A three-dimensional ``jax.numpy.array``, where the first dimension corresponds to the different
@@ -113,6 +119,8 @@ def get_orbit_1d(L, translation=True, reflection=True, **kwargs):
 
     Arguments:
         * ``L``: Linear dimension of the lattice.
+        * ``reflection``: Boolean to indicate whether reflections are to be included
+        * ``translation``: Boolean to indicate whether translations are to be included
 
     Returns:
         A three-dimensional ``jax.numpy.array``, where the first dimension corresponds to the different

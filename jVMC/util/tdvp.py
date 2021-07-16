@@ -29,7 +29,7 @@ class TDVP:
 
         :math:`S_{k,k'} = \langle \mathcal O_{\\theta_k} (\mathcal O_{\\theta_{k'}})^*\\rangle_c`
 
-    and for real parameters $\\theta\in\mathbb R$, the TDVP equation reads
+    and for real parameters :math:`\\theta\in\mathbb R`, the TDVP equation reads
 
         :math:`q\\big(S_{k,k'}\\big)\\theta_{k'} = x q\\big(F_k\\big)`
 
@@ -52,7 +52,7 @@ class TDVP:
 
         :math:`\\tilde\sigma_k^{-1}=\\frac{1}{\\Big(1+\\big(\\frac{\epsilon_{SVD}}{\sigma_j/\sigma_1}\\big)^6\\Big)\\Big(1+\\big(\\frac{\epsilon_{SNR}}{\\text{SNR}(\\rho_k)}\\big)^6\\Big)}`
 
-    with :math:`\\text{SNR}(\\rho_k)` the signal-to-noise ratio of :math:`\\rho_k=V_{k,k'}^{\dagger}F_{k'}` (see [arXiv:1912.08828](https://arxiv.org/pdf/1912.08828.pdf) for details).
+    with :math:`\\text{SNR}(\\rho_k)` the signal-to-noise ratio of :math:`\\rho_k=V_{k,k'}^{\dagger}F_{k'}` (see `[arXiv:1912.08828] <https://arxiv.org/pdf/1912.08828.pdf>`_ for details).
 
     Initializer arguments:
         * ``sampler``: A sampler object.
@@ -129,7 +129,7 @@ class TDVP:
         return self.S
 
     def get_tdvp_equation(self, Eloc, gradients, p=None):
-        
+
         self.ElocMean = mpi.global_mean(Eloc, p)
         self.ElocVar = jnp.real(mpi.global_variance(Eloc, p))
         Eloc = self.subtract_helper_Eloc(Eloc, self.ElocMean)
@@ -176,13 +176,12 @@ class TDVP:
             self.V = jnp.array(tmpV)
 
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)), F)
-            
+
         EOdata = self.transform_EO(self.makeReal_pmapd(EOdata), self.V)
         EOdata.block_until_ready()
         self.rhoVar = mpi.global_variance(EOdata)
 
         self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF) - 1.)))
-
 
     def solve(self, Eloc, gradients, p=None):
 
@@ -222,7 +221,7 @@ class TDVP:
             * ``netParameters``: Parameters of the NQS.
             * ``t``: Current time.
             * ``psi``: NQS ansatz. Instance of ``jVMC.vqs.NQS``.
-            * ``hamiltonian``: Hamiltonian operator. Either in instance of a derived class of ``jVMC.operator.Operator`` \
+            * ``hamiltonian``: Hamiltonian operator. Either an instance of a derived class of ``jVMC.operator.Operator`` \
                 or a callable that takes the time ``t`` as argument and returns \
                 an instance of a derived class of ``jVMC.operator.Operator`` (in order to implement time-dependent Hamiltonians).
 
@@ -295,7 +294,7 @@ class TDVP:
 
         if "intStep" in rhsArgs:
             if rhsArgs["intStep"] == 0:
-                
+
                 self.ElocMean0 = self.ElocMean
                 self.ElocVar0 = self.ElocVar
                 self.tdvpError = self._get_tdvp_error(update)
@@ -318,7 +317,7 @@ class TDVP:
 
                     self.crossValidationFactor_residual = validation_residual
                     self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.tdvpError
-                        
+
                     self.S, _, _ = self.get_tdvp_equation(Eloc, sampleGradients, p)
 
         return update

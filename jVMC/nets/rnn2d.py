@@ -12,8 +12,22 @@ from functools import partial
 
 
 class RNNCell2D(nn.Module):
+    """
+    Implementation of a 'vanilla' RNN-cell in two dimensions, that is part of an RNNCellStack which is scanned over a (two dimensional) input sequence.
+    The RNNCell2D therefore receives three inputs, the hidden state (if it is in a deep part of the CellStack) or the 
+    input (if it is the first cell of the CellStack) aswell as the hidden states of the two neighboring spin sites that were already computed.
+    All inputs are mapped to obtain a new hidden state, which is what the RNNCell2D implements.
+
+    Arguments: 
+        * ``hiddenSize``: size of the hidden state vector
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        new hidden state
+    """
+
     hiddenSize: int = 10
-    outDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
 
@@ -28,70 +42,70 @@ class RNNCell2D(nn.Module):
         cellIn = nn.Dense(features=self.hiddenSize,
                           use_bias=False, dtype=global_defs.tReal,
                           kernel_init=initFunctionCell)
-        # cellCarryH = nn.Dense(features=self.hiddenSize,
-        #                             use_bias=False,
-        #                             kernel_init=initFunctionCell, dtype=global_defs.tReal,
-        #                             bias_init=partial(jax.nn.initializers.zeros,dtype=global_defs.tReal))
-        # cellCarryV = nn.Dense(features=self.hiddenSize,
-        #                             use_bias=True,
-        #                             kernel_init=initFunctionCell, dtype=global_defs.tReal,
-        #                             bias_init=partial(jax.nn.initializers.zeros,dtype=global_defs.tReal))
         cellCarry = nn.Dense(features=self.hiddenSize,
                              use_bias=True,
                              kernel_init=initFunctionCell, dtype=global_defs.tReal,
                              bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
-
-        # outputDense = nn.Dense(features=self.outDim,
-        #                        kernel_init=initFunctionOut, dtype=global_defs.tReal,
-        #                        bias_init=jax.nn.initializers.normal(stddev=0.1, dtype=global_defs.tReal))
-
-        # newCarry = self.actFun(cellCarryH(carryH) + cellCarryV(carryV) + cellIn(state))
         newCarry = self.actFun(cellCarry(carryH + carryV) + cellIn(newR))
-        # out = outputDense(newCarry)
-
-        # return newCarry, out
         return newCarry
 
-# ** end class RNNCell
+# ** end class RNNCell2D
 
 
 class RNNCellStack2D(nn.Module):
+    """
+    Implementation of a stack of RNN-cells which is scanned over a two dimensional input sequence.
+    This is achieved by stacking multiple 'vanilla' 2D RNN-cells to obtain a deep RNN.
+
+    Arguments: 
+        * ``hiddenSize``: size of the hidden state vector
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+
+    Returns:
+        New set of hidden states (one for each layer), as well as the last hidden state, that serves as input to the output layer
+    """
+
     hiddenSize: int = 10
-    outDim: int = 2
-    passDim: int = outDim
     actFun: callable = nn.elu
     initScale: float = 1.0
 
     @nn.compact
     def __call__(self, carryH, carryV, stateH, stateV):
-
-        # outDims = [self.passDim] * carryH.shape[0]
-        # outDims[-1] = self.outDim
-
-        # newCarry = [None] * carryH.shape[0]
         newCarry = jnp.zeros(shape=(carryH.shape[0], self.hiddenSize), dtype=global_defs.tReal)
 
-        # newR = jnp.concatenate((stateH, stateV), axis=0)
         newR = stateH + stateV
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j in range(carryH.shape[0]):
-            # newCarry[j], newR = RNNCell2D(hiddenSize=self.hiddenSize, outDim=outDims[j], actFun=self.actFun, initScale=self.initScale)(carryH[j], carryV[j], newR)
             newCarry = jax.ops.index_update(newCarry, j, RNNCell2D(hiddenSize=self.hiddenSize, actFun=self.actFun, initScale=self.initScale)(carryH[j], carryV[j], newR))
             newR = newCarry[j]
 
         return jnp.array(newCarry), newR
 
-# ** end class RNNCellStack
+# ** end class RNNCellStack2D
 
 
 class RNN2D(nn.Module):
-    """Recurrent neural network for two-dimensional input.
+    """
+    Implementation of an RNN in two dimensions which consists of an RNNCellStack with an additional output layer.
+    This class defines how sequential input data is treated.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
+
+    Returns:
+        logarithmic wave-function coefficient or POVM-probability
     """
     L: int = 10
     hiddenSize: int = 10
     depth: int = 1
     inputDim: int = 2
-    passDim: int = inputDim
     actFun: callable = nn.elu
     initScale: float = 1.0
     logProbFactor: float = 0.5
@@ -99,8 +113,6 @@ class RNN2D(nn.Module):
     def setup(self):
 
         self.rnnCell = RNNCellStack2D(hiddenSize=self.hiddenSize,
-                                      outDim=self.inputDim,
-                                      passDim=self.passDim,
                                       actFun=self.actFun,
                                       initScale=self.initScale)
         initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
@@ -192,8 +204,25 @@ class RNN2D(nn.Module):
 
 # ** end class RNN2D
 
+
 class RNN2Dsym(nn.Module):
-    """Recurrent neural network for two-dimensional input with symmetries.
+    """
+    Implementation of an RNN in two dimensions which consists of an RNNCellStack with an additional output layer.
+    It uses the RNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``depth``: number of RNN-cells in the RNNCellStack
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
+        * ``orbit``: collection of maps that define symmetries
+        * ``z2sym``: for pure states; implement Z2 symmetry
+
+    Returns:
+        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     L: int = 10
     hiddenSize: int = 10
@@ -204,7 +233,7 @@ class RNN2Dsym(nn.Module):
     logProbFactor: float = 0.5
     orbit: any = None
     z2sym: bool = False
-    
+
     def setup(self):
 
         self.rnn = RNN2D(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
@@ -214,7 +243,7 @@ class RNN2Dsym(nn.Module):
 
     def __call__(self, x):
 
-        x = jax.vmap(lambda o, s: jnp.dot(o, s.ravel()).reshape((self.L,self.L)), in_axes=(0, None))(self.orbit, x)
+        x = jax.vmap(lambda o, s: jnp.dot(o, s.ravel()).reshape((self.L, self.L)), in_axes=(0, None))(self.orbit, x)
 
         def evaluate(x):
             return self.rnn(x)
@@ -236,7 +265,7 @@ class RNN2Dsym(nn.Module):
 
         orbitIdx = jax.random.choice(key2, self.orbit.shape[0], shape=(batchSize,))
 
-        configs = jax.vmap(lambda k, o, s: jnp.dot(o[k], s.ravel()).reshape((self.L,self.L)), in_axes=(0, None, 0))(orbitIdx, self.orbit, configs)
+        configs = jax.vmap(lambda k, o, s: jnp.dot(o[k], s.ravel()).reshape((self.L, self.L)), in_axes=(0, None, 0))(orbitIdx, self.orbit, configs)
 
         if self.z2sym:
             key3, _ = jax.random.split(key2)

@@ -12,7 +12,16 @@ from typing import Sequence
 
 
 class FFN(nn.Module):
-    """Feed-forward network.
+    """Feed forward network with real parameters.
+
+    Arguments:
+
+        * ``layers``: Computational basis configuration.
+        * ``bias``: ``Boolean`` indicating whether to use bias.
+        * ``actFun``: Non-linear activation function.
+
+    Returns:
+        Complex wave-function coefficient
     """
     layers: Sequence[int] = (10,)
     bias: bool = False

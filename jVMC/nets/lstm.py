@@ -12,6 +12,20 @@ from functools import partial
 
 
 class LSTMCell(nn.Module):
+    """
+    Implementation of a LSTM-cell, that is scanned over an input sequence.
+    The LSTMCell therefore receives two inputs, the hidden state (if it is in a deep part of the CellStack) or the 
+    input (if it is the first cell of the CellStack) aswell as the hidden state of the previous RNN-cell.
+    Both inputs are mapped to obtain a new hidden state, which is what the RNNCell implements.
+
+    Arguments: 
+        * ``inputDim``: size of the input Dimension
+        * ``actFun``: non-linear activation function
+
+    Returns:
+        new hidden state
+    """
+
     inputDim: int = 2
     actFun: callable = nn.elu
 
@@ -26,9 +40,23 @@ class LSTMCell(nn.Module):
 
         return newCarry, out.reshape((-1))
 
+# ** end class LSTMCell
+
 
 class LSTM(nn.Module):
-    """Long short-term memory (LSTM).
+    """
+    Implementation of an LSTM which consists of an LSTMCell with an additional output layer.
+    This class defines how sequential input data is treated.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
+
+    Returns:
+        logarithmic wave-function coefficient or POVM-probability
     """
     L: int = 10
     hiddenSize: int = 10
@@ -82,11 +110,23 @@ class LSTM(nn.Module):
         logProb = jnp.log(jnp.sum(nn.softmax(logits) * sample, axis=1))
         return (newCarry, sample), (logProb, sampleOut)
 
-# ** end class RNN
+# ** end class LSTM
 
 
 class LSTMsym(nn.Module):
-    """LSTM with symmetries.
+    """
+    Implementation of an LSTM which consists of an LSTMCellStack with an additional output layer.
+    It uses the LSTM class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
+
+    Arguments: 
+        * ``L``: length of the spin chain
+        * ``hiddenSize``: size of the hidden state vector
+        * ``inputDim``: dimension of the input
+        * ``actFun``: non-linear activation function
+        * ``orbit``: collection of maps that define symmetries
+
+    Returns:
+        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     L: int = 10
     hiddenSize: int = 10
@@ -122,4 +162,4 @@ class LSTMsym(nn.Module):
 
         return configs
 
-# ** end class RNNsym
+# ** end class LSTMsym

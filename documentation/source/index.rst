@@ -132,7 +132,7 @@ locally or many nodes of a cluster.
 
 At the lower level, the algorithm requires independent wave function 
 evaluations on large numbers of computational basis states. This task is well 
-suited for SIMD parallelization schemes; even more so, when the evaluation
+suited for Single-Input Multiple-Data (SIMD) parallelization schemes; even more so, when the evaluation
 involves suited operations like matrix-vector products in the case of NQS.
 Therefore, `jVMC` batches operations wherever possible, relying on JAX
 just-in-time-compilation to generate efficient code that exploits the local
@@ -140,7 +140,7 @@ computing resources.
 
 Multiple accelerators per node
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-There are different ways to deal with computers that proved multiple
+There are different ways to deal with computers that provide multiple
 accelerators per compute node, namely: 
 
     (i) Launch one MPI process per accelerator.

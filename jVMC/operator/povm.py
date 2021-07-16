@@ -18,7 +18,7 @@ opDtype = global_defs.tReal
 
 def measure_povm(povm, sampler, sampleConfigs=None, probs=None, observables=None):
     """For a set of sampled configurations, compute the associated expectation values
-    for a given set of observables. If none is provided, magnetizations and correlations for X, Y and Z are computed
+    for a given set of observables. If none is provided, magnetizations and correlations for X, Y and Z are computed.
 
     Args:
         * ``povm``: the povm that holds the jitted evaluation function
@@ -64,7 +64,7 @@ def measure_povm(povm, sampler, sampleConfigs=None, probs=None, observables=None
 
 
 def get_1_particle_distributions(state, povm):
-    """compute 1 particle POVM-representations, mainly used for defining initial states
+    """compute 1 particle POVM-representations, mainly used for defining initial states.
 
     Args:
         * ``state``: the desired state on the bloch-sphere, set together from [``"x"``, ``"y"``, ``"z"``] + ``"_"`` + [``"up"``, ``"down"``]
@@ -93,7 +93,7 @@ def get_1_particle_distributions(state, povm):
 
 def get_paulis():
     """
-    Returns the Pauli matrices
+    Returns the Pauli matrices.
     """
     return jnp.array([[[0.0, 1.0], [1.0, 0.0]],
                       [[0.0, -1.0j], [1.0j, 0.0]],
@@ -101,7 +101,7 @@ def get_paulis():
 
 
 def get_M(theta, phi, name):
-    """Returns 4 POVM measurement operators
+    """Returns 4 POVM measurement operators.
 
     Args:
         * ``theta``: angle theta on the Bloch - sphere
@@ -109,7 +109,7 @@ def get_M(theta, phi, name):
         * ``name``: specifier of the POVM
 
     Returns:
-        jnp.array with the leading axis giving the different POVM-Measurement operators
+        jnp.array with the leading axis giving the different POVM-Measurement operators.
 
     """
 
@@ -141,14 +141,14 @@ def get_M(theta, phi, name):
 
 
 def get_dissipators(M, T_inv):
-    """Get the dissipation operators in the POVM-formalism
+    """Get the dissipation operators in the POVM-formalism.
 
     Args:
         * ``M``: POVM-Measurement operators
         * ``T_inv``: Inverse POVM-Overlap matrix
 
     Returns:
-        Dictionary with common (unscaled) 1-body dissipation channels
+        Dictionary with common (unscaled) 1-body dissipation channels.
     """
 
     sigmas = get_paulis()
@@ -163,14 +163,14 @@ def get_dissipators(M, T_inv):
 
 
 def get_unitaries(M, T_inv):
-    """Get common 1- and 2-body unitary operators in the POVM formalism
+    """Get common 1- and 2-body unitary operators in the POVM formalism.
 
     Args:
         * ``M``: POVM-Measurement operators
         * ``T_inv``: Inverse POVM-Overlap matrix
 
     Returns:
-        Dictionary with common 1- and 2-body unitary interactions
+        Dictionary with common 1- and 2-body unitary interactions.
     """
 
     sigmas = get_paulis()
@@ -198,7 +198,7 @@ def get_observables(M, T_inv):
         * ``T_inv``: Inverse POVM-Overlap matrix
 
     Returns:
-        Dictionary giving the X, Y and Z magnetization
+        Dictionary giving the X, Y and Z magnetization.
     """
     sigmas = get_paulis()
     observables_DM = {"X": sigmas[0], "Y": sigmas[1], "Z": sigmas[2]}
@@ -219,8 +219,6 @@ class POVM():
     """
 
     def __init__(self, system_data, theta=0, phi=0, name='SIC'):
-        """Initialize ``POVM``
-        """
         self.system_data = system_data
         self.theta = theta
         self.phi = phi
@@ -246,7 +244,7 @@ class POVM():
 
     def set_standard_povm_operators(self):
         """
-        Obtain matrices required for dynamics and observables
+        Obtain matrices required for dynamics and observables.
         """
         self.M = get_M(self.theta, self.phi, self.name)
         self.T = jnp.einsum('aij, bji -> ab', self.M, self.M)
@@ -263,7 +261,7 @@ class POVM():
     def evaluate_observable(self, operator, states):
         """
         Obtain X, Y and Z magnetizations and their correlators up to the specified length in ``system data["L"]``.
-        Note that this function assumes translational invariance and averages the results obtained for single spins
+        Note that this function assumes translational invariance and averages the results obtained for single spins.
         """
 
         if self.system_data["dim"] == "1D":
@@ -284,7 +282,7 @@ class POVM():
 
 
 class POVMOperator(Operator):
-    """This class provides functionality to compute operator matrix elements
+    """This class provides functionality to compute operator matrix elements.
 
     Initializer arguments:
 
@@ -301,7 +299,7 @@ class POVMOperator(Operator):
         super().__init__()
 
     def add(self, opDescr):
-        """Add another operator to the operator
+        """Add another operator to the operator.
 
         Args:
             * ``opDescr``: Operator dictionary to be added to the operator.
@@ -321,7 +319,7 @@ class POVMOperator(Operator):
         return OffdConfigs.reshape((-1,) + s.shape), matEls.reshape(-1)
 
     def compile(self):
-        """Compiles an operator mapping function from the previously added dictionaries
+        """Compiles an operator mapping function from the previously added dictionaries.
         """
         self.siteCouplings = []
         self.matEls = []

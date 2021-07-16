@@ -13,7 +13,7 @@ import numpy as np
 import jVMC
 
 # DMRG energies produced with the TeNPy library https://github.com/tenpy/tenpy
-DMRG_energies = {"10": -1.0545844370449059, "20":-1.0900383739, "100":-1.1194665474274852}
+DMRG_energies = {"10": -1.0545844370449059, "20": -1.0900383739, "100": -1.1194665474274852}
 
 L = 100
 g = -0.7
@@ -26,10 +26,10 @@ psi = jVMC.vqs.NQS(net, params)  # Variational wave function
 
 # Set up hamiltonian
 hamiltonian = jVMC.operator.BranchFreeOperator()
-for l in range(L-1):
+for l in range(L - 1):
     hamiltonian.add(jVMC.operator.scal_opstr(-1., (jVMC.operator.Sz(l), jVMC.operator.Sz((l + 1) % L))))
     hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(l), )))
-hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(L-1), )))
+hamiltonian.add(jVMC.operator.scal_opstr(g, (jVMC.operator.Sx(L - 1), )))
 
 # Set up sampler
 sampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(4321), updateProposer=jVMC.sampler.propose_spin_flip_Z2,
@@ -56,9 +56,9 @@ import numpy as np
 res = np.array(res)
 import matplotlib.pyplot as plt
 
-fig, ax = plt.subplots(2,1, sharex=True, figsize=[4.8,4.8])
+fig, ax = plt.subplots(2, 1, sharex=True, figsize=[4.8, 4.8])
 if str(L) in DMRG_energies:
-    ax[0].semilogy(res[:, 0], res[:, 1] - DMRG_energies[str(L)], '-', label=r"$L="+str(L)+"$")
+    ax[0].semilogy(res[:, 0], res[:, 1] - DMRG_energies[str(L)], '-', label=r"$L=" + str(L) + "$")
     ax[0].set_ylabel(r'$(E-E_0)/L$')
 else:
     ax[0].plot(res[:, 0], res[:, 1], '-')

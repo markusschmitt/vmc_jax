@@ -3,22 +3,54 @@
 Installation
 ===============
 
-Currently, there exist two ways to install the python package, which both rely on ``pip``.
-An installation into a clean virtual environment is recommended, but not essential. 
-The following lines assume that a clean virtual environment was created and activated, like so: 
-``conda create --name my_environment python``
-followed by
-``conda activate my_environment``.
-Dependent packages are taken care of automatically. 
 
-Build from local wheel
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Option 1: ``pip``-install
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1. We recommend you create a new conda environment to work with jVMC:
 
-In the folder ``vmc_jax/dist/`` a ``.whl`` file exists, which may be installed using ``pip`` using the following command: ``python -m pip install vmc_jax/dist/jVMC-1.0-py3-none-any.whl``
+.. code-block:: none
+
+    conda create -n jvmc python=3.8
+    conda activate jvmc
 
 
-Build with pip (online)
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-Coming soon.
+2. ``pip``-install the package
 
-To check that everything went as expected, you may run ``python -c "import jVMC"``.
+.. code-block:: none
+
+    pip install jVMC
+
+Option 2: Clone and ``pip``-install
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+1. Clone the jVMC repository and check out the development branch:
+
+.. code-block:: none
+
+    git clone https://github.com/markusschmitt/vmc_jax.git
+    cd vmc_jax
+
+
+2. We recommend you create a new conda environment to work with jVMC:
+
+.. code-block:: none
+
+    conda create -n jvmc python=3.8
+    conda activate jvmc
+
+
+3. Create a wheel and ``pip``-install the package
+
+.. code-block:: none
+
+    python setup.py bdist_wheel
+    python -m pip install dist/\*.whl
+
+
+
+Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
+
+Option 3: Manually install dependencies
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you want to work on the jVMC code you might prefer to `install dependencies and set up jVMC <https://github.com/markusschmitt/vmc_jax/blob/master/documentation/readme/compile_jax_on_cluster.md>`_ without ``pip``-install.
