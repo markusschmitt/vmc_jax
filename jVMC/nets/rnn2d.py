@@ -21,7 +21,7 @@ class RNNCell2D(nn.Module):
     Arguments: 
         * ``hiddenSize``: size of the hidden state vector
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         new hidden state
@@ -60,7 +60,7 @@ class RNNCellStack2D(nn.Module):
     Arguments: 
         * ``hiddenSize``: size of the hidden state vector
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         New set of hidden states (one for each layer), as well as the last hidden state, that serves as input to the output layer
@@ -96,7 +96,7 @@ class RNN2D(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
 
     Returns:
@@ -216,7 +216,7 @@ class RNN2Dsym(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
         * ``orbit``: collection of maps that define symmetries
         * ``z2sym``: for pure states; implement Z2 symmetry

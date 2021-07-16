@@ -21,7 +21,7 @@ class RNNCell(nn.Module):
     Arguments: 
         * ``hiddenSize``: size of the hidden state vector
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         new hidden state
@@ -62,7 +62,7 @@ class RNNCellStack(nn.Module):
     Arguments: 
         * ``hiddenSize``: size of the hidden state vector
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         New set of hidden states (one for each layer), as well as the last hidden state, that serves as input to the output layer
@@ -100,7 +100,7 @@ class RNN(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
 
     Returns:
@@ -181,7 +181,7 @@ class RNNsym(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
         * ``orbit``: collection of maps that define symmetries
         * ``z2sym``: for pure states; implement Z2 symmetry
@@ -252,7 +252,7 @@ class PhaseRNN(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         phase of the coefficient
@@ -266,8 +266,7 @@ class PhaseRNN(nn.Module):
 
     def setup(self):
 
-        self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize, outDim=self.inputDim,
-                                    actFun=self.actFun, initScale=self.initScale)
+        self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize, actFun=self.actFun, initScale=self.initScale)
 
         self.dense = nn.Dense(features=8, dtype=global_defs.tReal,
                               kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
@@ -303,7 +302,7 @@ class PhaseRNNsym(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         symmetry averaged phase of the coefficient
@@ -350,7 +349,7 @@ class CpxRNN(nn.Module):
         * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``ìnitScale``: factor by which the initial parameters are scaled
+        * ``initScale``: factor by which the initial parameters are scaled
 
     Returns:
         complex coefficient
@@ -364,8 +363,7 @@ class CpxRNN(nn.Module):
 
     def setup(self):
 
-        self.rnnCell = RNNCell(hiddenSize=self.hiddenSize, outDim=self.hiddenSize,
-                               actFun=self.actFun, initScale=self.initScale)
+        self.rnnCell = RNNCell(hiddenSize=self.hiddenSize, actFun=self.actFun, initScale=self.initScale)
 
         self.probDense = nn.Dense(features=self.inputDim, dtype=global_defs.tReal,
                                   kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
