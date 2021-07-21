@@ -1,4 +1,4 @@
-..
+.. _Sampler:
 
 Sampler module
 ==============

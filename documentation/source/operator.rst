@@ -1,4 +1,4 @@
-..
+.. _Operator:
 
 Operator module
 ===============
