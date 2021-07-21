@@ -2,3 +2,5 @@ numpy
 jax
 jaxlib
 flax
+mpi4py
+h5py

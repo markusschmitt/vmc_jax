@@ -18,8 +18,8 @@ import sys
 sys.path.append(os.path.abspath("../../"))
  
 MOCK_MODULES = ['mpi4py','flax', 'flax.nn', 'flax.linen', 'h5py']
-for mod_name in MOCK_MODULES:
-    sys.modules[mod_name] = mock.Mock()
+#for mod_name in MOCK_MODULES:
+#    sys.modules[mod_name] = mock.Mock()
 
 import jVMC
 import jVMC.operator as operator

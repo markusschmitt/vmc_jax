@@ -13,9 +13,8 @@ from typing import List, Sequence
 
 import jVMC.nets.initializers
 
-
 class CNN(nn.Module):
-    """Convolutional neural network with real parameters.
+    """ Convolutional neural network with real parameters.
 
     Arguments:
         * ``F``: Filter diameter
@@ -29,6 +28,7 @@ class CNN(nn.Module):
     Returns:
         Complex wave-function amplitude
     """
+
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)
     strides: Sequence[int] = (1,)
@@ -39,7 +39,6 @@ class CNN(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-
         initFunction = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
                                dtype=global_defs.tReal)
 
