@@ -7,9 +7,9 @@ version: 2
 
 # Build documentation in the documentation/ directory with Sphinx
 sphinx:
-   configuration: documentation/source/conf_readthedocs.py
+   configuration: documentation/source/conf.py
 
 python:
    version: 3.8
    install:
-     - requirements: documentation/requirements.txt
+     - requirements: requirements.txt
