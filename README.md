@@ -39,3 +39,10 @@ If you want to work on the jVMC code you might prefer to [install dependencies a
 ### Compiling JAX
 
 [How to compile JAX on a supercomputing cluster](documentation/readme/compile_jax_on_cluster.md)
+
+
+## Online example
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/markusschmitt/vmc_jax/blob/dev_0.1.0/examples/ex0_ground_state_search.ipynb)
+
+Click on the badge above to open a notebook that implements an exemplary ground state search in Google Colab.
