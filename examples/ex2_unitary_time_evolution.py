@@ -33,9 +33,8 @@ tmax = 2  # Final time
 
 # Set up variational wave function
 net = jVMC.nets.CpxRBM(numHidden=10, bias=True)
-params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=np.int32))
 
-psi = jVMC.vqs.NQS(net, params)  # Variational wave function
+psi = jVMC.vqs.NQS(net, seed=1234)  # Variational wave function
 
 # Set up hamiltonian
 hamiltonian = jVMC.operator.BranchFreeOperator()

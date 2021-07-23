@@ -20,9 +20,8 @@ g = -0.7
 # net = jVMC.nets.CpxCNN(F=[15,], channels=[100], bias=False)
 orbit = jnp.array([jnp.roll(jnp.identity(L, dtype=np.int32), l, axis=1) for l in range(L)])
 net = jVMC.nets.RNNsym(hiddenSize=15, L=L, depth=5, orbit=orbit)
-params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=np.int32))
 
-psi = jVMC.vqs.NQS(net, params, batchSize=500)  # Variational wave function
+psi = jVMC.vqs.NQS(net, batchSize=500, seed=1234)  # Variational wave function
 print(f"The variational ansatz has {psi.numParameters} parameters.")
 
 # Set up hamiltonian

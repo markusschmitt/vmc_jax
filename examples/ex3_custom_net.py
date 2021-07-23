@@ -30,11 +30,9 @@ L = 4  # system size
 
 # Initialize custom net
 net = MyNet(numHidden=7)
-params = net.init(jax.random.PRNGKey(1234),
-                  jax.numpy.zeros((L,), dtype=np.int32))
 
 # Create the variational quantum state
-psi = jVMC.vqs.NQS(net, params)
+psi = jVMC.vqs.NQS(net, seed=1234)
 
 # Create a set of 13 random input configurations
 configs = jax.random.bernoulli(jax.random.PRNGKey(4321), shape=(1, 13, L))

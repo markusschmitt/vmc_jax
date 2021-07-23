@@ -20,9 +20,8 @@ g = -0.7
 
 # Initialize net
 net = jVMC.nets.CpxRBM(numHidden=8, bias=False)
-params = net.init(jax.random.PRNGKey(1234), jnp.zeros((L,), dtype=np.int32))
 
-psi = jVMC.vqs.NQS(net, params)  # Variational wave function
+psi = jVMC.vqs.NQS(net, seed=1234)  # Variational wave function
 
 # Set up hamiltonian
 hamiltonian = jVMC.operator.BranchFreeOperator()
