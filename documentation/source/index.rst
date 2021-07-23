@@ -109,6 +109,11 @@ using the `jVMC` framework boils down to::
     logPsiOffd = psi(sPrime)                        # Evaluate wave function on s'
     Oloc = get_O_loc(logPsi, logPsiOffd)            # Compute local estimator
     Omean = jVMC.mpi_wrapper.get_global_mean(Oloc)  # Compute mean of all processes
+
+Also computing the variational derivatives :math:`\partial_{\theta_k}\log\psi_\theta(s)`
+is straightforward when using the ``NQS`` class::
+
+    grad_psi = psi.gradients(s)
  
 See the :ref:`Examples` section for a number of more elaborate example applications.
 
