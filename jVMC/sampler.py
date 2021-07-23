@@ -369,6 +369,9 @@ class ExactSampler:
             self._normalize_pmapd = global_defs.jit_for_my_device(self._normalize)
 
         self.get_basis()
+        
+        # Make sure that net params are initialized
+        self.psi(self.basis)
 
         self.lastNorm = 0.
 

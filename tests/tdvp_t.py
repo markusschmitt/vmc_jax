@@ -36,8 +36,7 @@ class TestGsSearch(unittest.TestCase):
         for hx,exE in zip(hxs,exEs):
             # Set up variational wave function
             rbm = nets.CpxRBM(numHidden=6,bias=False)
-            params = rbm.init(random.PRNGKey(1),jnp.zeros((L,), dtype=np.int32))
-            psi = NQS(rbm, params)
+            psi = NQS(rbm)
 
             # Set up hamiltonian for ground state search
             hamiltonianGS = op.BranchFreeOperator()
@@ -73,8 +72,8 @@ class TestTimeEvolution(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2,bias=False)
-        params = rbm.init(random.PRNGKey(0),jnp.zeros((L,), dtype=np.int32))
-        psi = NQS(rbm, params)
+        psi = NQS(rbm)
+        psi(jnp.array([[[1,1,1,1]]]))
         psi.set_parameters(weights)
 
         # Set up hamiltonian for time evolution
