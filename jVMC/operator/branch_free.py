@@ -234,33 +234,3 @@ class BranchFreeOperator(Operator):
 
         return sp, matEl
 
-
-if __name__ == '__main__':
-    L = 4
-    lDim = 2
-    deviceCount = 1
-    shape = (2, L)
-    if global_defs.usePmap:
-        deviceCount = jax.local_device_count()
-        shape = (deviceCount,) + shape
-    s = jnp.array([[[0, 0, 0, 0], [1, 0, 0, 0]]], dtype=np.int32)
-
-    h = BranchFreeOperator()
-
-    h.add((Sx(2),))
-    h.add((Sz(0),))
-    h.add(scal_opstr(-1., (Sx(0), Sx(1))))
-    h.add((Sm(0),))
-
-    sp, matEl = h.get_s_primes(s)
-    print(sp)
-    print(matEl)
-
-#    sp,matEl=h.get_s_primes(s)
-#
-#    logPsi=jnp.ones(s.shape[:-1])*(0.5j)
-#    logPsiSP=0.3*jnp.ones(sp.shape[:-1])
-#    print(logPsi.shape)
-#    print(logPsiSP.shape)
-#
-#    print(h.get_O_loc(logPsi,logPsiSP))

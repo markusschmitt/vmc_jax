@@ -175,4 +175,3 @@ class Operator(metaclass=abc.ABCMeta):
             corresponding matrix elements.
         """
 
-# if __name__ == '__main__':
