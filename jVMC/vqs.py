@@ -64,16 +64,14 @@ class NQS:
     Initializer arguments:
 
         * ``nets``: Variational network or tuple of networks.
-        * ``parameters``: Set of variational parameters of the network(s). \
-            If two networks are given, the parameters for each of them are \
-            needed.
         * ``batchSize``: Batch size for batched network evaluation. Choice \
             of this parameter impacts performance: with too small values performance \
             is limited by memory access overheads, too large values can lead \
             to "out of memory" issues.
+        * ``seed``: Seed for the PRNG to initialize the network parameters.
     """
 
-    def __init__(self, nets, parameters, batchSize=1000):
+    def __init__(self, nets, batchSize=1000, seed=1234):
         """Initializes NQS class.
 
         This class can operate in two modi:
@@ -104,6 +102,7 @@ class NQS:
                 of this parameter impacts performance: with too small values performance \
                 is limited by memory access overheads, too large values can lead \
                 to "out of memory" issues.
+            * ``seed``: Seed for the PRNG to initialize the network parameters.
         """
 
         # The net arguments have to be instances of flax.nn.Model
@@ -111,32 +110,16 @@ class NQS:
         self.holomorphic = False
         self.flat_gradient_function = flat_gradient_real
 
+        self.initialized = False
+        self.seed = seed
+        self.parameters = None
+
         if not isinstance(nets, collections.abc.Iterable):
-
             self.net = nets
-            self.parameters = parameters
-
-            if np.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]]).dtype == np.complex128:
-                self.holomorphic = True
-            else:
-                self.flat_gradient_function = flat_gradient
-
-            self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters)[0]]
-            self.netTreeDef = jax.tree_util.tree_structure(self.parameters)
-            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters)[0]]))
-
         else:
-
             self.net = list(nets)
-            self.parameters = list(parameters)
-
             self.realNets = True
 
-            self.paramShapes = [[(p.size, p.shape) for p in tree_flatten(params)[0]] for params in self.parameters]
-            self.netTreeDef = [jax.tree_util.tree_structure(params) for params in self.parameters]
-            self.numParameters1 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters[0])[0]]))
-            self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters[1])[0]]))
-            self.numParameters = self.numParameters1 + self.numParameters2
 
         # Check whether wave function can generate samples
         self._isGenerator = False
@@ -145,8 +128,10 @@ class NQS:
             sampleNet = self.net[0]
         else:
             sampleNet = self.net
-        if callable(getattr(sampleNet, 'sample', None)):
-            self._isGenerator = True
+
+        if "sample" in dir(sampleNet):
+            if callable(sampleNet.sample):
+                self._isGenerator = True
 
         self.batchSize = batchSize
 
@@ -171,6 +156,41 @@ class NQS:
 
     # **  end def __init__
 
+
+    def init_net(self, s):
+
+        if not self.initialized:
+    
+            if not isinstance(self.net, collections.abc.Iterable):
+                
+                self.parameters = self.net.init(jax.random.PRNGKey(self.seed), s[0,0,...])
+                
+                if np.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]]).dtype == np.complex128:
+                    self.holomorphic = True
+                else:
+                    self.flat_gradient_function = flat_gradient
+
+                self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters)[0]]
+                self.netTreeDef = jax.tree_util.tree_structure(self.parameters)
+                self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters)[0]]))
+
+            else:
+                
+                keys = jax.random.split(jax.random.PRNGKey(self.seed), 2)
+                self.parameters = [n.init(k, s[0,0,...]) for k,n in zip(keys, self.net)]
+
+                self.paramShapes = [[(p.size, p.shape) for p in tree_flatten(params)[0]] for params in self.parameters]
+                self.netTreeDef = [jax.tree_util.tree_structure(params) for params in self.parameters]
+                self.numParameters1 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters[0])[0]]))
+                self.numParameters2 = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters[1])[0]]))
+                self.numParameters = self.numParameters1 + self.numParameters2
+                
+
+            self.initialized = True
+
+    # ** end init_net
+
+
     def __call__(self, s):
         """Evaluate variational wave function.
 
@@ -186,6 +206,8 @@ class NQS:
 
         :meta public:
         """
+
+        self.init_net(s)
 
         if self.realNets:
             logMod = self.evalJitdNet1(self.net[0], self.parameters[0], s, self.batchSize)
@@ -252,6 +274,7 @@ class NQS:
 
         return g[:s.shape[0]]
 
+
     def gradients(self, s):
         """Compute gradients of logarithmic wave function.
 
@@ -267,6 +290,8 @@ class NQS:
             with respect to each variational parameter :math:`\\theta_k` for each \
             input configuration :math:`s`.
         """
+        
+        self.init_net(s)
 
         if self.realNets:  # FOR REAL NETS
 
@@ -286,15 +311,21 @@ class NQS:
 
     # **  end def gradients
 
+
     def update_parameters(self, deltaP):
         """Update variational parameters.
 
         Sets new values of all variational parameters by adding given values.
 
+        If parameters are not initialized, parameters are set to ``deltaP``.
+
         Args:
 
             * ``deltaP``: Values to be added to variational parameters.
         """
+
+        if not self.initialized:
+            self.set_parameters(deltaP)
 
         if self.realNets:  # FOR REAL NETS
 
@@ -321,6 +352,7 @@ class NQS:
 
     # **  end def update_parameters
 
+
     def set_parameters(self, P):
         """Set variational parameters.
 
@@ -330,6 +362,9 @@ class NQS:
 
             * ``P``: New values of variational parameters.
         """
+
+        if not self.initialized:
+            raise RuntimeError("Error in NQS.set_parameters(): Network not initialized. Evaluate net on example input for initialization.")
 
         if self.realNets:  # FOR REAL NETS
 
@@ -361,6 +396,7 @@ class NQS:
 
     # **  end def _param_unflatten_real
 
+
     def _param_unflatten_cpx(self, P):
 
         if self.holomorphic:
@@ -379,12 +415,18 @@ class NQS:
 
     # **  end def _param_unflatten_cpx
 
+
     def get_parameters(self):
         """Get variational parameters.
 
         Returns:
             Array holding current values of all variational parameters.
         """
+
+        if not self.initialized:
+
+            return None
+
 
         if self.realNets:  # FOR REAL NETS
 
@@ -535,60 +577,3 @@ def nqs_from_state_dict(nqs, stateDict):
 
 flax.serialization.register_serialization_state(NQS, nqs_to_state_dict, nqs_from_state_dict)
 
-
-if __name__ == '__main__':
-    global_defs.set_pmap_devices(jax.devices()[:2])
-
-    rbm = CpxRBM.partial(numHidden=2, bias=True)
-    _, params = rbm.init_by_shape(random.PRNGKey(0), [(1, 3)])
-    rbmModel = nn.Model(rbm, params)
-
-    print("** Complex net **")
-    psiC = NQS(rbmModel)
-
-    shape = (2, 3)
-    if global_defs.usePmap:
-        #shape = (jax.device_count(),) + shape
-        shape = (jVMC.global_defs.myDeviceCount,) + shape
-
-    s = jnp.zeros(shape, dtype=np.int32)
-
-    res = psiC(s)
-    print(res.shape)
-    print(res[1].device_buffer.device())
-
-    s = jnp.zeros(shape, dtype=np.int32)
-    G = psiC.gradients(s)
-
-    print(G.shape)
-    exit()
-    psiC.update_parameters(jnp.real(G[0][0]))
-
-    a, b = tree_flatten(psiC)
-
-    print(a)
-    print(b)
-
-    psiC = tree_unflatten(b, a)
-    exit()
-
-    print("** Real nets **")
-    rbmR = RBM.partial(numHidden=2, bias=True)
-    rbmI = RBM.partial(numHidden=3, bias=True)
-    _, paramsR = rbmR.init_by_shape(random.PRNGKey(0), [(1, 3)])
-    _, paramsI = rbmI.init_by_shape(random.PRNGKey(0), [(1, 3)])
-    rbmRModel = nn.Model(rbmR, paramsR)
-    rbmIModel = nn.Model(rbmI, paramsI)
-
-    psiR = NQS(rbmRModel, rbmIModel)
-
-    a, b = tree_flatten(psiR)
-
-    print(a)
-    print(b)
-
-    psiR = tree_unflatten(b, a)
-
-    G = psiR.gradients(s)
-    print(G)
-    psiR.update_parameters(np.abs(G[0]))

@@ -45,15 +45,15 @@ class TestMCMC(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2,bias=False)
-        params = rbm.init(random.PRNGKey(0),jnp.zeros((L,),dtype=np.int32))
-        psi = NQS(rbm,params)
-        psi.set_parameters(weights)
+        psi = NQS(rbm)
 
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(psi,L)
         
         # Set up MCMC sampler
         mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
+        
+        psi.set_parameters(weights)
 
         # Compute exact probabilities
         _, _, pex = exactSampler.sample()
@@ -81,19 +81,18 @@ class TestMCMC(unittest.TestCase):
 
         # Set up variational wave function
         rnn = nets.RNN( L=4, hiddenSize=5, depth=2 )
-        rnnParams = rnn.init( random.PRNGKey(0), jnp.zeros((L,), dtype=np.int32) )
         rbm = nets.RBM(numHidden=2,bias=False)
-        rbmParams = rbm.init(random.PRNGKey(0),jnp.zeros((L,), dtype=np.int32))
         
-        psi = NQS((rnn, rbm),(rnnParams,rbmParams))
+        psi = NQS((rnn, rbm))
        
-        ps=psi.get_parameters()
-        psi.update_parameters(ps)
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
         mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
+        
+        ps=psi.get_parameters()
+        psi.update_parameters(ps)
         
         # Compute exact probabilities
         _, _, pex = exactSampler.sample()
@@ -124,11 +123,9 @@ class TestMCMC(unittest.TestCase):
 
         # Set up variational wave function
         rnn = nets.RNNsym( L=L, hiddenSize=5, orbit=orbit )
-        rnnParams = rnn.init( random.PRNGKey(0), jnp.zeros((L,),dtype=np.int32) )
         rbm = nets.RBM(numHidden=2,bias=False)
-        rbmParams = rbm.init(random.PRNGKey(0),jnp.zeros((L,),dtype=np.int32))
         
-        psi = NQS((rnn, rbm),(rnnParams,rbmParams))
+        psi = NQS((rnn, rbm))
        
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(psi, L)
@@ -165,11 +162,9 @@ class TestMCMC(unittest.TestCase):
 
         # Set up variational wave function
         rnn = nets.LSTM( L=L, hiddenSize=5 )
-        rnnParams = rnn.init( random.PRNGKey(0), jnp.zeros((L,),dtype=np.int32) )
         rbm = nets.RBM(numHidden=2,bias=False)
-        rbmParams = rbm.init(random.PRNGKey(0),jnp.zeros((L,),dtype=np.int32))
         
-        psi = NQS((rnn, rbm),(rnnParams,rbmParams))
+        psi = NQS((rnn, rbm))
        
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(psi, L)
@@ -203,9 +198,8 @@ class TestMCMC(unittest.TestCase):
 
         # Set up variational wave function
         rnn = nets.RNN2D( L=L, hiddenSize=5 )
-        params = rnn.init( random.PRNGKey(0), jnp.zeros((L,L),dtype=np.int32) )
 
-        psi = NQS((rnn,rnn),(params,params))
+        psi = NQS((rnn,rnn))
         
         # Set up exact sampler
         exactSampler=sampler.ExactSampler(psi, (L,L))

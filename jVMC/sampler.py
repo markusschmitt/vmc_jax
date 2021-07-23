@@ -95,12 +95,15 @@ class MCSampler:
 
         self.net = net
         if (not net.is_generator) and (updateProposer is None):
-            raise RuntimeError("Instantiation of MCSampler: No `updateProposer` is `None` and cannot be used for MCMC sampling.")
+            raise RuntimeError("Instantiation of MCSampler: `updateProposer` is `None` and cannot be used for MCMC sampling.")
 
         stateShape = (numChains,) + sampleShape
         if global_defs.usePmap:
             stateShape = (global_defs.device_count(),) + stateShape
         self.states = jnp.zeros(stateShape, dtype=np.int32)
+
+        # Make sure that net is initialized
+        self.net(self.states)
 
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
@@ -481,53 +484,3 @@ class ExactSampler:
         pass
 
 # ** end class ExactSampler
-
-
-if __name__ == "__main__":
-
-    import nets
-    from vqs import NQS
-    from flax import nn
-
-    L = 128
-    sampler = MCSampler(random.PRNGKey(123), propose_spin_flip, (L,), numChains=500, sweepSteps=128)
-    #sampler = ExactSampler((L,))
-
-    rbm = nets.CpxRBM.partial(numHidden=128, bias=True)
-    _, params = rbm.init_by_shape(random.PRNGKey(0), [(L,)])
-    rbmModel = nn.Model(rbm, params)
-    psiC = NQS(rbmModel)
-    tic = time.perf_counter()
-    configs, logspi, p = sampler.sample(psiC, numSamples=100000)
-    #configs, logpsi, p = sampler.sample(psiC, numSamples=10)
-
-    print(configs.shape)
-    exit()
-
-    configs.block_until_ready()
-    print("total time:", time.perf_counter() - tic)
-
-    tic = time.perf_counter()
-    configs, logspi, p = sampler.sample(psiC, numSamples=100000)
-    configs.block_until_ready()
-    print("total time:", time.perf_counter() - tic)
-
-    # Set up variational wave function
-    L = 64
-    rnn = nets.RNN.partial(L=L, units=[50])
-    _, params = rnn.init_by_shape(random.PRNGKey(0), [(L,)])
-    rnnModel = nn.Model(rnn, params)
-    rbm = nets.RBM.partial(numHidden=2, bias=False)
-    _, params = rbm.init_by_shape(random.PRNGKey(0), [(L,)])
-    rbmModel = nn.Model(rbm, params)
-
-    psi = NQS(rnnModel, rbmModel)
-
-    tic = time.perf_counter()
-    configs, logpsi, p = sampler.sample(psi, numSamples=500000)
-    configs.block_until_ready()
-    print("total time:", time.perf_counter() - tic)
-    tic = time.perf_counter()
-    configs, logpsi, p = sampler.sample(psi, numSamples=500000)
-    configs.block_until_ready()
-    print("total time:", time.perf_counter() - tic)
