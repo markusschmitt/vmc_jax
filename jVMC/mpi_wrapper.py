@@ -43,7 +43,6 @@ cov_helper_with_p = None
 cov_helper_without_p = None
 
 pmapDevices = None
-jitDevice = None
 
 import collections
 
@@ -67,29 +66,16 @@ def jit_my_stuff():
     global cov_helper_with_p
     global cov_helper_without_p
     global pmapDevices
-    global jitDevice
 
-    if global_defs.usePmap:
-        if pmap_devices_updated():
-            _sum_up_pmapd = global_defs.pmap_for_my_devices(lambda x: jax.lax.psum(jnp.sum(x, axis=0), 'i'), axis_name='i')
-            _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean: jax.lax.psum(jnp.sum(jnp.conj(data - mean) * (data - mean), axis=0), 'i'), axis_name='i', in_axes=(0, None))
-            _sum_sq_withp_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jax.lax.psum(jnp.conj(data - mean).dot(p * (data - mean)), 'i'), axis_name='i', in_axes=(0, None, 0))
-            mean_helper = global_defs.pmap_for_my_devices(lambda data, p: jnp.expand_dims(jnp.dot(p, data), axis=0), in_axes=(0, 0))
-            cov_helper_with_p = global_defs.pmap_for_my_devices(_cov_helper_with_p, in_axes=(0, 0))
-            cov_helper_without_p = global_defs.pmap_for_my_devices(_cov_helper_without_p)
+    if pmap_devices_updated():
+        _sum_up_pmapd = global_defs.pmap_for_my_devices(lambda x: jax.lax.psum(jnp.sum(x, axis=0), 'i'), axis_name='i')
+        _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean: jax.lax.psum(jnp.sum(jnp.conj(data - mean) * (data - mean), axis=0), 'i'), axis_name='i', in_axes=(0, None))
+        _sum_sq_withp_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jax.lax.psum(jnp.conj(data - mean).dot(p * (data - mean)), 'i'), axis_name='i', in_axes=(0, None, 0))
+        mean_helper = global_defs.pmap_for_my_devices(lambda data, p: jnp.expand_dims(jnp.dot(p, data), axis=0), in_axes=(0, 0))
+        cov_helper_with_p = global_defs.pmap_for_my_devices(_cov_helper_with_p, in_axes=(0, 0))
+        cov_helper_without_p = global_defs.pmap_for_my_devices(_cov_helper_without_p)
 
-            pmapDevices = global_defs.myPmapDevices
-
-    else:
-        if jitDevice != global_defs.myDevice:
-            _sum_up_pmapd = global_defs.jit_for_my_device(lambda x: jnp.expand_dims(jnp.sum(x, axis=0), axis=0))
-            _sum_sq_pmapd = global_defs.jit_for_my_device(lambda data, mean: jnp.expand_dims(jnp.sum(jnp.conj(data - mean) * (data - mean), axis=0), axis=0))
-            _sum_sq_withp_pmapd = global_defs.jit_for_my_device(lambda data, mean, p: jnp.expand_dims(jnp.conj(data - mean).dot(p * (data - mean)), axis=0))
-            mean_helper = global_defs.jit_for_my_device(lambda data, p: jnp.expand_dims(jnp.dot(p, data), axis=0))
-            cov_helper_with_p = global_defs.jit_for_my_device(_cov_helper_with_p)
-            cov_helper_without_p = global_defs.jit_for_my_device(_cov_helper_without_p)
-
-            jitDevice = global_defs.myDevice
+        pmapDevices = global_defs.myPmapDevices
 
 
 def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1):

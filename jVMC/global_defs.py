@@ -11,7 +11,6 @@ import jax
 
 from functools import partial
 
-usePmap = True
 try:
     myDevice = jax.devices()[MPI.COMM_WORLD.Get_rank() % len(jax.devices())]
 except:
@@ -20,7 +19,6 @@ except:
 
 myPmapDevices = jax.devices()  # [myDevice]
 myDeviceCount = len(myPmapDevices)
-jit_for_my_device = partial(jax.jit, device=myDevice)
 pmap_for_my_devices = partial(jax.pmap, devices=myPmapDevices)
 
 import collections
@@ -31,11 +29,6 @@ def get_iterable(x):
         return x
     else:
         return (x,)
-
-
-def set_use_pmap(b=True):
-    global usePmap
-    usePmap = b
 
 
 def set_pmap_devices(devices):
@@ -54,6 +47,4 @@ def device_count():
 
 
 def devices():
-    if usePmap:
-        return myPmapDevices
-    return myDevice
+    return myPmapDevices

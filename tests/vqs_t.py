@@ -19,9 +19,7 @@ import numpy as np
 import flax.nn as nn
 
 def get_shape(shape):
-    if global_defs.usePmap:
-        return (global_defs.myDeviceCount,) + shape
-    return shape
+    return (global_defs.myDeviceCount,) + shape
 
 class TestGradients(unittest.TestCase):
     

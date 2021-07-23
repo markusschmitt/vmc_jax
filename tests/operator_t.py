@@ -19,9 +19,7 @@ import jVMC.operator as op
 import jVMC.global_defs as global_defs
 
 def get_shape(shape):
-    if global_defs.usePmap:
-        return (global_defs.device_count(),) + shape
-    return shape
+    return (global_defs.device_count(),) + shape
 
 class TestOperator(unittest.TestCase):
 

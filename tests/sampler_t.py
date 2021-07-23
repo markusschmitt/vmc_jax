@@ -62,8 +62,7 @@ class TestMCMC(unittest.TestCase):
         numSamples=500000
         smc, _, _ = mcSampler.sample(numSamples=numSamples)
 
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
         
         self.assertTrue( smc.shape[0] >= numSamples )
 
@@ -102,8 +101,7 @@ class TestMCMC(unittest.TestCase):
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         
@@ -141,8 +139,7 @@ class TestMCMC(unittest.TestCase):
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         
@@ -180,8 +177,7 @@ class TestMCMC(unittest.TestCase):
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         
@@ -217,8 +213,7 @@ class TestMCMC(unittest.TestCase):
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         

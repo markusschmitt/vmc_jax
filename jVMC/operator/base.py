@@ -55,28 +55,20 @@ class Operator(metaclass=abc.ABCMeta):
 
         self.compiled = False
 
-        # jit'd member functions
-        if global_defs.usePmap:
-            self._get_s_primes_pmapd = None
-            self._find_nonzero_pmapd = global_defs.pmap_for_my_devices(vmap(self._find_nonzero, in_axes=0))
-            self._set_zero_to_zero_pmapd = global_defs.pmap_for_my_devices(jax.vmap(self.set_zero_to_zero, in_axes=(0, 0, 0)), in_axes=(0, 0, 0))
-            self._array_idx_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda data, idx: data[idx], in_axes=(0, 0)), in_axes=(0, 0))
-            self._get_O_loc_pmapd = global_defs.pmap_for_my_devices(self._get_O_loc)
-            self._flatten_pmapd = global_defs.pmap_for_my_devices(lambda x: x.reshape(-1, *x.shape[2:]))
-            self._alloc_Oloc_pmapd = global_defs.pmap_for_my_devices(lambda s: jnp.zeros(s.shape[0], dtype=global_defs.tCpx))
-            self._get_config_batch_pmapd = global_defs.pmap_for_my_devices(lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), in_axes=(0, None, None), static_broadcasted_argnums=(2,))
-            self._get_logPsi_batch_pmapd = global_defs.pmap_for_my_devices(lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), in_axes=(0, None, None), static_broadcasted_argnums=(2,))
-            self._insert_Oloc_batch_pmapd = global_defs.pmap_for_my_devices(
-                lambda dst, src, beg: jax.lax.dynamic_update_slice(dst, src, [beg, ]),
-                in_axes=(0, 0, None)
-            )
-        else:
-            self._get_s_primes_pmapd = None
-            self._find_nonzero_pmapd = global_defs.jit_for_my_device(vmap(self._find_nonzero, in_axes=0))
-            self._set_zero_to_zero_pmapd = global_defs.jit_for_my_device(jax.vmap(self.set_zero_to_zero, in_axes=(0, 0, 0)))
-            self._array_idx_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda data, idx: data[idx], in_axes=(0, 0)))
-            self._get_O_loc_pmapd = global_defs.jit_for_my_device(self._get_O_loc)
-            self._flatten_pmapd = global_defs.jit_for_my_device(lambda x: x.reshape(-1, *x.shape[2:]))
+        # pmap'd member functions
+        self._get_s_primes_pmapd = None
+        self._find_nonzero_pmapd = global_defs.pmap_for_my_devices(vmap(self._find_nonzero, in_axes=0))
+        self._set_zero_to_zero_pmapd = global_defs.pmap_for_my_devices(jax.vmap(self.set_zero_to_zero, in_axes=(0, 0, 0)), in_axes=(0, 0, 0))
+        self._array_idx_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda data, idx: data[idx], in_axes=(0, 0)), in_axes=(0, 0))
+        self._get_O_loc_pmapd = global_defs.pmap_for_my_devices(self._get_O_loc)
+        self._flatten_pmapd = global_defs.pmap_for_my_devices(lambda x: x.reshape(-1, *x.shape[2:]))
+        self._alloc_Oloc_pmapd = global_defs.pmap_for_my_devices(lambda s: jnp.zeros(s.shape[0], dtype=global_defs.tCpx))
+        self._get_config_batch_pmapd = global_defs.pmap_for_my_devices(lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), in_axes=(0, None, None), static_broadcasted_argnums=(2,))
+        self._get_logPsi_batch_pmapd = global_defs.pmap_for_my_devices(lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), in_axes=(0, None, None), static_broadcasted_argnums=(2,))
+        self._insert_Oloc_batch_pmapd = global_defs.pmap_for_my_devices(
+            lambda dst, src, beg: jax.lax.dynamic_update_slice(dst, src, [beg, ]),
+            in_axes=(0, 0, None)
+        )
 
     def _find_nonzero(self, m):
 
@@ -120,10 +112,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         if not self.compiled:
             self._get_s_primes = jax.vmap(self.compile())
-            if global_defs.usePmap:
-                self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes)
-            else:
-                self._get_s_primes_pmapd = global_defs.jit_for_my_device(self._get_s_primes, static_argnums=(1, 2, 3, 4))
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes)
             self.compiled = True
 
         # Compute matrix elements

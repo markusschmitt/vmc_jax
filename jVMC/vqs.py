@@ -136,23 +136,13 @@ class NQS:
         self.batchSize = batchSize
 
         # Need to keep handles of jit'd functions to avoid recompilation
-        if global_defs.usePmap:
-            self.evalJitdNet1 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
-            self.evalJitdNet2 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
-            self.evalJitdReal = global_defs.pmap_for_my_devices(self._eval_real, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
-            self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
-            self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
-            self._append_gradients = global_defs.pmap_for_my_devices(lambda x, y: jnp.concatenate((x[:, :], 1.j * y[:, :]), axis=1), in_axes=(0, 0))
-            #self._sample_jitd = global_defs.pmap_for_my_devices(self._sample, static_broadcasted_argnums=(2,), in_axes=(None,None, None, 0))
-            self._sample_jitd = {}
-        else:
-            self.evalJitdNet1 = global_defs.jit_for_my_device(self._eval, static_argnums=(2,))
-            self.evalJitdNet2 = global_defs.jit_for_my_device(self._eval, static_argnums=(2,))
-            self.evalJitdReal = global_defs.jit_for_my_device(self._eval_real, static_argnums=(2,))
-            self._get_gradients_net1_pmapd = global_defs.jit_for_my_device(self._get_gradients, static_argnums=(2, 3))
-            self._get_gradients_net2_pmapd = global_defs.jit_for_my_device(self._get_gradients, static_argnums=(2, 3))
-            self._append_gradients = global_defs.jit_for_my_device(lambda x, y: jnp.concatenate((x[:, :], 1.j * y[:, :]), axis=1))
-            self._sample_jitd = global_defs.jit_for_my_device(self._sample, static_argnums=(1,))
+        self.evalJitdNet1 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
+        self.evalJitdNet2 = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
+        self.evalJitdReal = global_defs.pmap_for_my_devices(self._eval_real, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
+        self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
+        self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
+        self._append_gradients = global_defs.pmap_for_my_devices(lambda x, y: jnp.concatenate((x[:, :], 1.j * y[:, :]), axis=1), in_axes=(0, 0))
+        self._sample_jitd = {}
 
     # **  end def __init__
 

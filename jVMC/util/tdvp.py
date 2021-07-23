@@ -76,23 +76,15 @@ class TDVP:
         if makeReal == 'imag':
             self.makeReal = imagFun
 
-        if global_defs.usePmap:
-            self.subtract_helper_Eloc = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
-            self.subtract_helper_grad = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
-            self.get_EO = global_defs.pmap_for_my_devices(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:, None], jnp.conj(grad)),
-                                                          in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
-            self.get_EO_p = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
-                                                            in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
-            self.transform_EO = global_defs.pmap_for_my_devices(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0, None))
-            self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
-        else:
-            self.subtract_helper_Eloc = global_defs.jit_for_my_device(lambda x, y: x - y)
-            self.subtract_helper_grad = global_defs.jit_for_my_device(lambda x, y: x - y)
-            self.get_EO = global_defs.jit_for_my_device(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:, None], jnp.conj(grad)),
-                                                        static_argnums=(0))
-            self.get_EO_p = global_defs.jit_for_my_device(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
-                                                          static_argnums=(0))
-            self.transform_EO = global_defs.jit_for_my_device(lambda eo, v: jnp.matmul(eo, jnp.conj(v)))
+        # pmap'd member functions
+        self.subtract_helper_Eloc = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
+        self.subtract_helper_grad = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
+        self.get_EO = global_defs.pmap_for_my_devices(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:, None], jnp.conj(grad)),
+                                                      in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
+        self.get_EO_p = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
+                                                        in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
+        self.transform_EO = global_defs.pmap_for_my_devices(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0, None))
+        self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
 
     def set_diagonal_shift(self, delta):
         self.diagonalShift = delta
