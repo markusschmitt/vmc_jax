@@ -7,13 +7,42 @@ This is an impementation of Variational Monte Carlo (VMC) for quantum many-body 
 
 Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Documentation").
 
-## Required packages
-
-- `jax` and `jaxlib`
-- `flax`
-- `mpi4py`
-- `h5py`
-
 ## Installation
 
+### Option 1: Clone and ``pip``-install
+
+1. Clone the jVMC repository and check out the development branch:
+
+```
+    git clone https://github.com/markusschmitt/vmc_jax.git
+    cd vmc_jax
+```
+
+2. We recommend you create a new conda environment to work with jVMC:
+
+```
+    conda create -n jvmc python=3.8
+    conda activate jvmc
+```
+
+3. Create a wheel and ``pip``-install the package
+```
+    python setup.py bdist_wheel
+    python -m pip install dist/*.whl
+```
+Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
+
+### Option 2: Manually install dependencies
+
+If you want to work on the jVMC code you might prefer to [install dependencies and set up jVMC](documentation/readme/installation_instructions.md) without ``pip``-install.
+
+### Compiling JAX
+
 [How to compile JAX on a supercomputing cluster](documentation/readme/compile_jax_on_cluster.md)
+
+
+## Online example
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/markusschmitt/vmc_jax/blob/dev_0.1.0/examples/ex0_ground_state_search.ipynb)
+
+Click on the badge above to open a notebook that implements an exemplary ground state search in Google Colab.

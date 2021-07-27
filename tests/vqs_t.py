@@ -19,9 +19,7 @@ import numpy as np
 import flax.nn as nn
 
 def get_shape(shape):
-    if global_defs.usePmap:
-        return (global_defs.myDeviceCount,) + shape
-    return shape
+    return (global_defs.myDeviceCount,) + shape
 
 class TestGradients(unittest.TestCase):
     
@@ -33,9 +31,7 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
-            _,params = rbm.init_by_shape(random.PRNGKey(0),[(1,3)])
-            rbmModel = nn.Model(rbm,params)
+            rbmModel = nets.CpxRBM(numHidden=2,bias=True)
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
@@ -65,12 +61,8 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            rbm1 = nets.RBM.partial(numHidden=2,bias=True)
-            _,params1 = rbm1.init_by_shape(random.PRNGKey(0),[(1,3)])
-            rbmModel1 = nn.Model(rbm1,params1)
-            rbm2 = nets.RBM.partial(numHidden=3,bias=True)
-            _,params2 = rbm2.init_by_shape(random.PRNGKey(0),[(1,3)])
-            rbmModel2 = nn.Model(rbm2,params2)
+            rbmModel1 = nets.RBM(numHidden=2,bias=True)
+            rbmModel2 = nets.RBM(numHidden=3,bias=True)
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
@@ -101,9 +93,7 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            net = nets.CpxRNN.partial(L=3)
-            _,params1 = net.init_by_shape(random.PRNGKey(0),[(3,)])
-            model = nn.Model(net,params1)
+            model = nets.CpxRNN(L=3)
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
@@ -136,9 +126,7 @@ class TestEvaluation(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            rbm = nets.CpxRBM.partial(numHidden=2,bias=True)
-            _,params = rbm.init_by_shape(random.PRNGKey(0),[(4,3)])
-            rbmModel = nn.Model(rbm,params)
+            rbmModel = nets.CpxRBM(numHidden=2,bias=True)
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
             s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)

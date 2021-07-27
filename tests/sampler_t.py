@@ -44,27 +44,25 @@ class TestMCMC(unittest.TestCase):
                 )
 
         # Set up variational wave function
-        rbm = nets.CpxRBM.partial(numHidden=2,bias=False)
-        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
-        rbmModel = nn.Model(rbm,params)
-        psi = NQS(rbmModel)
-        psi.set_parameters(weights)
+        rbm = nets.CpxRBM(numHidden=2,bias=False)
+        psi = NQS(rbm)
 
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi,L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
+        
+        psi.set_parameters(weights)
 
         # Compute exact probabilities
-        _, _, pex = exactSampler.sample(psi)
+        _, _, pex = exactSampler.sample()
 
         # Get samples from MCMC sampler
         numSamples=500000
-        smc, _, _ = mcSampler.sample(psi, numSamples=numSamples)
+        smc, _, _ = mcSampler.sample(numSamples=numSamples)
 
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
         
         self.assertTrue( smc.shape[0] >= numSamples )
 
@@ -81,33 +79,29 @@ class TestMCMC(unittest.TestCase):
         L=4
 
         # Set up variational wave function
-        rnn = nets.RNN.partial( L=4, hiddenSize=5, depth=2 )
-        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
-        rnnModel = nn.Model(rnn,params)
-        rbm = nets.RBM.partial(numHidden=2,bias=False)
-        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
-        rbmModel = nn.Model(rbm,params)
+        rnn = nets.RNN( L=4, hiddenSize=5, depth=2 )
+        rbm = nets.RBM(numHidden=2,bias=False)
         
-        psi = NQS((rnnModel, rbmModel))
+        psi = NQS((rnn, rbm))
        
-        ps=psi.get_parameters()
-        psi.update_parameters(ps)
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
+        
+        ps=psi.get_parameters()
+        psi.update_parameters(ps)
         
         # Compute exact probabilities
-        _, _, pex = exactSampler.sample(psi)
+        _, _, pex = exactSampler.sample()
 
         numSamples=500000
-        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+        smc,p,_=mcSampler.sample(numSamples=numSamples)
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         
@@ -126,31 +120,26 @@ class TestMCMC(unittest.TestCase):
         orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
 
         # Set up variational wave function
-        rnn = nets.RNNsym.partial( L=L, hiddenSize=5, orbit=orbit )
-        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
-        rnnModel = nn.Model(rnn,params)
-        rbm = nets.RBM.partial(numHidden=2,bias=False)
-        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
-        rbmModel = nn.Model(rbm,params)
+        rnn = nets.RNNsym( L=L, hiddenSize=5, orbit=orbit )
+        rbm = nets.RBM(numHidden=2,bias=False)
         
-        psi = NQS((rnnModel, rbmModel))
+        psi = NQS((rnn, rbm))
        
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), numChains=777)
         
         # Compute exact probabilities
-        _, logPsi, pex = exactSampler.sample(psi)
+        _, logPsi, pex = exactSampler.sample()
 
         numSamples=1000000
-        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+        smc,p,_=mcSampler.sample(numSamples=numSamples)
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         
@@ -169,31 +158,26 @@ class TestMCMC(unittest.TestCase):
         orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
 
         # Set up variational wave function
-        rnn = nets.LSTM.partial( L=L, hiddenSize=5 )
-        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,)] )
-        rnnModel = nn.Model(rnn,params)
-        rbm = nets.RBM.partial(numHidden=2,bias=False)
-        _, params = rbm.init_by_shape(random.PRNGKey(0),[(L,)])
-        rbmModel = nn.Model(rbm,params)
+        rnn = nets.LSTM( L=L, hiddenSize=5 )
+        rbm = nets.RBM(numHidden=2,bias=False)
         
-        psi = NQS((rnnModel, rbmModel))
+        psi = NQS((rnn, rbm))
        
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler(L)
+        exactSampler=sampler.ExactSampler(psi, L)
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), numChains=777)
         
         # Compute exact probabilities
-        _, logPsi, pex = exactSampler.sample(psi)
+        _, logPsi, pex = exactSampler.sample()
 
         numSamples=1000000
-        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+        smc,p,_=mcSampler.sample(numSamples=numSamples)
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         
@@ -209,36 +193,27 @@ class TestMCMC(unittest.TestCase):
         L=2
 
         # Set up variational wave function
-        rnn = nets.RNN2D.partial( L=L, hiddenSize=5 )
-        _, params = rnn.init_by_shape( random.PRNGKey(0), [(L,L)] )
-        rnnModel = nn.Model(rnn,params)
+        rnn = nets.RNN2D( L=L, hiddenSize=5 )
 
-        psi = NQS((rnnModel,rnnModel))
-        
-        #s = jnp.array([[[[1,0,0],[1,1,1],[0,0,1]],
-        #                [[0,0,1],[0,1,1],[1,0,1]]]])
-        #print(psi(s))
-        ##print(rnnModel(s))
-        #exit()
+        psi = NQS((rnn,rnn))
         
         # Set up exact sampler
-        exactSampler=sampler.ExactSampler((L,L))
+        exactSampler=sampler.ExactSampler(psi, (L,L))
         
         # Set up MCMC sampler
-        mcSampler=sampler.MCMCSampler(random.PRNGKey(0),jVMC.sampler.propose_spin_flip, (L,), numChains=777)
+        mcSampler=sampler.MCSampler(psi, (L,L), random.PRNGKey(0), numChains=777)
         
         # Compute exact probabilities
-        _, logPsi, pex = exactSampler.sample(psi)
+        _, logPsi, pex = exactSampler.sample()
 
         self.assertTrue(jnp.abs(jnp.sum(pex)-1.) < 1e-12)
 
         numSamples=1000000
-        smc,p,_=mcSampler.sample(psi, numSamples=numSamples)
+        smc,p,_=mcSampler.sample(numSamples=numSamples)
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
     
-        if global_defs.usePmap:
-            smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
        
         self.assertTrue( smc.shape[0] >= numSamples )
         

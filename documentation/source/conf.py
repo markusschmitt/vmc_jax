@@ -17,7 +17,8 @@ import os
 import sys
 sys.path.append(os.path.abspath("../../"))
  
-MOCK_MODULES = ['mpi4py','flax', 'flax.nn', 'h5py']
+#MOCK_MODULES = ['mpi4py','flax', 'flax.nn', 'flax.linen', 'h5py']
+MOCK_MODULES = ['mpi4py']
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
 

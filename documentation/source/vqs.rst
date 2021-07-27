@@ -1,4 +1,4 @@
-..
+.. _VQS:
 
 Variational quantum state module
 ================================
@@ -6,5 +6,4 @@ Variational quantum state module
 
 .. automodule:: jVMC.vqs
     :members:
-
-    .. automethod:: NQS.__call__
+    :special-members: __call__

@@ -1,3 +1,5 @@
 numpy
 jax
 jaxlib
+flax
+h5py

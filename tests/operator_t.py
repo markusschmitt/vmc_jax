@@ -19,9 +19,7 @@ import jVMC.operator as op
 import jVMC.global_defs as global_defs
 
 def get_shape(shape):
-    if global_defs.usePmap:
-        return (global_defs.device_count(),) + shape
-    return shape
+    return (global_defs.device_count(),) + shape
 
 class TestOperator(unittest.TestCase):
 
@@ -32,7 +30,7 @@ class TestOperator(unittest.TestCase):
         key = random.PRNGKey(3)
         s = random.randint(key, (24,L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L)))
 
-        h=op.Operator()
+        h=op.BranchFreeOperator()
 
         h.add(op.scal_opstr(2., (op.Sp(0),)))
         h.add(op.scal_opstr(2., (op.Sp(1),)))

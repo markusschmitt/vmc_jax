@@ -18,9 +18,7 @@ import jVMC.mpi_wrapper as mpi
 import jVMC.global_defs as global_defs
 
 def get_shape(shape):
-    if global_defs.usePmap:
-        return (global_defs.device_count(),) + shape
-    return shape
+    return (global_defs.device_count(),) + shape
 
 class TestMPI(unittest.TestCase):
 
@@ -41,6 +39,11 @@ class TestMPI(unittest.TestCase):
         myData=data[mpi.rank*myNumSamples:(mpi.rank+1)*myNumSamples].reshape(get_shape((-1,4)))
 
         self.assertTrue( jnp.sum(mpi.global_variance(myData)-jnp.var(data,axis=0)) < 1e-10 )
+
+    def test_bcast(self):
+        data=np.zeros(10, dtype=np.int32)
+        with self.assertRaises(TypeError) as context:
+            mpi.bcast_unknown_size(data)
 
 if __name__ == "__main__":
     unittest.main()
