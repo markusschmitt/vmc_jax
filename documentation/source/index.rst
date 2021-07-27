@@ -96,12 +96,13 @@ distribution :math:`|\psi_\theta(s)|^2` of a variational wave function
     :math:`O_{loc}(s)=\sum_{s'}O_{s,s'}\frac{\psi_\theta(s')}{\psi_\theta(s)}` ,
 
 where :math:`O_{s,s'}=\langle s|\hat O|s'\rangle` are the matrix elements 
-of some quantum operator :math:`\hat O`.
+of some quantum operator :math:`\hat O` and :math:`|s\rangle` denotes a
+computational basis.
 
 Assume that ``op`` is an ``Operator`` object (see :ref:`Operator`)
 corresponding to :math:`\hat O` and ``psi`` is an ``NQS`` object implementing
-the variational wave function. Moreover, assume that ``sampler`` is a suited
-``Sampler`` object (see :ref:`Sampler`). Then, estimating its expectation value
+the variational wave function (see :ref:`VQS`). Moreover, assume that ``sampler`` is a suited
+``Sampler`` object (see :ref:`Sampler`). Then, estimating an operator expectation value
 using the `jVMC` framework boils down to::
 
     s, logPsi, _ = sampler.sample()                 # Get samples (parallelized)
@@ -116,10 +117,3 @@ is straightforward when using the ``NQS`` class::
     grad_psi = psi.gradients(s)
  
 See the :ref:`Examples` section for a number of more elaborate example applications.
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

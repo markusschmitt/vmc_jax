@@ -1,4 +1,4 @@
-..
+.. _VQS:
 
 Variational quantum state module
 ================================

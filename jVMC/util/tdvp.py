@@ -31,15 +31,15 @@ class TDVP:
 
     and for real parameters :math:`\\theta\in\mathbb R`, the TDVP equation reads
 
-        :math:`q\\big(S_{k,k'}\\big)\\theta_{k'} = x q\\big(F_k\\big)`
+        :math:`q\\big[S_{k,k'}\\big]\\theta_{k'} = -q\\big[xF_k\\big]`
 
-    Here, either :math:`q=\\text{Re}` or :math:`q=\\text{Im}` and :math:`x=-1` for ground state
+    Here, either :math:`q=\\text{Re}` or :math:`q=\\text{Im}` and :math:`x=1` for ground state
     search or :math:`x=i` (the imaginary unit) for real time dynamics.
 
     For ground state search a regularization controlled by a parameter :math:`\\rho` can be included
     by increasing the diagonal entries and solving
 
-        :math:`q\\big((1+\\rho\delta_{k,k'})S_{k,k'}\\big)\\theta_{k'} = -q\\big(F_k\\big)`
+        :math:`q\\big[(1+\\rho\delta_{k,k'})S_{k,k'}\\big]\\theta_{k'} = -q\\big[F_k\\big]`
 
     The `TDVP` class solves the TDVP equation by computing a pseudo-inverse of :math:`S` via
     eigendecomposition yielding
@@ -56,9 +56,13 @@ class TDVP:
 
     Initializer arguments:
         * ``sampler``: A sampler object.
-        * ``snrTol``: Regularization parameter :math:`\epsilon_{SNR}`.
-        * ``svdTol``: Regularization parameter :math:`\epsilon_{SVD}`.
+        * ``snrTol``: Regularization parameter :math:`\epsilon_{SNR}`, see above.
+        * ``svdTol``: Regularization parameter :math:`\epsilon_{SVD}`, see above.
         * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` or `'imag'` for :math:`q=\\text{Im}`.
+        * ``rhsPrefactor``: Prefactor :math:`x` of the right hand side, see above.
+        * ``diagonalShift``: Regularization parameter :math:`\\rho` for ground state search, see above.
+        * ``crossValidation``: Perform cross-validation check as introduced in `[arXiv:2105.01054] <https://arxiv.org/pdf/2105.01054.pdf>`_.
+        * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.
     """
 
     def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
