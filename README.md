@@ -9,7 +9,22 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 
 ## Installation
 
-### Option 1: Clone and ``pip``-install
+### Option 1: ``pip``-install
+
+1. We recommend you create a new conda environment to work with jVMC:
+
+```
+    conda create -n jvmc python=3.8
+    conda activate jvmc
+```
+
+2. ``pip``-install the package
+
+```
+    pip install jVMC
+```
+
+### Option 2: Clone and ``pip``-install
 
 1. Clone the jVMC repository and check out the development branch:
 
@@ -32,7 +47,7 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 ```
 Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
 
-### Option 2: Manually install dependencies
+### Option 3: Manually install dependencies
 
 If you want to work on the jVMC code you might prefer to [install dependencies and set up jVMC](documentation/readme/installation_instructions.md) without ``pip``-install.
 
