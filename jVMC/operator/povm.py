@@ -225,22 +225,14 @@ class POVM():
         self.name = name
         self.set_standard_povm_operators()
 
-        if global_defs.usePmap:
-            self._evaluate_mean_magnetization_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda ops, idx: jnp.sum(
-                self._evaluate_observable(ops, idx)) / idx.shape[0], in_axes=(None, 0)), in_axes=(None, 0))
-            self._evaluate_magnetization_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda ops, idx:
-                                                                                          self._evaluate_observable(ops, idx), in_axes=(None, 0)), in_axes=(None, 0))
-            self._evaluate_correlators_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda resPerSamplePerSpin, corrLen: resPerSamplePerSpin *
-                                                                                        jnp.roll(resPerSamplePerSpin, corrLen, axis=0), in_axes=(0, None)), in_axes=(0, None))
-            self._spin_average_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda obsPerSamplePerSpin: jnp.mean(obsPerSamplePerSpin, axis=-1), in_axes=(0,)), in_axes=(0,))
-        else:
-            self._evaluate_mean_magnetization_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda ops, idx: jnp.sum(
-                self._evaluate_observable(ops, idx)) / idx.shape[0], in_axes=(None, 0)), in_axes=(None, 0))
-            self._evaluate_magnetization_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda ops, idx:
-                                                                                        self._evaluate_observable(ops, idx), in_axes=(None, 0)), in_axes=(None, 0))
-            self._evaluate_correlators_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda resPerSamplePerSpin, corrLen: resPerSamplePerSpin *
-                                                                                      jnp.roll(resPerSamplePerSpin, corrLen), in_axes=(0, None)), in_axes=(0, None))
-            self._spin_average_pmapd = global_defs.jit_for_my_device(jax.vmap(lambda obsPerSamplePerSpin: jnp.mean(obsPerSamplePerSpin, axis=-1), in_axes=(0,)), in_axes=(0,))
+        # pmap'd member functions
+        self._evaluate_mean_magnetization_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda ops, idx: jnp.sum(
+            self._evaluate_observable(ops, idx)) / idx.shape[0], in_axes=(None, 0)), in_axes=(None, 0))
+        self._evaluate_magnetization_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda ops, idx:
+                                                                                      self._evaluate_observable(ops, idx), in_axes=(None, 0)), in_axes=(None, 0))
+        self._evaluate_correlators_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda resPerSamplePerSpin, corrLen: resPerSamplePerSpin *
+                                                                                    jnp.roll(resPerSamplePerSpin, corrLen, axis=0), in_axes=(0, None)), in_axes=(0, None))
+        self._spin_average_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda obsPerSamplePerSpin: jnp.mean(obsPerSamplePerSpin, axis=-1), in_axes=(0,)), in_axes=(0,))
 
     def set_standard_povm_operators(self):
         """
@@ -365,4 +357,3 @@ class POVMOperator(Operator):
         self.siteCouplings = jnp.array(self.siteCouplings)
         self.matEls = jnp.array(self.matEls)
         return functools.partial(self._get_s_primes, stateCouplings=self.stateCouplings, matEls=self.matEls, siteCouplings=self.siteCouplings)
-

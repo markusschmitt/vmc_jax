@@ -145,8 +145,6 @@ class RNN(nn.Module):
         return (newCarry, x), jnp.nan_to_num(logProb, nan=-35)
 
     def sample(self, batchSize, key):
-        outputs = jnp.asarray(np.zeros((batchSize, self.L, self.L)))
-
         state = jnp.zeros((batchSize, self.depth, self.hiddenSize))
 
         keys = jax.random.split(key, self.L)
@@ -400,9 +398,6 @@ class CpxRNN(nn.Module):
     def sample(self, batchSize, key):
         """sampler
         """
-
-        outputs = jnp.asarray(np.zeros((batchSize, self.L, self.L)))
-
         state = jnp.zeros((batchSize, self.hiddenSize))
 
         keys = jax.random.split(key, self.L)
