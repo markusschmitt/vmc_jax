@@ -16,11 +16,6 @@ import flax.linen as nn
 
 import numpy as np
 import matplotlib.pyplot as plt
-get_ipython().run_line_magic('matplotlib', 'inline')
-
-
-# install the pip package and import jVMC
-get_ipython().system('pip install jVMC')
 
 import jVMC
 
