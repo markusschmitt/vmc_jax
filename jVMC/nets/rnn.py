@@ -319,7 +319,7 @@ class PhaseRNNsym(nn.Module):
 
         self.rnn = PhaseRNN(L=self.L, hiddenSize=self.hiddenSize, depth=self.depth,
                             inputDim=self.inputDim,  # passDim=self.passDim,
-                            actFun=aself.ctFun,
+                            actFun=self.actFun,
                             initScale=self.initScale)
 
         x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit, x)
