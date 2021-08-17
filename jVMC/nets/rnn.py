@@ -344,7 +344,6 @@ class CpxRNN(nn.Module):
     Arguments: 
         * ``L``: length of the spin chain
         * ``hiddenSize``: size of the hidden state vector
-        * ``depth``: number of RNN-cells in the RNNCellStack
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
         * ``initScale``: factor by which the initial parameters are scaled
@@ -357,7 +356,6 @@ class CpxRNN(nn.Module):
     inputDim: int = 2
     actFun: callable = nn.elu
     initScale: float = 1.0
-    logProbFactor: float = 0.5
 
     def setup(self):
 
@@ -383,7 +381,7 @@ class CpxRNN(nn.Module):
 
         phase = self.actFun(self.phaseDense2(phaseOut))
 
-        return self.logProbFactor * jnp.sum(probs, axis=0) + 1.j * jnp.mean(phase)
+        return 0.5 * jnp.sum(probs, axis=0) + 1.j * jnp.mean(phase)
 
     @partial(nn.transforms.scan,
              variable_broadcast='params',
@@ -409,11 +407,11 @@ class CpxRNN(nn.Module):
     @partial(nn.transforms.scan,
              variable_broadcast='params',
              split_rngs={'params': False})
-    def rnn_cell_sampler(carry, x):
+    def rnn_cell_sampler(self, carry, x):
 
         def eval_cell(x, y):
             newCarry = self.rnnCell(x, y)
-            return newCarry, actFun(self.probDense(newCarry))
+            return newCarry, self.actFun(self.probDense(newCarry))
 
         newCarry, logits = jax.vmap(eval_cell)(carry[0], carry[1])
         sampleOut = jax.random.categorical(x, logits)
