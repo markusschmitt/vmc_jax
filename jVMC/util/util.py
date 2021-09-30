@@ -73,9 +73,9 @@ def init_net(descr, dims, seed=0):
                 kwargs_sym[key] = descr["net1"][key]
 
         if descr["net1"]["type"][-5:-3] == "2D":
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, kwargs_sym)
+            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, **kwargs_sym)
         else:
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_1d(L, kwargs_sym)
+            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_1d(L, **kwargs_sym)
 
     if "net2" in descr:
         if descr["net2"]["type"][-3:] == "sym":
@@ -88,9 +88,9 @@ def init_net(descr, dims, seed=0):
 
             L = dims[0]
             if descr["net2"]["type"][-5:-3] == "2D":
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, kwargs_sym)
+                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, **kwargs_sym)
             else:
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_1d(L, kwargs_sym)
+                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_1d(L, **kwargs_sym)
 
     if not "net2" in descr:
 
@@ -109,7 +109,7 @@ def init_net(descr, dims, seed=0):
 
         psi = jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"], seed=seed)
 
-    psi(jnp.zeros((1,1)+dims, dtype=np.int32))
+    psi(jnp.zeros((1, 1) + dims, dtype=np.int32))
 
     return psi
 
