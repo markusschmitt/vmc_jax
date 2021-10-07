@@ -13,6 +13,7 @@ from typing import List, Sequence
 
 import jVMC.nets.initializers
 
+
 class CNN(nn.Module):
     """ Convolutional neural network with real parameters.
 
@@ -26,7 +27,7 @@ class CNN(nn.Module):
         * ``periodicBoundary``: Whether to use periodic boundary conditions
 
     Returns:
-        Complex wave-function amplitude
+        Real wave-function amplitude
     """
 
     F: Sequence[int] = (8,)
