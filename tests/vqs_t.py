@@ -16,7 +16,6 @@ config.update("jax_enable_x64", True)
 import jax.random as random
 import jax.numpy as jnp
 import numpy as np
-import flax.nn as nn
 
 def get_shape(shape):
     return (global_defs.myDeviceCount,) + shape
@@ -33,8 +32,8 @@ class TestGradients(unittest.TestCase):
 
             rbmModel = nets.CpxRBM(numHidden=2,bias=True)
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
-            s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
-            s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
+            s=s.at[...,0,1].set(1)
+            s=s.at[...,2,2].set(1)
             
             psiC = NQS(rbmModel)
             psi0 = psiC(s)
@@ -42,7 +41,7 @@ class TestGradients(unittest.TestCase):
             delta=1e-5
             params = psiC.get_parameters()
             for j in range(G.shape[-1]):
-                u = jax.ops.index_update(jnp.zeros(G.shape[-1], dtype=global_defs.tReal), jax.ops.index[j], 1)
+                u = jnp.zeros(G.shape[-1], dtype=global_defs.tReal).at[j].set(1)
                 psiC.update_parameters(delta * u)
                 psi1 = psiC(s)
                 psiC.set_parameters(params)
@@ -65,8 +64,8 @@ class TestGradients(unittest.TestCase):
             rbmModel2 = nets.RBM(numHidden=3,bias=True)
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
-            s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
-            s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
+            s=s.at[...,0,1].set(1)
+            s=s.at[...,2,2].set(1)
             
             psi = NQS((rbmModel1,rbmModel2))
             psi0 = psi(s)
@@ -74,7 +73,7 @@ class TestGradients(unittest.TestCase):
             delta=1e-5
             params = psi.get_parameters()
             for j in range(G.shape[-1]):
-                u = jax.ops.index_update(jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tReal), jax.ops.index[j], 1)
+                u = jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tReal).at[j].set(1)
                 psi.update_parameters(delta * u)
                 psi1 = psi(s)
                 psi.set_parameters(params)
@@ -96,8 +95,8 @@ class TestGradients(unittest.TestCase):
             model = nets.CpxRNN(L=3)
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
-            s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
-            s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
+            s=s.at[...,0,1].set(1)
+            s=s.at[...,2,2].set(1)
             
             psi = NQS(model)
             psi0 = psi(s)
@@ -105,7 +104,7 @@ class TestGradients(unittest.TestCase):
             delta=1e-5
             params = psi.get_parameters()
             for j in range(G.shape[-1]):
-                u = jax.ops.index_update(jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tReal), jax.ops.index[j], 1)
+                u = jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tReal).at[j].set(1)
                 psi.update_parameters(delta * u)
                 psi1 = psi(s)
                 psi.set_parameters(params)
@@ -128,8 +127,8 @@ class TestEvaluation(unittest.TestCase):
 
             rbmModel = nets.CpxRBM(numHidden=2,bias=True)
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
-            s=jax.ops.index_update(s,jax.ops.index[...,0,1],1)
-            s=jax.ops.index_update(s,jax.ops.index[...,2,2],1)
+            s=s.at[...,0,1].set(1)
+            s=s.at[...,2,2].set(1)
             
             psiC = NQS(rbmModel)
             cpxCoeffs = psiC(s)

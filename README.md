@@ -61,3 +61,7 @@ If you want to work on the jVMC code you might prefer to [install dependencies a
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/markusschmitt/vmc_jax/blob/master/examples/ex0_ground_state_search.ipynb)
 
 Click on the badge above to open a notebook that implements an exemplary ground state search in Google Colab.
+
+## Citing jVMC
+
+If you use the jVMC package for your research, please cite our reference paper [arXiv:2108.03409](https://arxiv.org/abs/2108.03409).

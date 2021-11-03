@@ -21,7 +21,7 @@ def propose_spin_flip(key, s, info):
     idx = random.randint(key, (1,), 0, s.size)[0]
     idx = jnp.unravel_index(idx, s.shape)
     update = (s[idx] + 1) % 2
-    return jax.ops.index_update(s, jax.ops.index[idx], update)
+    return s.at[idx].set(update)
 
 
 def propose_POVM_outcome(key, s, info):
@@ -29,7 +29,7 @@ def propose_POVM_outcome(key, s, info):
     idx = random.randint(subkey, (1,), 0, s.size)[0]
     idx = jnp.unravel_index(idx, s.shape)
     update = (s[idx] + random.randint(key, (1,), 0, 3) % 4)
-    return jax.ops.index_update(s, jax.ops.index[idx], update)
+    return s.at[idx].set(update)
 
 
 def propose_spin_flip_Z2(key, s, info):
@@ -37,7 +37,7 @@ def propose_spin_flip_Z2(key, s, info):
     idx = random.randint(idxKey, (1,), 0, s.size)[0]
     idx = jnp.unravel_index(idx, s.shape)
     update = (s[idx] + 1) % 2
-    s = jax.ops.index_update(s, jax.ops.index[idx], update)
+    s = s.at[idx].set(update)
     # On average, do a global spin flip every 30 updates to
     # reflect Z_2 symmetry
     doFlip = random.randint(flipKey, (1,), 0, 5)[0]
@@ -370,7 +370,7 @@ class ExactSampler:
         def make_state(state, intRep):
 
             def for_fun(i, x):
-                return (jax.lax.cond(x[1] >> i & 1, lambda x: jax.ops.index_update(x[0], jax.ops.index[x[1]], 1), lambda x: x[0], (x[0], i)), x[1])
+                return (jax.lax.cond(x[1] >> i & 1, lambda x: x[0].at[x[1]].set(1), lambda x: x[0], (x[0], i)), x[1])
 
             (state, _) = jax.lax.fori_loop(0, state.shape[0], for_fun, (state, intRep))
 

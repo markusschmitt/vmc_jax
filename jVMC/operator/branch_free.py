@@ -1,5 +1,5 @@
 import jax
-from jax import jit, vmap, grad, partial
+from jax import jit, vmap, grad
 import jax.numpy as jnp
 import numpy as np
 
@@ -214,7 +214,7 @@ class BranchFreeOperator(Operator):
             configShape = config.shape
             config = config.ravel()
             configMatEl = configMatEl * matEls[config[idx]]
-            config = jax.ops.index_update(config, jax.ops.index[idx], sMap[config[idx]])
+            config = config.at[idx].set(sMap[config[idx]])
 
             return config.reshape(configShape), configMatEl
 
@@ -228,9 +228,8 @@ class BranchFreeOperator(Operator):
         # vmap over operators
         sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC)
         if len(diag) > 1:
-            matEl = jax.ops.index_update(matEl, jax.ops.index[diag[0]], jnp.sum(matEl[diag], axis=0))
-            matEl = jax.ops.index_update(matEl, jax.ops.index[diag[1:]],
-                                         jnp.zeros((diag.shape[0] - 1,), dtype=matElsC.dtype))
+            matEl = matEl.at[diag[0]].set(jnp.sum(matEl[diag], axis=0))
+            matEl = matEl.at[diag[1:]].set(jnp.zeros((diag.shape[0] - 1,), dtype=matElsC.dtype))
 
         return sp, matEl
 

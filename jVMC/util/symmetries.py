@@ -1,6 +1,33 @@
 import numpy as np
 import jax.numpy as jnp
 import jax
+from dataclasses import dataclass
+
+class LatticeSymmetry:
+    '''A wrapper class for lattice symmetries.
+
+    Wrapping the ``orbit`` in this class is a workaround to make the ``jax.numpy.array`` 
+    hashable so that they can be passed as arguments to Flax modules.
+
+    Initializer arguments:
+        * ``orbit``: A ``jax.numpy.array`` of rank three, which contains the permutation matrix \
+                     of lattice indices for each symmetry operation. 
+    '''
+
+    def __init__(self, orbit):
+        self._orbit = orbit
+
+    @property
+    def orbit(self):
+        return self._orbit
+    
+    @property
+    def shape(self):
+        return self._orbit.shape
+    
+    @property
+    def dtype(self):
+        return self._orbit.dtype
 
 
 def get_point_orbit_2d_square(L, rotation, reflection):
@@ -40,7 +67,7 @@ def get_point_orbit_2d_square(L, rotation, reflection):
 
     orbit = jnp.array(orbit)
 
-    return orbit
+    return LatticeSymmetry(orbit)
 
 
 def get_translation_orbit_2d_square(L, translation):
@@ -82,7 +109,7 @@ def get_translation_orbit_2d_square(L, translation):
 
     orbit = jnp.array(orbit)
 
-    return orbit
+    return LatticeSymmetry(orbit)
 
 
 def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
@@ -99,9 +126,9 @@ def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
         symmetry operations and the following two dimensions correspond to the corresponding permuation matrix.
     '''
 
-    po = get_point_orbit_2d_square(L, rotation, reflection)
+    po = get_point_orbit_2d_square(L, rotation, reflection).orbit
 
-    to = get_translation_orbit_2d_square(L, translation)
+    to = get_translation_orbit_2d_square(L, translation).orbit
 
     orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(b, a), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
 
@@ -111,7 +138,7 @@ def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
 
     uniqueOrbit = np.unique(newOrbit, axis=0).reshape(-1, L**2, L**2)
 
-    return jnp.array(uniqueOrbit)
+    return LatticeSymmetry(jnp.array(uniqueOrbit))
 
 
 def get_orbit_1d(L, translation=True, reflection=True, **kwargs):
@@ -141,4 +168,4 @@ def get_orbit_1d(L, translation=True, reflection=True, **kwargs):
     orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(a, b), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
 
     orbit = orbit.reshape((-1, L, L))
-    return orbit.astype(np.int32)
+    return LatticeSymmetry(orbit.astype(np.int32))

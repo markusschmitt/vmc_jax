@@ -7,6 +7,7 @@ import numpy as np
 import jax.numpy as jnp
 
 import jVMC.global_defs as global_defs
+from jVMC.util.symmetries import LatticeSymmetry
 
 from functools import partial
 
@@ -79,9 +80,10 @@ class RNNCellStack(nn.Module):
         newR = x
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j, c in enumerate(carry):
-            newCarry = jax.ops.index_update(newCarry, j, RNNCell(hiddenSize=self.hiddenSize,
+            newCarry = newCarry.at[j].set( RNNCell(hiddenSize=self.hiddenSize,
                                                                  actFun=self.actFun,
-                                                                 initScale=self.initScale)(c, newR))
+                                                                 initScale=self.initScale)(c, newR) )
+
             newR = newCarry[j]
 
         return jnp.array(newCarry), newR
@@ -174,6 +176,7 @@ class RNNsym(nn.Module):
     It uses the RNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
 
     Arguments: 
+        * ``orbit``: collection of maps that define symmetries (instance of ``util.symmetries.LatticeSymmetry``)
         * ``L``: length of the spin chain
         * ``hiddenSize``: size of the hidden state vector
         * ``depth``: number of RNN-cells in the RNNCellStack
@@ -181,12 +184,12 @@ class RNNsym(nn.Module):
         * ``actFun``: non-linear activation function
         * ``initScale``: factor by which the initial parameters are scaled
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
-        * ``orbit``: collection of maps that define symmetries
         * ``z2sym``: for pure states; implement Z2 symmetry
 
     Returns:
         Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
+    orbit: LatticeSymmetry
     L: int = 10
     hiddenSize: int = 10
     depth: int = 1
@@ -194,7 +197,7 @@ class RNNsym(nn.Module):
     actFun: callable = nn.elu
     initScale: float = 1.0
     logProbFactor: float = 0.5
-    orbit: any = None
+    #orbit: any = None
     z2sym: bool = False
 
     def setup(self):
@@ -204,9 +207,10 @@ class RNNsym(nn.Module):
                        actFun=self.actFun, initScale=self.initScale,
                        logProbFactor=self.logProbFactor)
 
+
     def __call__(self, x):
 
-        x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit, x)
+        x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit.orbit, x)
 
         def evaluate(x):
             return self.rnn(x)
@@ -226,9 +230,9 @@ class RNNsym(nn.Module):
 
         configs = self.rnn.sample(batchSize, key1)
 
-        orbitIdx = jax.random.choice(key2, self.orbit.shape[0], shape=(batchSize,))
+        orbitIdx = jax.random.choice(key2, self.orbit.orbit.shape[0], shape=(batchSize,))
 
-        configs = jax.vmap(lambda k, o, s: jnp.dot(o[k], s), in_axes=(0, None, 0))(orbitIdx, self.orbit, configs)
+        configs = jax.vmap(lambda k, o, s: jnp.dot(o[k], s), in_axes=(0, None, 0))(orbitIdx, self.orbit.orbit, configs)
 
         if self.z2sym:
             key3, _ = jax.random.split(key2)

@@ -1,5 +1,5 @@
 import jax
-from jax import jit, vmap, grad, partial
+from jax import jit, vmap, grad#, partial
 import jax.numpy as jnp
 import numpy as np
 
@@ -246,7 +246,8 @@ class POVM():
         self.operators = {**self.unitaries, **self.dissipators}
         self.observables = get_observables(self.M, self.T_inv)
 
-    @partial(jax.vmap, in_axes=(None, None, 0))
+    #@partial(jax.vmap, in_axes=(None, None, 0))
+    @functools.partial(jax.vmap, in_axes=(None, None, 0))
     def _evaluate_observable(self, obs, idx):
         return obs[idx]
 
@@ -303,7 +304,7 @@ class POVMOperator(Operator):
         def apply_on_singleSiteCoupling(s, stateCouplings, matEls, siteCoupling):
             stateIndices = tuple(s[siteCoupling])
             OffdConfig = jnp.vstack([s] * 16)
-            OffdConfig = jax.ops.index_update(OffdConfig, jax.ops.index[:, siteCoupling], stateCouplings[stateIndices].reshape(-1, 2))
+            OffdConfig = OffdConfig.at[:, siteCoupling].set(stateCouplings[stateIndices].reshape(-1, 2))
             return OffdConfig.reshape((4, 4, -1)), matEls[stateIndices]
 
         sample_shape = s.shape

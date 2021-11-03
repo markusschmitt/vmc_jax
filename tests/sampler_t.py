@@ -8,7 +8,6 @@ import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.random as random
-import flax.nn as nn
 import jax.numpy as jnp
 
 import numpy as np
@@ -19,6 +18,7 @@ from jVMC.vqs import NQS
 import jVMC.sampler as sampler
 
 import jVMC.global_defs as global_defs
+from jVMC.util.symmetries import LatticeSymmetry
 
 import time
 
@@ -117,10 +117,10 @@ class TestMCMC(unittest.TestCase):
         L=4
 
         # Set up symmetry orbit
-        orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
+        orbit=LatticeSymmetry(jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)]))
 
         # Set up variational wave function
-        rnn = nets.RNNsym( L=L, hiddenSize=5, orbit=orbit )
+        rnn = nets.RNNsym( orbit = orbit, L=L, hiddenSize=5 )
         rbm = nets.RBM(numHidden=2,bias=False)
         
         psi = NQS((rnn, rbm))
