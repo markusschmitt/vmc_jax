@@ -7,6 +7,7 @@ import jax.numpy as jnp
 
 import jVMC.global_defs as global_defs
 import jVMC.nets.activation_functions as act_funs
+from jVMC.util.symmetries import LatticeSymmetry
 
 from functools import partial
 from typing import List, Sequence
@@ -158,24 +159,24 @@ class CpxCNNSym(nn.Module):
     It uses the CpxCNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
 
     Arguments:
+        * ``orbit``: orbits which define the symmetry operations (instance of ``util.symmetries.LatticeSymmetry``)
         * ``F``: Filter diameter
         * ``channels``: Number of channels
         * ``strides``: Number of pixels the filter shifts over
         * ``actFun``: Non-linear activation function
         * ``bias``: Whether to use biases
         * ``firstLayerBias``: Whether to use biases in the first layer
-        * ``orbit``: orbits which define the symmetry operations
 
     Returns:
         Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
+    orbit: LatticeSymmetry
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)
     strides: Sequence[int] = (1,)
     actFun: Sequence[callable] = (act_funs.poly6,)
     bias: bool = True
     firstLayerBias: bool = False
-    orbit: any = None
 
     def setup(self):
 
@@ -186,7 +187,7 @@ class CpxCNNSym(nn.Module):
     def __call__(self, x):
 
         inShape = x.shape
-        x = jax.vmap(lambda o, s: jnp.dot(o, s.ravel()).reshape(inShape), in_axes=(0, None))(self.orbit, x)
+        x = jax.vmap(lambda o, s: jnp.dot(o, s.ravel()).reshape(inShape), in_axes=(0, None))(self.orbit.orbit, x)
 
         def evaluate(x):
             return self.cnn(x)

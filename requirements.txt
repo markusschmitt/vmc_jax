@@ -1,6 +1,6 @@
 numpy
-jax
-jaxlib
-flax
+jax==0.2.24
+jaxlib==0.1.73
+flax==0.3.6
 mpi4py
 h5py

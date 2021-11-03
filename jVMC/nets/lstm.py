@@ -7,6 +7,7 @@ import numpy as np
 import jax.numpy as jnp
 
 import jVMC.global_defs as global_defs
+from jVMC.util.symmetries import LatticeSymmetry
 
 from functools import partial
 
@@ -119,21 +120,21 @@ class LSTMsym(nn.Module):
     It uses the LSTM class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
 
     Arguments: 
+        * ``orbit``: collection of maps that define symmetries (instance of ``util.symmetries.LatticeSymmetry``)
         * ``L``: length of the spin chain
         * ``hiddenSize``: size of the hidden state vector
         * ``inputDim``: dimension of the input
         * ``actFun``: non-linear activation function
-        * ``orbit``: collection of maps that define symmetries
 
     Returns:
         Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
+    orbit: LatticeSymmetry
     L: int = 10
     hiddenSize: int = 10
     inputDim: int = 2
     actFun: callable = nn.elu
     logProbFactor: float = 0.5
-    orbit: any = None
 
     def setup(self):
 
@@ -141,7 +142,7 @@ class LSTMsym(nn.Module):
 
     def __call__(self, x, L=10, hiddenSize=10, inputDim=2, actFun=nn.elu, logProbFactor=0.5, orbit=None):
 
-        x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit, x)
+        x = jax.vmap(lambda o, s: jnp.dot(o, s), in_axes=(0, None))(self.orbit.orbit, x)
 
         def evaluate(x):
             return self.lstm(x)
@@ -156,9 +157,9 @@ class LSTMsym(nn.Module):
 
         configs = self.lstm.sample(batchSize, key1)
 
-        orbitIdx = jax.random.choice(key2, orbit.shape[0], shape=(batchSize,))
+        orbitIdx = jax.random.choice(key2, orbit.orbit.shape[0], shape=(batchSize,))
 
-        configs = jax.vmap(lambda k, o, s: jnp.dot(o[k], s), in_axes=(0, None, 0))(orbitIdx, self.orbit, configs)
+        configs = jax.vmap(lambda k, o, s: jnp.dot(o[k], s), in_axes=(0, None, 0))(orbitIdx, self.orbit.orbit, configs)
 
         return configs
 
