@@ -428,7 +428,7 @@ class NQS:
                 # Flatten parameters to give a single vector
                 for p in parameters:
                     numParams = p.size
-                    paramOut = jax.ops.index_update(paramOut, jax.ops.index[start:start + numParams], p.reshape(-1))
+                    paramOut = paramOut.at[start:start + numParams].set(p.reshape(-1))
                     start += numParams
 
             return paramOut

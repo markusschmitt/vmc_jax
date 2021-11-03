@@ -9,7 +9,6 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import jax.random as random
 import flax
-import flax.nn as nn
 
 import time
 import numpy as np

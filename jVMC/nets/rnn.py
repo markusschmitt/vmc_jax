@@ -79,9 +79,10 @@ class RNNCellStack(nn.Module):
         newR = x
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j, c in enumerate(carry):
-            newCarry = jax.ops.index_update(newCarry, j, RNNCell(hiddenSize=self.hiddenSize,
+            newCarry = newCarry.at[j].set( RNNCell(hiddenSize=self.hiddenSize,
                                                                  actFun=self.actFun,
-                                                                 initScale=self.initScale)(c, newR))
+                                                                 initScale=self.initScale)(c, newR) )
+
             newR = newCarry[j]
 
         return jnp.array(newCarry), newR

@@ -13,7 +13,6 @@ config.update("jax_enable_x64", True)
 import jax.random as random
 import jax.numpy as jnp
 import numpy as np
-import flax.nn as nn
 
 class TestCNN(unittest.TestCase):
     

@@ -77,7 +77,7 @@ class RNNCellStack2D(nn.Module):
         newR = stateH + stateV
         # Can't use scan for this, because then flax doesn't realize that each cell has different parameters
         for j in range(carryH.shape[0]):
-            newCarry = jax.ops.index_update(newCarry, j, RNNCell2D(hiddenSize=self.hiddenSize, actFun=self.actFun, initScale=self.initScale)(carryH[j], carryV[j], newR))
+            newCarry = newCarry.at[j].set(RNNCell2D(hiddenSize=self.hiddenSize, actFun=self.actFun, initScale=self.initScale)(carryH[j], carryV[j], newR))
             newR = newCarry[j]
 
         return jnp.array(newCarry), newR
