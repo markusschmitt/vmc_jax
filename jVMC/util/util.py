@@ -143,7 +143,7 @@ def measure(observables, psi, sampler, numSamples=None):
 
     '''
     # Get sample
-    sampleConfigs, sampleLogPsi, p = sampler.sample(numSamples)
+    sampleConfigs, sampleLogPsi, p = sampler.sample(numSamples=numSamples)
 
     result = {}
 
