@@ -54,7 +54,7 @@ def init_net(descr, dims, seed=0):
         "CpxCNN": jVMC.nets.CpxCNN
     }
 
-    def get_net(descr, dims, seed):
+    def get_net(descr, dims):
 
         return netTypes[descr["type"]](**descr["parameters"])
 
@@ -92,7 +92,7 @@ def init_net(descr, dims, seed=0):
 
     if not "net2" in descr:
 
-        model = get_net(descr["net1"], dims, seed)
+        model = get_net(descr["net1"], dims)
 
         psi = jVMC.vqs.NQS(model, batchSize=descr["gradient_batch_size"], seed=seed)
 
@@ -102,8 +102,8 @@ def init_net(descr, dims, seed=0):
 
             descr["net2"]["parameters"]["actFun"] = get_activation_functions(descr["net2"]["parameters"]["actFun"])
 
-        model1 = get_net(descr["net1"], dims, seed)
-        model2 = get_net(descr["net2"], dims, seed)
+        model1 = get_net(descr["net1"], dims)
+        model2 = get_net(descr["net2"], dims)
 
         psi = jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"], seed=seed)
 
