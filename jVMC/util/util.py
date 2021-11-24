@@ -33,7 +33,7 @@ def init_net(descr, dims, seed=0):
     def get_activation_functions(actFuns):
 
         if type(actFuns) is list:
-            return [act_funs.activationFunctions[fn] for fn in actFuns]
+            return tuple([act_funs.activationFunctions[fn] for fn in actFuns])
 
         return act_funs.activationFunctions[actFuns]
 
