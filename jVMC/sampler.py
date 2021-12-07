@@ -309,7 +309,7 @@ class MCSampler:
         if numProp > 0:
             return mpi.global_sum(self.numAccepted) / numProp
 
-        return 0.
+        return jnp.array([0.])
 
 # ** end class Sampler
 
