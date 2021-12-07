@@ -107,7 +107,7 @@ def init_net(descr, dims, seed=0):
 
         psi = jVMC.vqs.NQS((model1, model2), batchSize=descr["gradient_batch_size"], seed=seed)
 
-    psi(jnp.zeros((1, 1) + dims, dtype=np.int32))
+    psi(jnp.zeros((jVMC.device_count(), 1) + dims, dtype=np.int32))
 
     return psi
 
