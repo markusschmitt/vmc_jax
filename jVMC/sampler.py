@@ -112,7 +112,9 @@ class MCSampler:
         self.sweepSteps = sweepSteps
         self.numSamples = numSamples
 
-        self.numProposed = 0
+        shape = (global_defs.device_count(),) + (1,)
+        self.numProposed = jnp.zeros(shape, dtype=np.int64)
+        self.numAccepted = jnp.zeros(shape, dtype=np.int64)
 
         self.numChains = numChains
 
