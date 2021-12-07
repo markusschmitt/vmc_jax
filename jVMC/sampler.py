@@ -112,6 +112,8 @@ class MCSampler:
         self.sweepSteps = sweepSteps
         self.numSamples = numSamples
 
+        self.numProposed = 0
+
         self.numChains = numChains
 
         # jit'd member functions
