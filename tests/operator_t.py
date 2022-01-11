@@ -68,7 +68,7 @@ class TestOperator(unittest.TestCase):
         logPsiSp = psi(sp)
         Oloc1 = h.get_O_loc(logPsi, logPsiSp)
         
-        batchSize = 34
+        batchSize = 13
         Oloc2 = h.get_O_loc_batched(s, psi, logPsi, batchSize)
 
         self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)

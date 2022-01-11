@@ -157,6 +157,13 @@ class Operator(metaclass=abc.ABCMeta):
 
         numSamples = samples.shape[1]
         numBatches = numSamples // batchSize
+        remainder = numSamples % batchSize
+
+        # Minimize mismatch
+        if remainder>0:
+            batchSize = numSamples // (numBatches+1)
+            numBatches = numSamples // batchSize
+            remainder = numSamples % batchSize
 
         for b in range(numBatches):
 
@@ -169,7 +176,6 @@ class Operator(metaclass=abc.ABCMeta):
 
             Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, b * batchSize)
         
-        remainder = numSamples % batchSize
         if remainder > 0:
 
             def expand_batch(batch, batchSize):
