@@ -9,7 +9,7 @@ DEFAULT_DEPENDENCIES = ["setuptools", "wheel", "numpy", "jax>=0.2.11,<=0.2.25", 
 
 setuptools.setup(
     name='jVMC',
-    version='0.1.1',
+    version='0.1.2',
     author="Markus Schmitt, Moritz Reh",
     author_email="markus.schmitt@uni-koeln.de",
     description="jVMC: Versatile and performant variational Monte Carlo",
