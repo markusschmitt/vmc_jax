@@ -15,6 +15,9 @@ import numpy as np
 
 import jVMC
 import jVMC.operator as op
+import jVMC.sampler
+import jVMC.nets as nets
+from jVMC.vqs import NQS
 import jVMC.global_defs as global_defs
 
 def get_shape(shape):
@@ -44,6 +47,31 @@ class TestOperator(unittest.TestCase):
 
         self.assertTrue( jnp.sum(jnp.abs( tmp - 2. * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
+    def test_batched_Oloc(self):
+        
+        L=4
+        
+        h=op.BranchFreeOperator()
+        for i in range(L):
+            h.add(op.scal_opstr(2., (op.Sx(i),)))
+            h.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i+1)%L))))
+        
+        rbm = nets.CpxRBM(numHidden=2,bias=False)
+        psi = NQS(rbm)
+        
+        mcSampler=jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=1)
+
+        numSamples = 100
+        s, logPsi, _ = mcSampler.sample(numSamples=numSamples)
+
+        sp, matEl = h.get_s_primes(s)
+        logPsiSp = psi(sp)
+        Oloc1 = h.get_O_loc(logPsi, logPsiSp)
+        
+        batchSize = 34
+        Oloc2 = h.get_O_loc_batched(s, psi, logPsi, batchSize)
+
+        self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)
 
 if __name__ == "__main__":
     unittest.main()

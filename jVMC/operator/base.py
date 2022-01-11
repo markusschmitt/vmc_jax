@@ -155,7 +155,10 @@ class Operator(metaclass=abc.ABCMeta):
 
         Oloc = self._alloc_Oloc_pmapd(samples)
 
-        for b in range(samples.shape[1] // batchSize):
+        numSamples = samples.shape[1]
+        numBatches = numSamples // batchSize
+
+        for b in range(numBatches):
 
             batch = self._get_config_batch_pmapd(samples, b * batchSize, batchSize)
             logPsiSbatch = self._get_logPsi_batch_pmapd(logPsiS, b * batchSize, batchSize)
@@ -165,6 +168,30 @@ class Operator(metaclass=abc.ABCMeta):
             OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
 
             Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, b * batchSize)
+        
+        remainder = numSamples % batchSize
+        if remainder > 0:
+
+            def expand_batch(batch, batchSize):
+                outShape = list(batch.shape)
+                outShape[0] = batchSize
+                outp = jnp.zeros(tuple(outShape), dtype=batch.dtype)
+                return outp.at[:batch.shape[0]].set(batch)
+            batch = self._get_config_batch_pmapd(samples, numBatches * batchSize, remainder)
+            batch = global_defs.pmap_for_my_devices(expand_batch, static_broadcasted_argnums=(1,))(batch, batchSize)
+            logPsiSbatch = self._get_logPsi_batch_pmapd(logPsiS, numBatches * batchSize, numSamples % batchSize)
+            logPsiSbatch = global_defs.pmap_for_my_devices(expand_batch, static_broadcasted_argnums=(1,))(logPsiSbatch, batchSize)
+
+            sp, _ = self.get_s_primes(batch)
+
+            OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
+        
+            OlocBatch = global_defs.pmap_for_my_devices(
+                            lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), 
+                            in_axes=(0, None, None), static_broadcasted_argnums=(2,)
+                        )(OlocBatch, 0, remainder)
+
+            Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, numBatches * batchSize)
 
         return Oloc
 
