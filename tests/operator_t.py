@@ -47,6 +47,31 @@ class TestOperator(unittest.TestCase):
 
         self.assertTrue( jnp.sum(jnp.abs( tmp - 2. * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
+    def test_op_with_arguments(self):
+
+        L=4
+        key = random.PRNGKey(3)
+        s = random.randint(key, (24,L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L)))
+
+        h=op.BranchFreeOperator()
+
+        def f(t):
+            return 2.0 * t
+
+        h.add(op.scal_opstr(f, (op.Sp(0),)))
+        h.add(op.scal_opstr(f, (op.Sp(1),)))
+        h.add(op.scal_opstr(f, (op.Sp(2),)))
+
+        for t in [0.5, 2, 13.9]:
+            sp,matEl=h.get_s_primes(s,t)
+
+            logPsi=jnp.ones(s.shape[:-1])
+            logPsiSP=jnp.ones(sp.shape[:-1])
+
+            tmp = h.get_O_loc(logPsi,logPsiSP)
+
+            self.assertTrue( jnp.sum(jnp.abs( tmp - f(t) * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
+
     def test_batched_Oloc(self):
         
         L=4

@@ -24,6 +24,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         Arguments:
             * ``s``: A single basis configuration.
+            * ``*args``: Further positional arguments. E.g. time in the case of time-dependent operators.
         Returns: 
             A tuple ``sp, matEls``, where ``sp`` is the list of connected basis configurations \
             (as ``jax.numpy.array``) and ``matEls`` the corresponding matrix elements.
@@ -95,7 +96,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         return m
 
-    def get_s_primes(self, s):
+    def get_s_primes(self, s, *args):
         """Compute matrix elements
 
         For a list of computational basis states :math:`s` this member function computes the corresponding \
@@ -104,6 +105,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         Arguments:
             * ``s``: Array of computational basis states.
+            * ``*args``: Further positional arguments that are passed on to the specific operator implementation.
 
         Returns:
             An array holding `all` configurations :math:`s'` and the corresponding matrix elements :math:`O_{s,s'}`.
@@ -111,13 +113,13 @@ class Operator(metaclass=abc.ABCMeta):
         """
 
         if not self.compiled:
-            self._get_s_primes = jax.vmap(self.compile())
-            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes)
+            self._get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes, in_axes=(0,)+(None,)*len(args))
             self.compiled = True
 
         # Compute matrix elements
-        self.sp, self.matEl = self._get_s_primes_pmapd(s)
-        
+        self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)
+
         # Get only non-zero contributions
         idx, self.numNonzero = self._find_nonzero_pmapd(self.matEl)
         self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[..., :jnp.max(self.numNonzero)], self.numNonzero)
