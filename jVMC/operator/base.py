@@ -155,7 +155,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         return self._get_O_loc_pmapd(self.matEl, logPsiS, logPsiSP)
 
-    def get_O_loc_batched(self, samples, psi, logPsiS, batchSize):
+    def get_O_loc_batched(self, samples, psi, logPsiS, batchSize, *args):
 
         Oloc = self._alloc_Oloc_pmapd(samples)
 
@@ -174,7 +174,7 @@ class Operator(metaclass=abc.ABCMeta):
             batch = self._get_config_batch_pmapd(samples, b * batchSize, batchSize)
             logPsiSbatch = self._get_logPsi_batch_pmapd(logPsiS, b * batchSize, batchSize)
 
-            sp, _ = self.get_s_primes(batch)
+            sp, _ = self.get_s_primes(batch, *args)
 
             OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
 
@@ -192,7 +192,7 @@ class Operator(metaclass=abc.ABCMeta):
             logPsiSbatch = self._get_logPsi_batch_pmapd(logPsiS, numBatches * batchSize, numSamples % batchSize)
             logPsiSbatch = global_defs.pmap_for_my_devices(expand_batch, static_broadcasted_argnums=(1,))(logPsiSbatch, batchSize)
 
-            sp, _ = self.get_s_primes(batch)
+            sp, _ = self.get_s_primes(batch, *args)
 
             OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
         
