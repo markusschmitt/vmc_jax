@@ -55,6 +55,7 @@ class Operator(metaclass=abc.ABCMeta):
         """
 
         self.compiled = False
+        self.compiled_argnum = -1
 
         # pmap'd member functions
         self._get_s_primes_pmapd = None
@@ -112,10 +113,11 @@ class Operator(metaclass=abc.ABCMeta):
 
         """
 
-        if not self.compiled:
-            self._get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
-            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes, in_axes=(0,)+(None,)*len(args))
+        if (not self.compiled) or self.compiled_argnum!=len(args):
+            _get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(_get_s_primes, in_axes=(0,)+(None,)*len(args))
             self.compiled = True
+            self.compiled_argnum = len(args)
 
         # Compute matrix elements
         self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)

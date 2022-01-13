@@ -105,7 +105,7 @@ class TestTimeEvolution(unittest.TestCase):
             psi.set_parameters(dp)
             t += dt
             times.append(t)
-            newMeas = measure({'E':hamiltonian, 'ZZ':ZZ}, psi, exactSampler)
+            newMeas = measure({'E':[(hamiltonian, t)], 'ZZ':ZZ}, psi, exactSampler)
             obs.append([newMeas['E']['mean'], newMeas['ZZ']['mean']])
 
         obs = np.array(jnp.asarray(obs))
