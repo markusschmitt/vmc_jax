@@ -5,9 +5,6 @@ import jax.random as random
 from jax.config import config
 import jax.numpy as jnp
 import jax
-import sys
-sys.path.append(sys.path[0] + "/..")
-# Find jVMC package
 import jVMC
 from functools import partial
 config.update("jax_enable_x64", True)

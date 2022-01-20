@@ -13,43 +13,36 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 
 1. We recommend you create a new conda environment to work with jVMC:
 
-```
-    conda create -n jvmc python=3.8
-    conda activate jvmc
-```
+        conda create -n jvmc python=3.8
+        conda activate jvmc
 
 2. ``pip``-install the package
 
-```
-    pip install jVMC
-```
+        pip install jVMC
+
 
 ### Option 2: Clone and ``pip``-install
 
 1. Clone the jVMC repository and check out the development branch:
 
-```
-    git clone https://github.com/markusschmitt/vmc_jax.git
-    cd vmc_jax
-```
+        git clone https://github.com/markusschmitt/vmc_jax.git
+        cd vmc_jax
 
 2. We recommend you create a new conda environment to work with jVMC:
 
-```
-    conda create -n jvmc python=3.8
-    conda activate jvmc
-```
+        conda create -n jvmc python=3.8
+        conda activate jvmc
 
-3. Create a wheel and ``pip``-install the package
-```
-    python setup.py bdist_wheel
-    python -m pip install dist/*.whl
-```
+
+3. ``pip``-install the package  
+
+        pip install .  
+
+    Alternatively, for development:
+
+        pip install -e .[dev]
+
 Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
-
-### Option 3: Manually install dependencies
-
-If you want to work on the jVMC code you might prefer to [install dependencies and set up jVMC](documentation/readme/installation_instructions.md) without ``pip``-install.
 
 ### Compiling JAX
 

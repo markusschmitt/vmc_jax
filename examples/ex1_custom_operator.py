@@ -2,9 +2,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import sys
-# Find jVMC package
-sys.path.append(sys.path[0] + "/..")
 import jVMC.global_defs as global_defs
 
 import jVMC.operator

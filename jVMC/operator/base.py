@@ -6,9 +6,6 @@ import numpy as np
 import abc
 
 import sys
-# Find jVMC package
-sys.path.append(sys.path[0] + "/../..")
-import jVMC.global_defs as global_defs
 
 opDtype = global_defs.tCpx
 

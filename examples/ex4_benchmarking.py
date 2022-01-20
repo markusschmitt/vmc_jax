@@ -1,7 +1,4 @@
 import os
-import sys
-# Find jVMC package
-sys.path.append(sys.path[0] + "/..")
 
 import jax
 from jax.config import config

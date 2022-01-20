@@ -4,10 +4,6 @@ import jax.random as random
 import numpy as np
 from jax import vmap, jit
 
-import sys
-# Find jVMC package
-sys.path.append(sys.path[0] + "/..")
-
 import jVMC.mpi_wrapper as mpi
 
 from functools import partial

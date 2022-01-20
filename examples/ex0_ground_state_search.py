@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
-import sys
-# Find jVMC package
-sys.path.append(sys.path[0] + "/..")
-
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)

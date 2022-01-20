@@ -3,10 +3,6 @@ from jax import jit, vmap, grad#, partial
 import jax.numpy as jnp
 import numpy as np
 
-import sys
-# Find jVMC package
-sys.path.append(sys.path[0] + "/../..")
-
 import jVMC.global_defs as global_defs
 import jVMC.mpi_wrapper as mpi
 from jVMC.operator import Operator

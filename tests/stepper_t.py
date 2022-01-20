@@ -1,7 +1,3 @@
-import sys
-# Find jVMC package
-sys.path.append(sys.path[0]+"/..")
-
 import unittest
 
 import jVMC.util.stepper as st
