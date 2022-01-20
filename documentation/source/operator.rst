@@ -85,6 +85,15 @@ example, to obtain :math:`\frac{1}{2}\hat\sigma_1^x\hat\sigma_2^z`::
 
     X1Z2_with_prefactor = scal_opstr(0.5, X1Z2)
 
+Alternatively, a function that depends on some arguments, ``f(*args)``, can be given as \
+prefactor::
+
+    X1Z2_with_prefactor = scal_opstr(f, X1Z2)
+
+In that case, the respective arguments have to be passed as additional arguments, whenever \
+the ``get_s_primes`` function is called.
+
+
 Assembling operators
 --------------------
 
