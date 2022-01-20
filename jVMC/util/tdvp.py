@@ -217,9 +217,8 @@ class TDVP:
             * ``netParameters``: Parameters of the NQS.
             * ``t``: Current time.
             * ``psi``: NQS ansatz. Instance of ``jVMC.vqs.NQS``.
-            * ``hamiltonian``: Hamiltonian operator. Either an instance of a derived class of ``jVMC.operator.Operator`` \
-                or a callable that takes the time ``t`` as argument and returns \
-                an instance of a derived class of ``jVMC.operator.Operator`` (in order to implement time-dependent Hamiltonians).
+            * ``hamiltonian``: Hamiltonian operator, i.e., an instance of a derived class of ``jVMC.operator.Operator``. \
+                                *Notice:* Current time ``t`` is by default passed as argument when computing matrix elements. 
 
         Further optional keyword arguments:
             * ``numSamples``: Number of samples to be used by MC sampler.
@@ -260,18 +259,12 @@ class TDVP:
         stop_timing(outp, "sampling", waitFor=sampleConfigs)
 
         # Evaluate local energy
-        ham = None
-        if callable(hamiltonian):
-            ham = hamiltonian(t)
-        else:
-            ham = hamiltonian
-
         start_timing(outp, "compute Eloc")
-        sampleOffdConfigs, matEls = ham.get_s_primes(sampleConfigs)
+        sampleOffdConfigs, matEls = hamiltonian.get_s_primes(sampleConfigs, t)
         start_timing(outp, "evaluate off-diagonal")
         sampleLogPsiOffd = psi(sampleOffdConfigs)
         stop_timing(outp, "evaluate off-diagonal", waitFor=sampleLogPsiOffd)
-        Eloc = ham.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
+        Eloc = hamiltonian.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
         stop_timing(outp, "compute Eloc", waitFor=Eloc)
 
         # Evaluate gradients

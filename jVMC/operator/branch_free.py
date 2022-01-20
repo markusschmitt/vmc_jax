@@ -111,24 +111,34 @@ def Sm(idx):
 
 import copy
 
+def _id_prefactor(*args, val=1.0, **kwargs):
+    return val
+
+def _prod_fun(f1, f2, *args, **kwargs):
+    return f1(*args) * f2(*args)
 
 def scal_opstr(a, op):
     """Add prefactor to operator string
 
     Arguments:
-        * ``a``: Scalar prefactor.
+        * ``a``: Scalar prefactor or function.
         * ``op``: Operator string.
 
     Returns:
-        Rescaled operator string. Effectively, the matrix elements of the first element of \
-        the operator string are multiplied by ``a``.
+        Operator string rescaled by ``a``.
 
     """
 
     newOp = [copy.deepcopy(o) for o in op]
-    newOp[0]['matEls'] = a * newOp[0]['matEls']
-    return tuple(newOp)
+    if not callable(a):
+        a = functools.partial(_id_prefactor, val=a)
 
+    if callable(newOp[0]):
+        newOp[0] = functools.partial(_prod_fun, f1=a, f2=newOp[0])
+    else:
+        newOp = [a] + newOp
+
+    return tuple(newOp)
 
 class BranchFreeOperator(Operator):
     """This class provides functionality to compute operator matrix elements
@@ -169,6 +179,7 @@ class BranchFreeOperator(Operator):
         self.map = []
         self.matEls = []
         self.diag = []
+        self.prefactor = []
         self.maxOpStrLength = 0
         for op in self.ops:
             if len(op) > self.maxOpStrLength:
@@ -179,8 +190,15 @@ class BranchFreeOperator(Operator):
             self.idx.append([])
             self.map.append([])
             self.matEls.append([])
+            # check whether string contains prefactor
+            k0=0
+            if callable(op[0]):
+                self.prefactor.append(op[0])
+                k0=1
+            else:
+                self.prefactor.append(_id_prefactor)
             isDiagonal = True
-            for k in range(self.maxOpStrLength):
+            for k in range(k0, self.maxOpStrLength):
                 if k < len(op):
                     if not op[k]['diag']:
                         isDiagonal = False
@@ -201,9 +219,9 @@ class BranchFreeOperator(Operator):
         self.matElsC = jnp.array(self.matEls, dtype=opDtype)
         self.diag = jnp.array(self.diag, dtype=np.int32)
 
-        return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag)
+        return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, prefactor=self.prefactor)
 
-    def _get_s_primes(self, s, idxC, mapC, matElsC, diag):
+    def _get_s_primes(self, s, *args, idxC, mapC, matElsC, diag, prefactor):
 
         numOps = idxC.shape[0]
         matEl = jnp.ones(numOps, dtype=matElsC.dtype)
@@ -218,15 +236,15 @@ class BranchFreeOperator(Operator):
 
             return config.reshape(configShape), configMatEl
 
-        def apply_multi(config, configMatEl, opIdx, opMap, opMatEls):
+        def apply_multi(config, configMatEl, opIdx, opMap, opMatEls, prefactor):
 
             for idx, mp, me in zip(opIdx, opMap, opMatEls):
                 config, configMatEl = apply_fun(config, configMatEl, idx, mp, me)
 
-            return config, configMatEl
+            return config, prefactor*configMatEl
 
         # vmap over operators
-        sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC)
+        sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC, jnp.array([f(*args) for f in prefactor]))
         if len(diag) > 1:
             matEl = matEl.at[diag[0]].set(jnp.sum(matEl[diag], axis=0))
             matEl = matEl.at[diag[1:]].set(jnp.zeros((diag.shape[0] - 1,), dtype=matElsC.dtype))

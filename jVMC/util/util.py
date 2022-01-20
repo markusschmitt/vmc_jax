@@ -122,6 +122,13 @@ def measure(observables, psi, sampler, numSamples=None):
 
                 { "op_name_1": [operator1, operator2], "op_name_2": operator3 }
 
+            If an operator takes additional positional arguments, a tuple of the operator together with the arguments
+            has to be passed instead. For example, assuming that ``operator3`` from above requires additional arguments ``*args``:
+
+            .. code-block:: python
+
+                { "op_name_1": [operator1, operator2], "op_name_2": [(operator3, *args)] }
+
         * ``psi``: Variational wave function (instance of ``jVMC.vqs.NQS``)
         * ``sampler``: Instance of ``jVMC.sampler`` used for sampling.
         * ``numSamples``: Number of samples (optional)
@@ -154,7 +161,13 @@ def measure(observables, psi, sampler, numSamples=None):
         tmpErrors = []
 
         for op in get_iterable(ops):
-            sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs)
+
+            args=()
+            if isinstance(op, collections.abc.Iterable):
+                args = tuple(op[1:])
+                op = op[0]
+            
+            sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs, *args)
             sampleLogPsiOffd = psi(sampleOffdConfigs)
             Oloc = op.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
 

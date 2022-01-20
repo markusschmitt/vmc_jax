@@ -24,6 +24,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         Arguments:
             * ``s``: A single basis configuration.
+            * ``*args``: Further positional arguments. E.g. time in the case of time-dependent operators.
         Returns: 
             A tuple ``sp, matEls``, where ``sp`` is the list of connected basis configurations \
             (as ``jax.numpy.array``) and ``matEls`` the corresponding matrix elements.
@@ -54,6 +55,7 @@ class Operator(metaclass=abc.ABCMeta):
         """
 
         self.compiled = False
+        self.compiled_argnum = -1
 
         # pmap'd member functions
         self._get_s_primes_pmapd = None
@@ -95,7 +97,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         return m
 
-    def get_s_primes(self, s):
+    def get_s_primes(self, s, *args):
         """Compute matrix elements
 
         For a list of computational basis states :math:`s` this member function computes the corresponding \
@@ -104,20 +106,22 @@ class Operator(metaclass=abc.ABCMeta):
 
         Arguments:
             * ``s``: Array of computational basis states.
+            * ``*args``: Further positional arguments that are passed on to the specific operator implementation.
 
         Returns:
             An array holding `all` configurations :math:`s'` and the corresponding matrix elements :math:`O_{s,s'}`.
 
         """
 
-        if not self.compiled:
-            self._get_s_primes = jax.vmap(self.compile())
-            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(self._get_s_primes)
+        if (not self.compiled) or self.compiled_argnum!=len(args):
+            _get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(_get_s_primes, in_axes=(0,)+(None,)*len(args))
             self.compiled = True
+            self.compiled_argnum = len(args)
 
         # Compute matrix elements
-        self.sp, self.matEl = self._get_s_primes_pmapd(s)
-        
+        self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)
+
         # Get only non-zero contributions
         idx, self.numNonzero = self._find_nonzero_pmapd(self.matEl)
         self.matEl = self._set_zero_to_zero_pmapd(self.matEl, idx[..., :jnp.max(self.numNonzero)], self.numNonzero)
@@ -151,7 +155,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         return self._get_O_loc_pmapd(self.matEl, logPsiS, logPsiSP)
 
-    def get_O_loc_batched(self, samples, psi, logPsiS, batchSize):
+    def get_O_loc_batched(self, samples, psi, logPsiS, batchSize, *args):
 
         Oloc = self._alloc_Oloc_pmapd(samples)
 
@@ -170,7 +174,7 @@ class Operator(metaclass=abc.ABCMeta):
             batch = self._get_config_batch_pmapd(samples, b * batchSize, batchSize)
             logPsiSbatch = self._get_logPsi_batch_pmapd(logPsiS, b * batchSize, batchSize)
 
-            sp, _ = self.get_s_primes(batch)
+            sp, _ = self.get_s_primes(batch, *args)
 
             OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
 
@@ -188,7 +192,7 @@ class Operator(metaclass=abc.ABCMeta):
             logPsiSbatch = self._get_logPsi_batch_pmapd(logPsiS, numBatches * batchSize, numSamples % batchSize)
             logPsiSbatch = global_defs.pmap_for_my_devices(expand_batch, static_broadcasted_argnums=(1,))(logPsiSbatch, batchSize)
 
-            sp, _ = self.get_s_primes(batch)
+            sp, _ = self.get_s_primes(batch, *args)
 
             OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
         
