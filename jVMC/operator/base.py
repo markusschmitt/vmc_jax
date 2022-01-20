@@ -7,6 +7,8 @@ import abc
 
 import sys
 
+import jVMC.global_defs as global_defs
+
 opDtype = global_defs.tCpx
 
 
