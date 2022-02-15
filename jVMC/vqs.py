@@ -368,6 +368,29 @@ class NQS:
     # **  end gradients_dict
 
 
+    def grad_dict_to_vec_map(self):
+
+        if self.realNets:
+            P = jnp.arange(self.numParameters)
+            return self._param_unflatten_real(P)
+
+        else:
+
+            PTreeShape = []
+            start = 0
+            P = jnp.arange(2*self.numParameters)
+            for s in self.paramShapes:
+                if self.holomorphic:
+                    PTreeShape.append( ( P[start:start + 2*s[0]]) )
+                    start += 2*s[0]
+                else:
+                    PTreeShape.append(P[start:start + s[0]])
+                    start += s[0]
+            
+            # Return unflattened parameters
+            return tree_unflatten(self.netTreeDef, PTreeShape)
+
+
     def update_parameters(self, deltaP):
         """Update variational parameters.
 
