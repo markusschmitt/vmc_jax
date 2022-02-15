@@ -4,10 +4,11 @@ config.update("jax_enable_x64", True)
 from jax import jit, grad, vmap
 from jax import numpy as jnp
 from jax import random
-from jax.tree_util import tree_flatten, tree_unflatten
+from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 from jax.flatten_util import ravel_pytree
 import flax
 from flax import nn
+from flax.core.frozen_dict import freeze
 import numpy as np
 
 import jVMC
@@ -19,20 +20,38 @@ import jVMC.mpi_wrapper as mpi
 from functools import partial
 import collections
 import time
-
+from math import isclose
 
 def flat_gradient(fun, params, arg):
     gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
-    gr = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), gr))[0]
+    gr = tree_flatten(tree_map(lambda x: x.ravel(), gr))[0]
     gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)
-    gi = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), gi))[0]
+    gi = tree_flatten(tree_map(lambda x: x.ravel(), gi))[0]
     return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
 
 
 def flat_gradient_real(fun, params, arg):
     g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
-    g = tree_flatten(jax.tree_util.tree_map(lambda x: x.ravel(), g))[0]
+    g = tree_flatten(tree_map(lambda x: x.ravel(), g))[0]
     return jnp.concatenate(g)
+
+def flat_gradient_holo(fun, params, arg):
+    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    g = tree_flatten(tree_map(lambda x: [x.ravel(), 1.j*x.ravel()], g))[0]
+    return jnp.concatenate(g)
+
+def dict_gradient(fun, params, arg):
+    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    gr = tree_map(lambda x: x.ravel(), gr)
+    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)
+    gi = tree_map(lambda x: x.ravel(), gi)
+    return tree_map(lambda x,y: x + 1.j*y, gr, gi)
+
+
+def dict_gradient_real(fun, params, arg):
+    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    g = tree_map(lambda x: x.ravel(), g)
+    return g
 
 
 class NQS:
@@ -105,6 +124,7 @@ class NQS:
         self.realNets = False
         self.holomorphic = False
         self.flat_gradient_function = flat_gradient_real
+        self.dict_gradient_function = dict_gradient_real
 
         self.initialized = False
         self.seed = seed
@@ -138,6 +158,9 @@ class NQS:
         self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
         self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
         self._append_gradients = global_defs.pmap_for_my_devices(lambda x, y: jnp.concatenate((x[:, :], 1.j * y[:, :]), axis=1), in_axes=(0, 0))
+        self._get_gradients_dict_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
+        self._get_gradients_dict_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
+        self._append_gradients_dict = global_defs.pmap_for_my_devices(lambda x, y: tree_map(lambda a,b: jnp.concatenate((a[:, :], 1.j * b[:, :]), axis=1), x, y), in_axes=(0, 0))
         self._sample_jitd = {}
 
     # **  end def __init__
@@ -151,10 +174,18 @@ class NQS:
                 
                 self.parameters = self.net.init(jax.random.PRNGKey(self.seed), s[0,0,...])
                 
-                if np.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]]).dtype == np.complex128:
+                # check Cauchy-Riemann condition to test for holomorphicity
+                def make_flat(t):
+                    return jnp.concatenate([p.ravel() for p in tree_flatten(t)[0]])
+                grads_r = make_flat( jax.grad(lambda a,b: jnp.real(self.net.apply(a,b)))(self.parameters, s[0,0,...]) )
+                grads_i = make_flat( jax.grad(lambda a,b: jnp.imag(self.net.apply(a,b)))(self.parameters, s[0,0,...]) )
+                if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i), 0.0):
+                #if np.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]]).dtype == np.complex128:
                     self.holomorphic = True
+                    self.flat_gradient_function = flat_gradient_holo
                 else:
                     self.flat_gradient_function = flat_gradient
+                    self.dict_gradient_function = dict_gradient
 
                 self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters)[0]]
                 self.netTreeDef = jax.tree_util.tree_structure(self.parameters)
@@ -256,9 +287,11 @@ class NQS:
 
         g = jax.lax.scan(scan_fun, None, sb)[1]
 
-        g = g.reshape((-1,) + g.shape[2:])
+        #g = g.reshape((-1,) + g.shape[2:])
+        g = tree_map(lambda x: x.reshape((-1,) + x.shape[2:]), g)
 
-        return g[:s.shape[0]]
+        #return g[:s.shape[0]]
+        return tree_map(lambda x: x[:s.shape[0]], g)
 
 
     def gradients(self, s):
@@ -290,12 +323,49 @@ class NQS:
 
             gradOut = self._get_gradients_net1_pmapd(self.net, self.parameters, s, self.batchSize, self.flat_gradient_function)
 
-            if self.holomorphic:
-                return self._append_gradients(gradOut, gradOut)
+            #if self.holomorphic:
+            #    return self._append_gradients(gradOut, gradOut)
 
             return gradOut
 
     # **  end def gradients
+
+
+    def gradients_dict(self, s):
+        """Compute gradients of logarithmic wave function and return them as dictionary.
+
+        Compute gradient of the logarithmic wave function coefficients, \
+        :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+
+        Args:
+
+            * ``s``: Array of computational basis states.
+
+        Returns:
+            A dictionary containing derivatives :math:`\partial_{\\theta_k}\ln\psi(s)` \
+            with respect to each variational parameter :math:`\\theta_k` for each \
+            input configuration :math:`s`.
+        """
+        
+        self.init_net(s)
+
+        if self.realNets:  # FOR REAL NETS
+
+            gradOut1 = self._get_gradients_dict_net1_pmapd(self.net[0], self.parameters[0], s, self.batchSize, self.dict_gradient_function)
+            gradOut2 = self._get_gradients_dict_net2_pmapd(self.net[1], self.parameters[1], s, self.batchSize, self.dict_gradient_function)
+
+            return freeze({"net1" : gradOut1, "net2" : gradOut2})
+
+        else:             # FOR COMPLEX NET
+
+            gradOut = self._get_gradients_dict_net1_pmapd(self.net, self.parameters, s, self.batchSize, self.dict_gradient_function)
+
+            if self.holomorphic:
+                return self._append_gradients_dict(gradOut, gradOut)
+
+            return gradOut
+
+    # **  end gradients_dict
 
 
     def update_parameters(self, deltaP):
@@ -385,17 +455,21 @@ class NQS:
 
     def _param_unflatten_cpx(self, P):
 
-        if self.holomorphic:
-            # Get complex-valued parameter update vector
-            P = P[:self.numParameters] + 1.j * P[self.numParameters:]
+        #if self.holomorphic:
+        #    # Get complex-valued parameter update vector
+        #    P = P[:self.numParameters] + 1.j * P[self.numParameters:]
 
         # Reshape parameter update according to net tree structure
         PTreeShape = []
         start = 0
         for s in self.paramShapes:
-            PTreeShape.append(P[start:start + s[0]].reshape(s[1]))
-            start += s[0]
-
+            if self.holomorphic:
+                PTreeShape.append( ( P[start:start + s[0]] + 1.j * P[start + s[0]:start + 2*s[0]]).reshape(s[1]) )
+                start += 2*s[0]
+            else:
+                PTreeShape.append(P[start:start + s[0]].reshape(s[1]))
+                start += s[0]
+        
         # Return unflattened parameters
         return tree_unflatten(self.netTreeDef, PTreeShape)
 
@@ -431,10 +505,12 @@ class NQS:
 
         else:             # FOR COMPLEX NET
 
-            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]])
+            #paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]])
 
             if self.holomorphic:
-                paramOut = jnp.concatenate([paramOut.real, paramOut.imag])
+                paramOut = jnp.concatenate([jnp.concatenate([p.ravel().real, p.ravel().imag]) for p in tree_flatten(self.parameters)[0]])
+            else:
+                paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]])
 
             return paramOut
 

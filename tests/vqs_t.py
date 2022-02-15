@@ -12,6 +12,7 @@ config.update("jax_enable_x64", True)
 import jax.random as random
 import jax.numpy as jnp
 import numpy as np
+from math import isclose
 
 def get_shape(shape):
     return (global_defs.myDeviceCount,) + shape
@@ -30,11 +31,11 @@ class TestGradients(unittest.TestCase):
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=s.at[...,0,1].set(1)
             s=s.at[...,2,2].set(1)
-            
+
             psiC = NQS(rbmModel)
             psi0 = psiC(s)
             G = psiC.gradients(s)
-            delta=1e-5
+            delta=1e-6
             params = psiC.get_parameters()
             for j in range(G.shape[-1]):
                 u = jnp.zeros(G.shape[-1], dtype=global_defs.tReal).at[j].set(1)
@@ -44,7 +45,6 @@ class TestGradients(unittest.TestCase):
 
                 # Finite difference gradients
                 Gfd = (psi1-psi0) / delta
-
                 with self.subTest(i=j):
                     self.assertTrue( jnp.max( jnp.abs( Gfd - G[...,j] ) ) < 1e-2 )
     
@@ -110,6 +110,20 @@ class TestGradients(unittest.TestCase):
 
                 with self.subTest(i=j):
                     self.assertTrue( jnp.max( jnp.abs( Gfd - G[...,j] ) ) < 1e-2 )
+    
+    
+    def test_gradient_dict(self):
+
+        net = jVMC.nets.CpxRBM(numHidden=8, bias=False)
+        psi = jVMC.vqs.NQS(net, seed=1234)  # Variational wave function
+
+        s = jnp.zeros((1,3,4))
+        psi(s)
+
+        g1 = psi.gradients(s)
+        g2 = psi.gradients_dict(s)["params"]["Dense_0"]["kernel"]
+
+        self.assertTrue(isclose(jnp.linalg.norm(g1-g2),0.0))
 
 class TestEvaluation(unittest.TestCase):
 
