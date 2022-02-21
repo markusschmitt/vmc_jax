@@ -178,8 +178,11 @@ class BranchFreeOperator(Operator):
         self.prefactor = []
         self.maxOpStrLength = 0
         for op in self.ops:
-            if len(op) > self.maxOpStrLength:
-                self.maxOpStrLength = len(op)
+            tmpLen = len(op)
+            if callable(op[0]):
+                tmpLen -= 1
+            if tmpLen > self.maxOpStrLength:
+                self.maxOpStrLength = tmpLen
         IdOp = Id(lDim=self.lDim)
         o = 0
         for op in self.ops:
@@ -194,7 +197,7 @@ class BranchFreeOperator(Operator):
             else:
                 self.prefactor.append(_id_prefactor)
             isDiagonal = True
-            for k in range(k0, self.maxOpStrLength):
+            for k in range(k0, k0+self.maxOpStrLength):
                 if k < len(op):
                     if not op[k]['diag']:
                         isDiagonal = False
