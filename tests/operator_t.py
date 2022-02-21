@@ -94,5 +94,15 @@ class TestOperator(unittest.TestCase):
 
         self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)
 
+    def test_td_prefactor(self):
+
+        hamiltonian = op.BranchFreeOperator()
+        hamiltonian.add((op.Sz(0),))
+        hamiltonian.add((op.Sz(1),))
+        #hamiltonian.add((op.Sx(0),op.Sx(1)))
+        hamiltonian.add(op.scal_opstr(0.1, (op.Sx(0),op.Sx(1))))
+
+        hamiltonian.compile()
+
 if __name__ == "__main__":
     unittest.main()
