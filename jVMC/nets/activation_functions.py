@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from flax import nn
+import flax.linen as nn
 
 
 def square(x):
