@@ -41,8 +41,7 @@ class CNN(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        initFunction = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                               dtype=global_defs.tReal)
+        initFunction = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
 
         # Set up padding for periodic boundary conditions
         # Padding size must be 1 - filter diameter
@@ -74,7 +73,7 @@ class CNN(nn.Module):
 
             x = fun(nn.Conv(features=c, kernel_size=tuple(self.F),
                             strides=self.strides, padding=[(0, 0)] * len(self.strides),
-                            use_bias=b, dtype=global_defs.tReal,
+                            use_bias=b, dtype=global_defs.tReal, param_dtype=global_defs.tReal,
                             kernel_init=initFunction)(x))
 
         nrm = jnp.sqrt(jnp.prod(jnp.array(x.shape[reduceDims[-1]:])))

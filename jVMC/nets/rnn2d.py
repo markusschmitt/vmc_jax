@@ -35,18 +35,20 @@ class RNNCell2D(nn.Module):
     @nn.compact
     def __call__(self, carryH, carryV, newR):
 
-        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                                   dtype=global_defs.tReal)
-        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_in", distribution="uniform"),
-                                  dtype=global_defs.tReal)
+        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+        initFunctionOut = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_in", distribution="uniform")
 
         cellIn = nn.Dense(features=self.hiddenSize,
-                          use_bias=False, dtype=global_defs.tReal,
-                          kernel_init=initFunctionCell)
+                          use_bias=False,
+                          kernel_init=initFunctionCell,
+                          dtype=global_defs.tReal,
+                          param_dtype=global_defs.tReal)
         cellCarry = nn.Dense(features=self.hiddenSize,
                              use_bias=True,
-                             kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                             bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                             kernel_init=initFunctionCell,
+                             bias_init=jax.nn.initializers.zeros,
+                             dtype=global_defs.tReal,
+                             param_dtype=global_defs.tReal)
         newCarry = self.actFun(cellCarry(carryH + carryV) + cellIn(newR))
         return newCarry
 
@@ -116,12 +118,13 @@ class RNN2D(nn.Module):
         self.rnnCell = RNNCellStack2D(hiddenSize=self.hiddenSize,
                                       actFun=self.actFun,
                                       initScale=self.initScale)
-        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                                   dtype=global_defs.tReal)
+        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
         self.outputDense = nn.Dense(features=self.inputDim,
                                     use_bias=True,
-                                    kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                    kernel_init=initFunctionCell,
+                                    bias_init=jax.nn.initializers.zeros,
+                                    dtype=global_defs.tReal,
+                                    param_dtype=global_defs.tReal)
 
     def reverse_line(self, line, b):
         return jax.lax.cond(b == 1, lambda z: z, lambda z: jnp.flip(z, 0), line)

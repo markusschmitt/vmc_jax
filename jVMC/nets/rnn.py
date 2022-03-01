@@ -34,18 +34,20 @@ class RNNCell(nn.Module):
 
     def setup(self):
 
-        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                                   dtype=global_defs.tReal)
-        initFunctionOut = partial(jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_in", distribution="uniform"),
-                                  dtype=global_defs.tReal)
+        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
+        initFunctionOut = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_in", distribution="uniform")
 
         self.cellIn = nn.Dense(features=self.hiddenSize,
-                               use_bias=False, dtype=global_defs.tReal,
-                               kernel_init=initFunctionCell)
+                               use_bias=False,
+                               kernel_init=initFunctionCell,
+                               dtype=global_defs.tReal, 
+                               param_dtype=global_defs.tReal)
         self.cellCarry = nn.Dense(features=self.hiddenSize,
                                   use_bias=True,
-                                  kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                  bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                  kernel_init=initFunctionCell,
+                                  bias_init=jax.nn.initializers.zeros,
+                                  dtype=global_defs.tReal, 
+                                  param_dtype=global_defs.tReal)
 
     def __call__(self, carry, x):
 
@@ -122,12 +124,13 @@ class RNN(nn.Module):
         self.rnnCell = RNNCellStack(hiddenSize=self.hiddenSize,
                                     actFun=self.actFun,
                                     initScale=self.initScale)
-        initFunctionCell = partial(jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                                   dtype=global_defs.tReal)
+        initFunctionCell = jax.nn.initializers.variance_scaling(scale=1.0, mode="fan_avg", distribution="uniform")
         self.outputDense = nn.Dense(features=self.inputDim,
                                     use_bias=True,
-                                    kernel_init=initFunctionCell, dtype=global_defs.tReal,
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                    kernel_init=initFunctionCell, 
+                                    bias_init=jax.nn.initializers.zeros,
+                                    dtype=global_defs.tReal,
+                                    param_dtype=global_defs.tReal)
 
     def __call__(self, x):
 
@@ -367,15 +370,18 @@ class CpxRNN(nn.Module):
 
         self.probDense = nn.Dense(features=self.inputDim, dtype=global_defs.tReal,
                                   kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
-                                  bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                  bias_init=jax.nn.initializers.zeros,
+                                  param_dtype=global_defs.tReal)
 
         self.phaseDense1 = nn.Dense(features=4, dtype=global_defs.tReal,
                                     kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                    bias_init=jax.nn.initializers.zeros,
+                                    param_dtype=global_defs.tReal)
 
         self.phaseDense2 = nn.Dense(features=4, dtype=global_defs.tReal,
                                     kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
-                                    bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                                    bias_init=jax.nn.initializers.zeros,
+                                    param_dtype=global_defs.tReal)
 
     def __call__(self, x):
 

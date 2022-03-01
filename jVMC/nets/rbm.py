@@ -32,9 +32,11 @@ class CpxRBM(nn.Module):
     @nn.compact
     def __call__(self, s):
 
-        layer = nn.Dense(self.numHidden, use_bias=self.bias, dtype=global_defs.tCpx,
+        layer = nn.Dense(self.numHidden, use_bias=self.bias,
                          kernel_init=jVMC.nets.initializers.cplx_init,
-                         bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tCpx))
+                         bias_init=jax.nn.initializers.zeros,
+                         dtype=global_defs.tCpx,
+                         param_dtype=global_defs.tCpx)
 
         return jnp.sum(jnp.log(jnp.cosh(layer(2 * s.ravel() - 1))))
 
@@ -61,7 +63,8 @@ class RBM(nn.Module):
 
         layer = nn.Dense(self.numHidden, use_bias=self.bias, dtype=global_defs.tReal,
                          kernel_init=jax.nn.initializers.lecun_normal(dtype=global_defs.tReal),
-                         bias_init=partial(jax.nn.initializers.zeros, dtype=global_defs.tReal))
+                         bias_init=jax.nn.initializers.zeros,
+                         param_dtype=global_defs.tReal)
 
         return jnp.sum(jnp.log(jnp.cosh(layer(2 * s - 1))))
 

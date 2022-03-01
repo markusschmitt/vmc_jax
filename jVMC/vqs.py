@@ -7,7 +7,7 @@ from jax import random
 from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 from jax.flatten_util import ravel_pytree
 import flax
-from flax import nn
+import flax.linen as nn
 from flax.core.frozen_dict import freeze
 import numpy as np
 

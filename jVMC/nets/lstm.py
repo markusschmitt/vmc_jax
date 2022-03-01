@@ -33,9 +33,11 @@ class LSTMCell(nn.Module):
     @nn.compact
     def __call__(self, carry, x):
 
-        newCarry, out = nn.LSTMCell(kernel_init=partial(flax.nn.linear.default_kernel_init, dtype=global_defs.tReal),
-                                    recurrent_kernel_init=partial(flax.nn.initializers.orthogonal(), dtype=global_defs.tReal),
-                                    bias_init=partial(flax.nn.initializers.zeros, dtype=global_defs.tReal))(carry, x)
+        newCarry, out = nn.LSTMCell(kernel_init=nn.linear.default_kernel_init,
+                                    recurrent_kernel_init=nn.initializers.orthogonal(),
+                                    bias_init=nn.initializers.zeros,
+                                    dtype=global_defs.tReal,
+                                    param_dtype=global_defs.tReal)(carry, x)
 
         out = self.actFun(nn.Dense(features=self.inputDim)(out))
 
