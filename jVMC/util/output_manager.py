@@ -133,11 +133,15 @@ class OutputManager:
 
         if mpi.rank == 0:
 
-            if time < 0:
-
+            if time > 0:
+                
                 with h5py.File(self.fn, "r") as f:
-                    weights = f[self.currentGroup + "/" + groupname + "/" + key][idx]
-                    time = f[self.currentGroup + "/" + groupname + "/times"][idx]
+                    times = np.array(f[self.currentGroup + "/" + groupname + "/times"])
+                idx = np.argmin(np.abs(times-time))
+
+            with h5py.File(self.fn, "r") as f:
+                weights = f[self.currentGroup + "/" + groupname + "/" + key][idx]
+            time = times[idx]
 
             mpi.comm.bcast(time)
 
