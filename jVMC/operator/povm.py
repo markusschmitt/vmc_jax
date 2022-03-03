@@ -296,7 +296,7 @@ class POVMOperator(Operator):
         self.ops.append(opDescr)
         self.compiled = False
 
-    def _get_s_primes(self, s, stateCouplings, matEls, siteCouplings):
+    def _get_s_primes(self, s, *args, stateCouplings, matEls, siteCouplings):
         def apply_on_singleSiteCoupling(s, stateCouplings, matEls, siteCoupling):
             stateIndices = tuple(s[siteCoupling])
             OffdConfig = jnp.vstack([s] * 16)

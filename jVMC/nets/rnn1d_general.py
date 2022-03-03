@@ -256,11 +256,6 @@ class RNN1DGeneralSym(nn.Module):
         if self.z2sym:
             res = 0.5 * (res + jnp.mean(jnp.exp((1. / logProbFactor) * jax.vmap(evaluate)(1 - x)), axis=0))
 
-        res = jnp.mean(jnp.exp((1. / self.logProbFactor) * jax.vmap(evaluate)(x)), axis=0)
-
-        if self.z2sym:
-            res = 0.5 * (res + jnp.mean(jnp.exp((1. / logProbFactor) * jax.vmap(evaluate)(1 - x)), axis=0))
-
         logProbs = self.logProbFactor * jnp.log(res)
 
         return logProbs
