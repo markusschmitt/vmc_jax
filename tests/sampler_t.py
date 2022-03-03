@@ -28,7 +28,7 @@ def state_to_int(s):
     return x
 
 
-class TestMCMC(unittest.TestCase):
+class TestMC(unittest.TestCase):
 
     def test_MCMC_sampling(self):
         L=4
@@ -75,7 +75,7 @@ class TestMCMC(unittest.TestCase):
         L=4
 
         # Set up variational wave function
-        rnn = nets.RNN( L=4, hiddenSize=5, depth=2 )
+        rnn = nets.RNN1DGeneral( L=4, hiddenSize=5, depth=2 )
         rbm = nets.RBM(numHidden=2,bias=False)
         
         psi = NQS((rnn, rbm))
@@ -92,7 +92,7 @@ class TestMCMC(unittest.TestCase):
         # Compute exact probabilities
         _, _, pex = exactSampler.sample()
 
-        numSamples=500000
+        numSamples=1000000
         smc,p,_=mcSampler.sample(numSamples=numSamples)
 
         self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
@@ -116,7 +116,7 @@ class TestMCMC(unittest.TestCase):
         orbit=LatticeSymmetry(jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)]))
 
         # Set up variational wave function
-        rnn = nets.RNNsym( orbit = orbit, L=L, hiddenSize=5 )
+        rnn = nets.RNN1DGeneralSym( orbit = orbit, L=L, hiddenSize=5, realValuedOutput=True )
         rbm = nets.RBM(numHidden=2,bias=False)
         
         psi = NQS((rnn, rbm))
@@ -154,7 +154,45 @@ class TestMCMC(unittest.TestCase):
         orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
 
         # Set up variational wave function
-        rnn = nets.LSTM( L=L, hiddenSize=5 )
+        rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True, inputDim=2)
+        rbm = nets.RBM(numHidden=2,bias=False)
+        
+        psi = NQS((rnn, rbm))
+       
+        # Set up exact sampler
+        exactSampler=sampler.ExactSampler(psi, L)
+        
+        # Set up MCMC sampler
+        mcSampler=sampler.MCSampler(psi, (L,), random.PRNGKey(0), numChains=777)
+        
+        # Compute exact probabilities
+        _, logPsi, pex = exactSampler.sample()
+
+        numSamples=1000000
+        smc,p,_=mcSampler.sample(numSamples=numSamples)
+
+        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
+    
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+       
+        self.assertTrue( smc.shape[0] >= numSamples )
+        
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+        pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
+
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
+    
+
+    def test_autoregressive_sampling_with_gru(self):
+
+        L=4
+
+        # Set up symmetry orbit
+        orbit=jnp.array([jnp.roll(jnp.identity(L,dtype=np.int32), l, axis=1) for l in range(L)])
+
+        # Set up variational wave function
+        rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, cell="GRU", realValuedParams=True, realValuedOutput=True, inputDim=2)
         rbm = nets.RBM(numHidden=2,bias=False)
         
         psi = NQS((rnn, rbm))
@@ -189,7 +227,8 @@ class TestMCMC(unittest.TestCase):
         L=2
 
         # Set up variational wave function
-        rnn = nets.RNN2D( L=L, hiddenSize=5 )
+        #rnn = nets.RNN2D( L=L, hiddenSize=5 )
+        rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="RNN", realValuedParams=True, realValuedOutput=True)
 
         psi = NQS((rnn,rnn))
         
@@ -218,6 +257,43 @@ class TestMCMC(unittest.TestCase):
         pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
 
         self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
+    
+
+    def test_autoregressive_sampling_with_lstm2d(self):
+
+        L=2
+
+        # Set up variational wave function
+        rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True)
+
+        psi = NQS((rnn,rnn))
+        
+        # Set up exact sampler
+        exactSampler=sampler.ExactSampler(psi, (L,L))
+        
+        # Set up MCMC sampler
+        mcSampler=sampler.MCSampler(psi, (L,L), random.PRNGKey(0), numChains=777)
+        
+        # Compute exact probabilities
+        _, logPsi, pex = exactSampler.sample()
+
+        self.assertTrue(jnp.abs(jnp.sum(pex)-1.) < 1e-12)
+
+        numSamples=1000000
+        smc,p,_=mcSampler.sample(numSamples=numSamples)
+
+        self.assertTrue( jnp.max( jnp.abs( jnp.real(psi(smc)-p)) ) < 1e-12 )
+    
+        smc = smc.reshape((smc.shape[0]*smc.shape[1], -1))
+       
+        self.assertTrue( smc.shape[0] >= numSamples )
+        
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+        pmc,_=np.histogram(smcInt, bins=np.arange(0,17))
+
+        self.assertTrue( jnp.max( jnp.abs( pmc/mcSampler.get_last_number_of_samples()-pex.reshape((-1,))[:16] ) ) < 1e-3 )
+
 
 if __name__ == "__main__":
     unittest.main()
