@@ -17,7 +17,8 @@ import jVMC
 L = 10
 g = -0.7
 
-GPU_avail = True
+# Check whether GPU is available
+GPU_avail = ( jax.lib.xla_bridge.get_backend().platform == "gpu" )
 # Initialize net
 if GPU_avail:
     # reproduces results in Fig. 3 of the paper
