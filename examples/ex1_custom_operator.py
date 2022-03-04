@@ -20,7 +20,7 @@ class SxOperator(jVMC.operator.Operator):
 
     def compile(self):
 
-        def get_s_primes(s, idx):
+        def get_s_primes(s, *args, idx):
 
             sp = s.copy()
 

@@ -6,4 +6,8 @@ from . import mpi_wrapper
 from . import vqs
 from . import sampler
 
+from .version import __version__
 from .global_defs import set_pmap_devices
+
+from jax.config import config
+config.update("jax_enable_x64", True)

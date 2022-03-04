@@ -88,7 +88,7 @@ class TestGradients(unittest.TestCase):
 
             global_defs.set_pmap_devices(ds)
 
-            model = nets.CpxRNN(L=3)
+            model = nets.RNN1DGeneral(L=3)
 
             s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
             s=s.at[...,0,1].set(1)

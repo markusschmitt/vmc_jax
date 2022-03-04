@@ -13,12 +13,13 @@ from functools import partial
 from typing import List, Sequence
 
 import jVMC.nets.initializers
+from jVMC.nets.initializers import init_fn_args
 
 
 class CNN(nn.Module):
     """ Convolutional neural network with real parameters.
 
-    Arguments:
+    Initialization arguments:
         * ``F``: Filter diameter
         * ``channels``: Number of channels
         * ``strides``: Number of pixels the filter shifts over
@@ -27,8 +28,6 @@ class CNN(nn.Module):
         * ``firstLayerBias``: Whether to use biases in the first layer
         * ``periodicBoundary``: Whether to use periodic boundary conditions
 
-    Returns:
-        Real wave-function amplitude
     """
 
     F: Sequence[int] = (8,)
@@ -63,6 +62,8 @@ class CNN(nn.Module):
         # List of axes that will be summed for symmetrization
         reduceDims = tuple([-i - 1 for i in range(len(self.strides) + 2)])
 
+        init_args = init_fn_args(dtype=global_defs.tReal, kernel_init=initFunction)
+
         # Add feature dimension
         x = jnp.expand_dims(jnp.expand_dims(2 * x - 1, axis=0), axis=-1)
         for c, fun, b in zip(self.channels, activationFunctions, bias):
@@ -73,8 +74,7 @@ class CNN(nn.Module):
 
             x = fun(nn.Conv(features=c, kernel_size=tuple(self.F),
                             strides=self.strides, padding=[(0, 0)] * len(self.strides),
-                            use_bias=b, dtype=global_defs.tReal, param_dtype=global_defs.tReal,
-                            kernel_init=initFunction)(x))
+                            use_bias=b, **init_args)(x))
 
         nrm = jnp.sqrt(jnp.prod(jnp.array(x.shape[reduceDims[-1]:])))
 
@@ -86,7 +86,7 @@ class CNN(nn.Module):
 class CpxCNN(nn.Module):
     """Convolutional neural network with complex parameters.
 
-    Arguments:
+    Initialization arguments:
         * ``F``: Filter diameter
         * ``channels``: Number of channels
         * ``strides``: Number of pixels the filter shifts over
@@ -95,8 +95,6 @@ class CpxCNN(nn.Module):
         * ``firstLayerBias``: Whether to use biases in the first layer
         * ``periodicBoundary``: Whether to use periodic boundary conditions
 
-    Returns:
-        Complex wave-function amplitude
     """
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)
@@ -128,6 +126,8 @@ class CpxCNN(nn.Module):
         activationFunctions = [f for f in self.actFun]
         for l in range(len(activationFunctions), len(self.channels)):
             activationFunctions.append(self.actFun[-1])
+        
+        init_args = init_fn_args(dtype=global_defs.tCpx, kernel_init=initFunction)
 
         # List of axes that will be summed for symmetrization
         reduceDims = tuple([-i - 1 for i in range(len(self.strides) + 2)])
@@ -141,8 +141,7 @@ class CpxCNN(nn.Module):
             #    x = jnp.pad(x, pads, 'constant', constant_values=0)
             x = f(nn.Conv(features=c, kernel_size=tuple(self.F),
                           strides=self.strides,
-                          use_bias=b, dtype=global_defs.tCpx,
-                          kernel_init=initFunction)(x))
+                          use_bias=b, **init_args)(x))
 
         # strides=self.strides, padding=[(0, 0)] * len(self.strides),
         nrm = jnp.sqrt(jnp.prod(jnp.array(x.shape[reduceDims[-1]:])))
@@ -157,7 +156,7 @@ class CpxCNNSym(nn.Module):
     Complex symmetric CNN.
     It uses the CpxCNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
 
-    Arguments:
+    Initialization arguments:
         * ``orbit``: orbits which define the symmetry operations (instance of ``util.symmetries.LatticeSymmetry``)
         * ``F``: Filter diameter
         * ``channels``: Number of channels
@@ -166,8 +165,6 @@ class CpxCNNSym(nn.Module):
         * ``bias``: Whether to use biases
         * ``firstLayerBias``: Whether to use biases in the first layer
 
-    Returns:
-        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     orbit: LatticeSymmetry
     F: Sequence[int] = (8,)

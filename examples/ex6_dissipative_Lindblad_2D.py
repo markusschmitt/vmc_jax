@@ -35,7 +35,11 @@ dim = "2D"
 
 # Initialize net
 sample_shape = (L, L)
-psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1": {"type": "RNN2Dsym", "parameters": {"inputDim": inputDim, "logProbFactor": logProbFactor, "hiddenSize": 5, "L": L, "depth": 2}}},
+psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1": {"type": "RNN2D",
+                                        "translation": True,
+                                        "parameters": {"inputDim": 4, "logProbFactor": 1, "hiddenSize": 5, "L": L, "depth": 2, "cell": "RNN",
+                                                       "realValuedOutput": True,
+                                                       "realValuedParams": True}}},
                               sample_shape, 1234)
 print(f"The variational ansatz has {psi.numParameters} parameters.")
 
@@ -50,12 +54,14 @@ for x in range(L):
         Lindbladian.add({"name": "X", "strength": 3, "sites": (xy_to_id(x, y, L),)})
         Lindbladian.add({"name": "dephasing", "strength": .5, "sites": (xy_to_id(x, y, L),)})
 
+# Set up initial state as product state
 prob_dist = jVMC.operator.povm.get_1_particle_distributions("z_up", Lindbladian.povm)
-biases = jnp.log(prob_dist)
+prob_dist /= prob_dist[0]
+biases = jnp.log(prob_dist[1:])
 params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
 
-params["params"]["rnn"]["outputDense"]["bias"] = biases
-params["params"]["rnn"]["outputDense"]["kernel"] = 1e-15 * params["params"]["rnn"]["outputDense"]["kernel"]
+params["params"]["outputDense"]["bias"] = biases
+params["params"]["outputDense"]["kernel"] = 1e-15 * params["params"]["outputDense"]["kernel"]
 params = jnp.concatenate([p.ravel()
                           for p in jax.tree_util.tree_flatten(params)[0]])
 psi.set_parameters(params)
