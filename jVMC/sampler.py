@@ -53,7 +53,8 @@ class MCSampler:
     Initializer arguments:
         * ``net``: Network defining the probability distribution.
         * ``sampleShape``: Shape of computational basis configurations.
-        * ``key``: An instance of ``jax.random.PRNGKey``.
+        * ``key``: An instance of ``jax.random.PRNGKey``. Alternatively, an ``int`` that will be used \
+                   as seed to initialize a ``PRNGKey``.
         * ``updateProposer``: A function to propose updates for the MCMC algorithm. \
         It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
         ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
@@ -70,21 +71,6 @@ class MCSampler:
                  numSamples=100, thermalizationSweeps=10, sweepSteps=10):
         """Initializes the MCSampler class.
 
-        Arguments:
-            * ``net``: Network defining the probability distribution.
-            * ``sampleShape``: Shape of computational basis configurations.
-            * ``key``: An instance of ``jax.random.PRNGKey``.
-            * ``updateProposer``: A function to propose updates for the MCMC algorithm. \
-            It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
-            ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
-            are optional additional arguments. The function is supposed to return a computational basis \
-            state that is used as update proposal in the MCMC algorithm.
-            * ``numChains``: Number of Markov chains, which are run in parallel.
-            * ``updateProposerArg``: An optional argument that will be passed to the ``updateProposer`` \
-            as ``kwargs``.
-            * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
-            * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
-            * ``sweepSteps``: Number of proposed updates per sweep.
         """
 
         self.sampleShape = sampleShape
@@ -102,7 +88,11 @@ class MCSampler:
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        self.key = jax.random.split(key, mpi.commSize)[mpi.rank]
+        if isinstance(key,jax.lib.xla_extension.DeviceArray):
+            self.key = key
+        else:
+            self.key = jax.random.PRNGKey(key)
+        self.key = jax.random.split(self.key, mpi.commSize)[mpi.rank]
         self.key = jax.random.split(self.key, global_defs.device_count())
         self.thermalizationSweeps = thermalizationSweeps
         self.sweepSteps = sweepSteps
