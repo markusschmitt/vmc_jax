@@ -3,6 +3,12 @@
 # jVMC
 This is an impementation of Variational Monte Carlo (VMC) for quantum many-body dynamics using the [JAX library](https://jax.readthedocs.io "JAX library") (and [Flax](https://flax.readthedocs.io "FLAX library") on top) to exploit the blessings of automatic differentiation for easy model composition and just-in-time compilation for execution on accelerators.
 
+1. [Documentation](#documentation)
+2. [Installation](#installation)
+3. [Online example](#online-example)
+4. [Important gotchas](#important-gotchas)
+5. [Citing jVMC](#citing-jvmc)
+
 ## Documentation
 
 Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Documentation").
@@ -54,6 +60,10 @@ Test that everything worked, e.g. run 'python -c "import jVMC"' from a place dif
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/markusschmitt/vmc_jax/blob/master/examples/ex0_ground_state_search.ipynb)
 
 Click on the badge above to open a notebook that implements an exemplary ground state search in Google Colab.
+
+## Important gotchas
+### Out-of-memory issues and batching
+Memory requirements grow with increasing network sizes. To avoid out-of-memory issues, the ``batchSize`` parameter of the ``NQS`` class has to be adjusted. The ``batchSize`` indicates on how many input configurations the network is evaluated concurrently. Out-of-memory issues are usually resolved by reducing this number. The ``numChains`` parameter of the ``Sampler`` class for Markov Chain Monte Carlo sampling plays a similar role, but its optimal values in terms of computational speed are typically not memory critical.
 
 ## Citing jVMC
 

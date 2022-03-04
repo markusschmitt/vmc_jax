@@ -13,14 +13,11 @@ from jVMC.nets.initializers import init_fn_args
 class FFN(nn.Module):
     """Feed forward network with real parameters.
 
-    Arguments:
-
+    Initialization arguments:
         * ``layers``: Computational basis configuration.
         * ``bias``: ``Boolean`` indicating whether to use bias.
         * ``actFun``: Non-linear activation function.
 
-    Returns:
-        Complex wave-function coefficient
     """
     layers: Sequence[int] = (10,)
     bias: bool = False

@@ -22,5 +22,8 @@ This module provides implementations of standard neural network architectures.
     .. autoclass:: FFN
         :no-inherited-members:
 
-    .. autoclass:: RNN
+    .. autoclass:: RNN1DGeneral
+        :no-inherited-members:
+    
+    .. autoclass:: RNN2DGeneral
         :no-inherited-members:

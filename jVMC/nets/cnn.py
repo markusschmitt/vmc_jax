@@ -19,7 +19,7 @@ from jVMC.nets.initializers import init_fn_args
 class CNN(nn.Module):
     """ Convolutional neural network with real parameters.
 
-    Arguments:
+    Initialization arguments:
         * ``F``: Filter diameter
         * ``channels``: Number of channels
         * ``strides``: Number of pixels the filter shifts over
@@ -28,8 +28,6 @@ class CNN(nn.Module):
         * ``firstLayerBias``: Whether to use biases in the first layer
         * ``periodicBoundary``: Whether to use periodic boundary conditions
 
-    Returns:
-        Real wave-function amplitude
     """
 
     F: Sequence[int] = (8,)
@@ -88,7 +86,7 @@ class CNN(nn.Module):
 class CpxCNN(nn.Module):
     """Convolutional neural network with complex parameters.
 
-    Arguments:
+    Initialization arguments:
         * ``F``: Filter diameter
         * ``channels``: Number of channels
         * ``strides``: Number of pixels the filter shifts over
@@ -97,8 +95,6 @@ class CpxCNN(nn.Module):
         * ``firstLayerBias``: Whether to use biases in the first layer
         * ``periodicBoundary``: Whether to use periodic boundary conditions
 
-    Returns:
-        Complex wave-function amplitude
     """
     F: Sequence[int] = (8,)
     channels: Sequence[int] = (10,)
@@ -160,7 +156,7 @@ class CpxCNNSym(nn.Module):
     Complex symmetric CNN.
     It uses the CpxCNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
 
-    Arguments:
+    Initialization arguments:
         * ``orbit``: orbits which define the symmetry operations (instance of ``util.symmetries.LatticeSymmetry``)
         * ``F``: Filter diameter
         * ``channels``: Number of channels
@@ -169,8 +165,6 @@ class CpxCNNSym(nn.Module):
         * ``bias``: Whether to use biases
         * ``firstLayerBias``: Whether to use biases in the first layer
 
-    Returns:
-        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     orbit: LatticeSymmetry
     F: Sequence[int] = (8,)

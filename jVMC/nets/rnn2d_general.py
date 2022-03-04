@@ -25,10 +25,12 @@ class RNNCellStack(nn.Module):
     """
     Implementation of a stack of RNN-cells which is scanned over an input sequence.
     This is achieved by stacking multiple 'vanilla' RNN-cells to obtain a deep RNN.
-    Arguments:
+
+    Initialization arguments:
         * ``hiddenSize``: size of the hidden state vector
         * ``actFun``: non-linear activation function
         * ``initScale``: factor by which the initial parameters are scaled
+
     Returns:
         New set of hidden states (one for each layer), as well as the last hidden state, that serves as input to the output layer
     """
@@ -56,9 +58,29 @@ class RNNCellStack(nn.Module):
 
 class RNN2DGeneral(nn.Module):
     """
-    Implementation of an RNN which consists of an RNNCellStack with an additional output layer.
-    This class defines how sequential input data is treated.
-    Arguments:
+    Implementation of a multi-layer RNN for one-dimensional data with arbitrary cell.
+    This implementation follows approximately the original proposal for RNN wave functions in
+    `Hibat-Allah et al., Phys. Rev. Research 2, 023358 (2020) <https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.2.023358>`_.
+
+    The ``cell`` parameter can be a string ("RNN", "LSTM", or "GRU") indicating a pre-implemented
+    cell. Alternatively, a custom cell can be passed in the form of a tuple containing a flax
+    module that implements the hidden state update rule and the initial value of the hidden state 
+    (i.e., the initial ``carry``).
+    The signature of the ``__call__`` function of the cell flax module has to be 
+    ``(carry, state) -> (new_carry, output)``.
+
+    This model can produce real positive or complex valued output. In either case the output is
+    normalized such that
+
+        :math:`\sum_s |RNN(s)|^{1/\kappa}=1`.
+
+    Here, :math:`\kappa` corresponds to the initialization parameter ``logProbFactor``. Thereby, the RNN
+    can represent both probability distributions and wave functions. Real or complex valued output is 
+    chosen through the parameter ``realValuedOutput``.
+
+    The RNN allows for autoregressive sampling through the ``sample`` member function.
+
+    Initialization arguments:
         * ``L``: length of the spin chain
         * ``hiddenSize``: size of the hidden state vector
         * ``depth``: number of RNN-cells in the RNNCellStack
@@ -66,8 +88,10 @@ class RNN2DGeneral(nn.Module):
         * ``actFun``: non-linear activation function
         * ``initScale``: factor by which the initial parameters are scaled
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
-    Returns:
-        logarithmic wave-function coefficient or POVM-probability
+        * ``realValuedOutput``: Boolean indicating whether the network output is a real or complex number.
+        * ``realValuedParams``: Boolean indicating whether the network parameters are real or complex parameters.
+        * ``cell``: String ("RNN", "LSTM", or "GRU") or custom definition indicating which type of cell to use for hidden state  transformations.
+
     """
 
     L: int = 10
@@ -244,12 +268,14 @@ class RNNCell(nn.Module):
     The RNNCell therefore receives two inputs, the hidden state (if it is in a deep part of the CellStack) or the
     input (if it is the first cell of the CellStack) aswell as the hidden state of the previous RNN-cell.
     Both inputs are mapped to obtain a new hidden state, which is what the RNNCell implements.
-    Arguments:
+
+    Initialization arguments:
         * ``hiddenSize``: size of the hidden state vector
         * ``actFun``: non-linear activation function
         * ``initScale``: factor by which the initial parameters are scaled
+
     Returns:
-        new hidden state
+        New hidden state
     """
 
     initFun: callable = jax.nn.initializers.variance_scaling(scale=0.1, mode="fan_avg", distribution="uniform")
@@ -288,7 +314,7 @@ class RNN2DGeneralSym(nn.Module):
     Implementation of an RNN which consists of an RNNCellStack with an additional output layer.
     It uses the RNN class to compute probabilities and averages the outputs over all symmetry-invariant configurations.
 
-    Arguments: 
+    Initialization arguments:
         * ``orbit``: collection of maps that define symmetries (instance of ``util.symmetries.LatticeSymmetry``)
         * ``L``: length of the spin chain
         * ``hiddenSize``: size of the hidden state vector
@@ -299,8 +325,6 @@ class RNN2DGeneralSym(nn.Module):
         * ``logProbFactor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
         * ``z2sym``: for pure states; implement Z2 symmetry
 
-    Returns:
-        Symmetry-averaged logarithmic wave-function coefficient or POVM-probability
     """
     orbit: LatticeSymmetry
     L: int = 10
