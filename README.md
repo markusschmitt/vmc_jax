@@ -9,6 +9,8 @@ This is an impementation of Variational Monte Carlo (VMC) for quantum many-body 
 4. [Important gotchas](#important-gotchas)
 5. [Citing jVMC](#citing-jvmc)
 
+Please report bugs as well as other issues or suggestions on our [issues page](https://github.com/markusschmitt/vmc_jax/issues).
+
 ## Documentation
 
 Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Documentation").
