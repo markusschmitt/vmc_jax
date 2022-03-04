@@ -71,7 +71,6 @@ class RNN2DGeneral(nn.Module):
     """
 
     L: int = 10
-    sample_shape: tuple = (10, 10)
     hiddenSize: int = 10
     depth: int = 1
     inputDim: int = 2

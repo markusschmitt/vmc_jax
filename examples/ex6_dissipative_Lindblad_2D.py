@@ -54,8 +54,9 @@ for x in range(L):
         Lindbladian.add({"name": "X", "strength": 3, "sites": (xy_to_id(x, y, L),)})
         Lindbladian.add({"name": "dephasing", "strength": .5, "sites": (xy_to_id(x, y, L),)})
 
+# Set up initial state as product state
 prob_dist = jVMC.operator.povm.get_1_particle_distributions("z_up", Lindbladian.povm)
-biases = jnp.log(prob_dist)
+prob_dist /= prob_dist[0]
 biases = jnp.log(prob_dist[1:])
 params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
 
