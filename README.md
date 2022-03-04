@@ -1,4 +1,5 @@
 [![Documentation Status](https://readthedocs.org/projects/jvmc/badge/?version=latest)](https://jvmc.readthedocs.io/en/latest/?badge=latest)
+[![PyPi version](https://badgen.net/pypi/v/jVMC/)](https://pypi.org/project/jVMC/)
 [![arXiv](https://img.shields.io/badge/arXiv-2108.03409-b31b1b.svg)](https://arxiv.org/abs/2108.03409)
 
 # jVMC
