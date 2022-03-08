@@ -37,13 +37,19 @@ class RNNCellStack(nn.Module):
 
     cells: list
     dtype: type = global_defs.tReal
-    initFun: callable = partial(jax.nn.initializers.variance_scaling(scale=0.1, mode="fan_avg", distribution="uniform"),
-                                dtype=global_defs.tReal)
+    initFun: callable = jax.nn.initializers.variance_scaling(scale=0.1, mode="fan_avg", distribution="uniform")
+    actFun: callable = nn.elu
 
     @nn.compact
     def __call__(self, carryH, carryV, xH, xV):
+
         newCarry = jnp.zeros_like(carryH, dtype=self.dtype)
+
         newR = jnp.concatenate([xH, xV])
+        newR = nn.Dense(features=carryH.shape[-1], use_bias=False,
+                        **init_fn_args(kernel_init=self.initFun, dtype=self.dtype), 
+                        name="data_in_dense")(newR)
+        newR = self.actFun(newR)
         
         for j, (cH, cV, cell) in enumerate(zip(carryH, carryV, self.cells)):
             #carry = jnp.concatenate([cH, cV], axis=-1)
@@ -131,7 +137,7 @@ class RNN2DGeneral(nn.Module):
             self.cells = self.cell[0]
             self.zero_carry = self.cell[1]
 
-        self.rnnCell = RNNCellStack(self.cells, dtype=self.dtype, initFun=self.initFunction)
+        self.rnnCell = RNNCellStack(self.cells, dtype=self.dtype, initFun=self.initFunction, actFun=self.actFun)
         self.outputDense = nn.Dense(features=(self.inputDim-1) * (2 - self.realValuedOutput),
                                     use_bias=True, 
                                     **init_fn_args(bias_init=jax.nn.initializers.zeros,
@@ -290,22 +296,18 @@ class RNNCell(nn.Module):
                               use_bias=False,
                               **init_fn_args(bias_init=jax.nn.initializers.zeros,
                                              kernel_init=self.initFun, 
-                                             dtype=self.dtype)
+                                             dtype=self.dtype),
+                              name="cell_carry_dense_H"
                              )
         cellCarryV = nn.Dense(features=carryV.shape[-1],
                               use_bias=False,
                               **init_fn_args(bias_init=jax.nn.initializers.zeros,
                                              kernel_init=self.initFun, 
-                                             dtype=self.dtype)
-                             )
-        cellState = nn.Dense(features=carryH.shape[-1],
-                             use_bias=False,
-                              **init_fn_args(bias_init=jax.nn.initializers.zeros,
-                                             kernel_init=self.initFun, 
-                                             dtype=self.dtype)
+                                             dtype=self.dtype),
+                              name="cell_carry_dense_V"
                              )
 
-        newCarry = self.actFun(cellCarryH(carryH[0]) + cellCarryV(carryV[0]) + cellState(state))[None, :]
+        newCarry = ( self.actFun(cellCarryH(carryH[0]) + cellCarryV(carryV[0])) + state )[None, :]
         return newCarry, newCarry[0]
 
 

@@ -36,7 +36,7 @@ class CpxRBM(nn.Module):
                                         dtype=global_defs.tCpx)
                          )
 
-        return jnp.sum(jnp.log(jnp.cosh(layer(2 * s.ravel() - 1))))
+        return jnp.sum(act_funs.log_cosh(layer(2 * s.ravel() - 1)))
 
 # ** end class CpxRBM
 
