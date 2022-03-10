@@ -554,7 +554,7 @@ class NQS:
                 self._sample_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(lambda p, n, x: net.apply(p, n, x, method=net.sample),
                                                                                    static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
 
-            samples = self._sample_jitd[numSamplesStr](params, numSamples, key)
+            samples = self._sample_jitd[numSamplesStr](params, int(numSamples), key)
 
             return samples
 

@@ -74,7 +74,7 @@ def jit_my_stuff():
         pmapDevices = global_defs.myPmapDevices
 
 
-def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1):
+def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1) -> int:
     """Distribute sampling tasks across processes and devices.
 
     For a desired total number of samples this function determines how many samples
@@ -111,7 +111,7 @@ def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1):
     numChainsPerProcess = localDevices * numChainsPerDevice
 
     def spc(spp):
-        return (spp + numChainsPerProcess - 1) // numChainsPerProcess
+        return int( (spp + numChainsPerProcess - 1) // numChainsPerProcess )
 
     a = numSamples % commSize
     globNumSamples = (a * spc(1 + numSamples // commSize) + (commSize - a) * spc(numSamples // commSize)) * numChainsPerProcess
