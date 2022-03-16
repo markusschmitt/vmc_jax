@@ -4,9 +4,11 @@ import jax.numpy as jnp
 import numpy as np
 
 import jVMC.global_defs as global_defs
+from mpi4py import MPI
 from . import Operator
 
 import functools
+import sys
 
 opDtype = global_defs.tCpx
 
@@ -107,6 +109,7 @@ def Sm(idx):
 
 import copy
 
+@jax.jit
 def _id_prefactor(*args, val=1.0, **kwargs):
     return val
 
@@ -192,10 +195,10 @@ class BranchFreeOperator(Operator):
             # check whether string contains prefactor
             k0=0
             if callable(op[0]):
-                self.prefactor.append(op[0])
+                self.prefactor.append((o, jax.jit(op[0])))
                 k0=1
-            else:
-                self.prefactor.append(_id_prefactor)
+            #else:
+            #    self.prefactor.append(_id_prefactor)
             isDiagonal = True
             for k in range(k0, k0+self.maxOpStrLength):
                 if k < len(op):
@@ -218,11 +221,30 @@ class BranchFreeOperator(Operator):
         self.matElsC = jnp.array(self.matEls, dtype=opDtype)
         self.diag = jnp.array(self.diag, dtype=np.int32)
 
-        def arg_fun(*args, prefactor):
-            return (jnp.array([f(*args) for f in prefactor], dtype=self.matElsC.dtype), )
+        def arg_fun(*args, prefactor, init):
+            N = len(prefactor)
+            if N<50:
+                res = init
+                for i,f in prefactor:
+                    res[i] = f(*args)
+            else:
+                # parallelize this, because jit compilation for each element can be slow
+                comm = MPI.COMM_WORLD
+                commSize = comm.Get_size()
+                rank = comm.Get_rank()
+                nEls = (N + commSize - 1) // commSize
+                myStart = nEls * rank
+                myEnd = min(myStart+nEls, N)
+                res = init[myStart:myEnd]
+                for i,f in prefactor[myStart:myEnd]:
+                    res[i-myStart] = f(*args)
+
+                res = np.concatenate(comm.allgather(res), axis=0)
+                
+            return (jnp.array(res), )
 
         return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, prefactor=self.prefactor),\
-                functools.partial(arg_fun, prefactor=self.prefactor)
+                functools.partial(arg_fun, prefactor=self.prefactor, init=np.ones(self.idxC.shape[0], dtype=self.matElsC.dtype))
 
     def _get_s_primes(self, s, *args, idxC, mapC, matElsC, diag, prefactor):
 
