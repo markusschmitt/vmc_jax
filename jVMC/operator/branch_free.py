@@ -218,32 +218,42 @@ class BranchFreeOperator(Operator):
         self.matElsC = jnp.array(self.matEls, dtype=opDtype)
         self.diag = jnp.array(self.diag, dtype=np.int32)
 
-        return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, prefactor=self.prefactor)
+        def arg_fun(*args, prefactor):
+            return (jnp.array([f(*args) for f in prefactor], dtype=self.matElsC.dtype), )
+
+        return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, prefactor=self.prefactor),\
+                functools.partial(arg_fun, prefactor=self.prefactor)
 
     def _get_s_primes(self, s, *args, idxC, mapC, matElsC, diag, prefactor):
 
         numOps = idxC.shape[0]
-        matEl = jnp.ones(numOps, dtype=matElsC.dtype)
+        #matEl = jnp.ones(numOps, dtype=matElsC.dtype)
+        matEl = args[0]
+        
         sp = jnp.array([s] * numOps)
 
-        def apply_fun(config, configMatEl, idx, sMap, matEls):
+        def apply_fun(c, x):
+            config, configMatEl = c
+            idx, sMap, matEls = x
 
             configShape = config.shape
             config = config.ravel()
             configMatEl = configMatEl * matEls[config[idx]]
             config = config.at[idx].set(sMap[config[idx]])
 
-            return config.reshape(configShape), configMatEl
+            return (config.reshape(configShape), configMatEl), None
 
-        def apply_multi(config, configMatEl, opIdx, opMap, opMatEls, prefactor):
+        #def apply_multi(config, configMatEl, opIdx, opMap, opMatEls, prefactor):
+        def apply_multi(config, configMatEl, opIdx, opMap, opMatEls):
 
-            for idx, mp, me in zip(opIdx, opMap, opMatEls):
-                config, configMatEl = apply_fun(config, configMatEl, idx, mp, me)
+            (config, configMatEl), _ = jax.lax.scan(apply_fun, (config, configMatEl), (opIdx, opMap, opMatEls))
 
-            return config, prefactor*configMatEl
+            #return config, prefactor*configMatEl
+            return config, configMatEl
 
         # vmap over operators
-        sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC, jnp.array([f(*args) for f in prefactor]))
+        #sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC, jnp.array([f(*args) for f in prefactor]))
+        sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC)
         if len(diag) > 1:
             matEl = matEl.at[diag[0]].set(jnp.sum(matEl[diag], axis=0))
             matEl = matEl.at[diag[1:]].set(jnp.zeros((diag.shape[0] - 1,), dtype=matElsC.dtype))

@@ -112,14 +112,25 @@ class Operator(metaclass=abc.ABCMeta):
 
         """
 
+        def id_fun(*args):
+            return args
+
         if (not self.compiled) or self.compiled_argnum!=len(args):
-            _get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
-            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(_get_s_primes, in_axes=(0,)+(None,)*len(args))
+            fun = self.compile()
+            if type(fun) is tuple:
+                self.arg_fun = fun[1]
+                fun = fun[0]
+            else:
+                self.arg_fun = id_fun
+            _get_s_primes = jax.vmap(fun, in_axes=(0,)+(None,)*len(self.arg_fun(*args)))
+            #_get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(_get_s_primes, in_axes=(0,)+(None,)*len(self.arg_fun(*args)))
             self.compiled = True
             self.compiled_argnum = len(args)
 
         # Compute matrix elements
-        self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)
+        #self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)
+        self.sp, self.matEl = self._get_s_primes_pmapd(s, *self.arg_fun(*args))
 
         # Get only non-zero contributions
         idx, self.numNonzero = self._find_nonzero_pmapd(self.matEl)
