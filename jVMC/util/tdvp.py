@@ -177,7 +177,7 @@ class TDVP:
         EOdata.block_until_ready()
         self.rhoVar = mpi.global_variance(EOdata)
 
-        self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples / (self.rhoVar / (jnp.conj(self.VtF) * self.VtF) - 1.)))
+        self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples * (jnp.conj(self.VtF) * self.VtF) / self.rhoVar))
 
     def solve(self, Eloc, gradients, p=None):
 
