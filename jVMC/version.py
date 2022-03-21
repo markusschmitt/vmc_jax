@@ -1,2 +1,2 @@
-"""Current Flax version at head on Github."""
-__version__ = "0.1.6"
+"""Current jVMC version at head on Github."""
+__version__ = "0.1.7"

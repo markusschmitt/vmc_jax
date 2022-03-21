@@ -28,7 +28,11 @@ class Operator(metaclass=abc.ABCMeta):
             A tuple ``sp, matEls``, where ``sp`` is the list of connected basis configurations \
             (as ``jax.numpy.array``) and ``matEls`` the corresponding matrix elements.
 
-    Important: Any child class inheriting from ``Operator`` has to call ``super().__init__()`` in \
+    Alternatively, ``compile()`` can return a tuple of two functions, the first as described above and
+    and the second a preprocessor for the additional positional arguments ``*args``. Assuming that ``compile()``
+    returns the tuple ``(f1, f2)``, ``f1`` will be called as ``f1(s, f2(*args))`` .
+
+    *Important:* Any child class inheriting from ``Operator`` has to call ``super().__init__()`` in \
     its constructor.
 
     **Example:**
@@ -169,6 +173,21 @@ class Operator(metaclass=abc.ABCMeta):
         return self._get_O_loc_pmapd(self.matEl, logPsiS, logPsiSP)
 
     def get_O_loc_batched(self, samples, psi, logPsiS, batchSize, *args):
+        """Compute :math:`O_{loc}(s)` in batches.
+
+        Computes :math:`O_{loc}(s)=\sum_{s'} O_{s,s'}\\frac{\psi(s')}{\psi(s)}` in a batch-wise manner
+        to avoid out-of-memory issues.
+
+        Arguments:
+            * ``samples``: Sample of computational basis configurations :math:`s`.
+            * ``psi``: Neural quantum state.
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+            * ``batchSize``: Batch size.
+            * ``*args``: Further positional arguments for the operator.
+
+        Returns:
+            :math:`O_{loc}(s)` for each configuration :math:`s`.
+        """
 
         Oloc = self._alloc_Oloc_pmapd(samples)
 
