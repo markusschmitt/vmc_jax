@@ -28,7 +28,11 @@ class Operator(metaclass=abc.ABCMeta):
             A tuple ``sp, matEls``, where ``sp`` is the list of connected basis configurations \
             (as ``jax.numpy.array``) and ``matEls`` the corresponding matrix elements.
 
-    Important: Any child class inheriting from ``Operator`` has to call ``super().__init__()`` in \
+    Alternatively, ``compile()`` can return a tuple of two functions, the first as described above and
+    and the second a preprocessor for the additional positional arguments ``*args``. Assuming that ``compile()``
+    returns the tuple ``(f1, f2)``, ``f1`` will be called as ``f1(s, f2(*args))`` .
+
+    *Important:* Any child class inheriting from ``Operator`` has to call ``super().__init__()`` in \
     its constructor.
 
     **Example:**
@@ -112,13 +116,27 @@ class Operator(metaclass=abc.ABCMeta):
 
         """
 
+        def id_fun(*args):
+            return args
+
         if (not self.compiled) or self.compiled_argnum!=len(args):
-            _get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
-            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(_get_s_primes, in_axes=(0,)+(None,)*len(args))
+            fun = self.compile()
             self.compiled = True
             self.compiled_argnum = len(args)
+            if type(fun) is tuple:
+                self.arg_fun = fun[1]
+                args = self.arg_fun(*args)
+                fun = fun[0]
+            else:
+                self.arg_fun = id_fun
+            _get_s_primes = jax.vmap(fun, in_axes=(0,)+(None,)*len(args))
+            #_get_s_primes = jax.vmap(self.compile(), in_axes=(0,)+(None,)*len(args))
+            self._get_s_primes_pmapd = global_defs.pmap_for_my_devices(_get_s_primes, in_axes=(0,)+(None,)*len(args))
+        else:
+            args = self.arg_fun(*args)
 
         # Compute matrix elements
+        #self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)
         self.sp, self.matEl = self._get_s_primes_pmapd(s, *args)
 
         # Get only non-zero contributions
@@ -155,6 +173,21 @@ class Operator(metaclass=abc.ABCMeta):
         return self._get_O_loc_pmapd(self.matEl, logPsiS, logPsiSP)
 
     def get_O_loc_batched(self, samples, psi, logPsiS, batchSize, *args):
+        """Compute :math:`O_{loc}(s)` in batches.
+
+        Computes :math:`O_{loc}(s)=\sum_{s'} O_{s,s'}\\frac{\psi(s')}{\psi(s)}` in a batch-wise manner
+        to avoid out-of-memory issues.
+
+        Arguments:
+            * ``samples``: Sample of computational basis configurations :math:`s`.
+            * ``psi``: Neural quantum state.
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+            * ``batchSize``: Batch size.
+            * ``*args``: Further positional arguments for the operator.
+
+        Returns:
+            :math:`O_{loc}(s)` for each configuration :math:`s`.
+        """
 
         Oloc = self._alloc_Oloc_pmapd(samples)
 
