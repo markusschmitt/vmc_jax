@@ -68,7 +68,7 @@ class MCSampler:
     """
 
     def __init__(self, net, sampleShape, key, updateProposer=None, numChains=1, updateProposerArg=None,
-                 numSamples=100, thermalizationSweeps=10, sweepSteps=10):
+                 numSamples=100, thermalizationSweeps=10, sweepSteps=10, initState=None):
         """Initializes the MCSampler class.
 
         """
@@ -80,7 +80,9 @@ class MCSampler:
             raise RuntimeError("Instantiation of MCSampler: `updateProposer` is `None` and cannot be used for MCMC sampling.")
 
         stateShape = (global_defs.device_count(), numChains) + sampleShape
-        self.states = jnp.zeros(stateShape, dtype=np.int32)
+        if initState is None:
+            initState = jnp.zeros(sampleShape, dtype=np.int32)
+        self.states = jnp.stack([initState] * (global_defs.device_count()*numChains), axis=0).reshape(stateShape)
 
         # Make sure that net is initialized
         self.net(self.states)
