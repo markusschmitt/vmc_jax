@@ -142,7 +142,8 @@ class TestEvaluation(unittest.TestCase):
             
             psiC = NQS(rbmModel)
             cpxCoeffs = psiC(s)
-            realCoeffs = psiC.real_coefficients(s)
+            f,p = psiC.get_sampler_net()
+            realCoeffs = global_defs.pmap_for_my_devices(lambda x: jax.vmap(lambda y: f(p,y))(x))(s)
             
             self.assertTrue( jnp.linalg.norm(jnp.real(cpxCoeffs) - realCoeffs) < 1e-6 )
 

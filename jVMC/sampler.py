@@ -196,7 +196,7 @@ class MCSampler:
             params = netParams
 
         # Initialize sampling stuff
-        self._mc_init(self.net)
+        self._mc_init(netParams)
 
         numSamples = mpi.distribute_sampling(numSamples, localDevices=global_defs.device_count(), numChainsPerDevice=np.lcm(self.numChains, multipleOf))
         numSamplesStr = str(numSamples)
@@ -247,11 +247,9 @@ class MCSampler:
             newKeys = random.split(carry[2], carry[0].shape[0] + 1)
             carryKey = newKeys[-1]
             newStates = vmap(updateProposer, in_axes=(0, 0, None))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
-            #newStates = carry[0]
 
             # Compute acceptance probabilities
-            #newLogPsiSq = jax.vmap(lambda x,y: 2.*jnp.real(x(y)), in_axes=(None,0))(net,newStates)
-            newLogPsiSq = jax.vmap(lambda y: 2. * jnp.real(net.apply(params, y)), in_axes=(0,))(newStates)
+            newLogPsiSq = jax.vmap(lambda y: 2. * jnp.real(net(params, y)), in_axes=(0,))(newStates)
             P = jnp.exp(newLogPsiSq - carry[1])
 
             # Roll dice
@@ -276,10 +274,14 @@ class MCSampler:
 
         return states, logPsiSq, key, numProposed, numAccepted
 
-    def _mc_init(self, net):
+    def _mc_init(self, netParams):
 
         # Initialize logPsiSq
-        self.logPsiSq = 2. * net.real_coefficients(self.states)
+        #self.logPsiSq = 2. * net.real_coefficients(self.states)
+        net, _ = self.net.get_sampler_net()
+        self.logPsiSq = global_defs.pmap_for_my_devices(
+                                    lambda x: jax.vmap(lambda y: 2. * jnp.real(net(netParams, y)), in_axes=(0,))(x)
+                                )(self.states)
 
         shape = (global_defs.device_count(),) + (1,)
 
