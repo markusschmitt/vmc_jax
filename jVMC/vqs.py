@@ -8,7 +8,7 @@ from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 from jax.flatten_util import ravel_pytree
 import flax
 import flax.linen as nn
-from flax.core.frozen_dict import freeze
+from flax.core.frozen_dict import freeze, unfreeze
 import numpy as np
 
 import jVMC
@@ -46,33 +46,33 @@ def create_batches(configs, b):
     return jnp.pad(configs, pads).reshape((-1, b) + configs.shape[1:])
 
 def flat_gradient(fun, params, arg):
-    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
     gr = tree_flatten(tree_map(lambda x: x.ravel(), gr))[0]
-    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)
+    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)["params"]
     gi = tree_flatten(tree_map(lambda x: x.ravel(), gi))[0]
     return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
 
 
 def flat_gradient_real(fun, params, arg):
-    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
     g = tree_flatten(tree_map(lambda x: x.ravel(), g))[0]
     return jnp.concatenate(g)
 
 def flat_gradient_holo(fun, params, arg):
-    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
     g = tree_flatten(tree_map(lambda x: [x.ravel(), 1.j*x.ravel()], g))[0]
     return jnp.concatenate(g)
 
 def dict_gradient(fun, params, arg):
-    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
     gr = tree_map(lambda x: x.ravel(), gr)
-    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)
+    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)["params"]
     gi = tree_map(lambda x: x.ravel(), gi)
     return tree_map(lambda x,y: x + 1.j*y, gr, gi)
 
 
 def dict_gradient_real(fun, params, arg):
-    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)
+    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
     g = tree_map(lambda x: x.ravel(), g)
     return g
 
@@ -151,12 +151,9 @@ class NQS:
 
         # Need to keep handles of jit'd functions to avoid recompilation
         self._eval_net_pmapd = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
-        #self.evalJitdReal = global_defs.pmap_for_my_devices(self._eval_real, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
-        self._get_gradients_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
-        self._get_gradients_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
+        self._get_gradients_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
         self._append_gradients = global_defs.pmap_for_my_devices(lambda x, y: jnp.concatenate((x[:, :], 1.j * y[:, :]), axis=1), in_axes=(0, 0))
-        self._get_gradients_dict_net1_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
-        self._get_gradients_dict_net2_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
+        self._get_gradients_dict_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
         self._append_gradients_dict = global_defs.pmap_for_my_devices(lambda x, y: tree_map(lambda a,b: jnp.concatenate((a[:, :], 1.j * b[:, :]), axis=1), x, y), in_axes=(0, 0))
         self._sample_jitd = {}
 
@@ -172,8 +169,8 @@ class NQS:
             # check Cauchy-Riemann condition to test for holomorphicity
             def make_flat(t):
                 return jnp.concatenate([p.ravel() for p in tree_flatten(t)[0]])
-            grads_r = make_flat( jax.grad(lambda a,b: jnp.real(self.net.apply(a,b)))(self.parameters, s[0,0,...]) )
-            grads_i = make_flat( jax.grad(lambda a,b: jnp.imag(self.net.apply(a,b)))(self.parameters, s[0,0,...]) )
+            grads_r = make_flat( jax.grad(lambda a,b: jnp.real(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
+            grads_i = make_flat( jax.grad(lambda a,b: jnp.imag(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
             if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i), 0.0):
                 self.holomorphic = True
                 self.flat_gradient_function = flat_gradient_holo
@@ -181,9 +178,9 @@ class NQS:
                 self.flat_gradient_function = flat_gradient
                 self.dict_gradient_function = dict_gradient
 
-            self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters)[0]]
-            self.netTreeDef = jax.tree_util.tree_structure(self.parameters)
-            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters)[0]]))
+            self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters["params"])[0]]
+            self.netTreeDef = jax.tree_util.tree_structure(self.parameters["params"])
+            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters["params"])[0]]))
 
             self.initialized = True
 
@@ -249,7 +246,7 @@ class NQS:
         
         self.init_net(s)
 
-        return self._get_gradients_net1_pmapd(self.net, self.parameters, s, self.batchSize, self.flat_gradient_function)
+        return self._get_gradients_pmapd(self.net, self.parameters, s, self.batchSize, self.flat_gradient_function)
 
     # **  end def gradients
 
@@ -268,7 +265,7 @@ class NQS:
         
         self.init_net(s)
 
-        gradOut = self._get_gradients_dict_net1_pmapd(self.net, self.parameters, s, self.batchSize, self.dict_gradient_function)
+        gradOut = self._get_gradients_dict_pmapd(self.net, self.parameters, s, self.batchSize, self.dict_gradient_function)
 
         if self.holomorphic:
             return self._append_gradients_dict(gradOut, gradOut)
@@ -355,12 +352,12 @@ class NQS:
 
         # Compute new parameters
         newParams = jax.tree_util.tree_multimap(
-            jax.lax.add, self.parameters,
+            jax.lax.add, self.params,
             self._param_unflatten(deltaP)
         )
 
         # Update model parameters
-        self.parameters = newParams
+        self.params = newParams
 
     # **  end def update_parameters
 
@@ -376,7 +373,7 @@ class NQS:
             raise RuntimeError("Error in NQS.set_parameters(): Network not initialized. Evaluate net on example input for initialization.")
 
         # Update model parameters
-        self.parameters = self._param_unflatten(P)
+        self.params = self._param_unflatten(P)
 
     # **  end def set_parameters
 
@@ -412,9 +409,9 @@ class NQS:
 
 
         if self.holomorphic:
-            paramOut = jnp.concatenate([jnp.concatenate([p.ravel().real, p.ravel().imag]) for p in tree_flatten(self.parameters)[0]])
+            paramOut = jnp.concatenate([jnp.concatenate([p.ravel().real, p.ravel().imag]) for p in tree_flatten(self.params)[0]])
         else:
-            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.parameters)[0]])
+            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.params)[0]])
 
         return paramOut
 
@@ -423,3 +420,18 @@ class NQS:
     @property
     def is_generator(self):
         return self._isGenerator
+
+    @property
+    def params(self):
+        if self.initialized:
+            return self.parameters["params"]
+        return None
+
+    @params.setter
+    def params(self, val):
+        # Replace 'params' in parameters by `val`
+        self.parameters = freeze({
+                                **unfreeze(self.parameters.pop("params")[0]),
+                                "params": unfreeze(val)
+                                })
+

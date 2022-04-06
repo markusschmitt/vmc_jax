@@ -121,7 +121,7 @@ class TestGradients(unittest.TestCase):
         psi(s)
 
         g1 = psi.gradients(s)
-        g2 = psi.gradients_dict(s)["params"]["Dense_0"]["kernel"]
+        g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]
 
         self.assertTrue(isclose(jnp.linalg.norm(g1-g2),0.0))
 
