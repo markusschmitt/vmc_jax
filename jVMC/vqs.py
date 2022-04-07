@@ -38,12 +38,37 @@ class TwoNets(nn.Module):
     def eval_real(self, s):
         return self.net[0](s)
 
+
 def create_batches(configs, b):
 
     append = b * ((configs.shape[0] + b - 1) // b) - configs.shape[0]
     pads = [(0, append), ] + [(0, 0)] * (len(configs.shape) - 1)
 
     return jnp.pad(configs, pads).reshape((-1, b) + configs.shape[1:])
+
+
+def eval_batched(batchSize, fun, s):
+
+    sb = create_batches(s, batchSize)
+
+    def scan_fun(c, x):
+        return c, jax.vmap(lambda y: fun(y), in_axes=(0,))(x)
+
+    res = jax.lax.scan(scan_fun, None, jnp.array(sb))[1].reshape((-1,))
+
+    return res[:s.shape[0]]
+
+
+#def eval_batched(_func=None, *, batchSize=1000):
+#
+#    def decorator_eval_batched(func):
+#
+#
+#    if _func is None:
+#        return decorator_eval_batched
+#    else:
+#        return decorator_eval_batched(_func)
+
 
 def flat_gradient(fun, params, arg):
     gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
