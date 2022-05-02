@@ -37,7 +37,6 @@ def init_net(descr, dims, seed=0):
         "RBM": jVMC.nets.RBM,
         "FFN": jVMC.nets.FFN,
         "CNN": jVMC.nets.CNN,
-        "CpxRNN": jVMC.nets.CpxRNN,
         "RNN": jVMC.nets.RNN1DGeneral,
         "RNN2D": jVMC.nets.RNN2DGeneral,
         "RNNsym": jVMC.nets.RNN1DGeneralSym,
