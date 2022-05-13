@@ -121,7 +121,7 @@ class TestGradients(unittest.TestCase):
         psi(s)
 
         g1 = psi.gradients(s)
-        g2 = psi.gradients_dict(s)["params"]["Dense_0"]["kernel"]
+        g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]
 
         self.assertTrue(isclose(jnp.linalg.norm(g1-g2),0.0))
 
@@ -142,7 +142,8 @@ class TestEvaluation(unittest.TestCase):
             
             psiC = NQS(rbmModel)
             cpxCoeffs = psiC(s)
-            realCoeffs = psiC.real_coefficients(s)
+            f,p = psiC.get_sampler_net()
+            realCoeffs = global_defs.pmap_for_my_devices(lambda x: jax.vmap(lambda y: f(p,y))(x))(s)
             
             self.assertTrue( jnp.linalg.norm(jnp.real(cpxCoeffs) - realCoeffs) < 1e-6 )
 
