@@ -12,7 +12,7 @@ def init_fn_args(dtype=None, **kwargs):
     init_args = {}
     if dtype is not None:
         init_args["dtype"] = dtype
-    if flax.__version__ == "0.4.0":
+    if flax.__version__ >= "0.4.0":
         init_args["param_dtype"] = dtype
         for k in kwargs.keys():
             if k[-4:] == "init":

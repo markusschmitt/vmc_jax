@@ -46,10 +46,10 @@ class TestGsSearch(unittest.TestCase):
             tdvpEquation = jVMC.util.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
 
             # Perform ground state search to get initial state
-            ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=2e-2)
+            ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=5e-2)
                 
             obs = measure({"energy":hamiltonianGS}, psi, exactSampler)
-            
+           
             self.assertTrue( jnp.max( jnp.abs( ( obs['energy']['mean'] - exE ) / exE) ) < 1e-3 )
 
 
