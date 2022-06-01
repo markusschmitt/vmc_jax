@@ -54,7 +54,7 @@ for l in range(L):
 prob_dist = jVMC.operator.povm.get_1_particle_distributions("y_up", Lindbladian.povm)
 prob_dist /= prob_dist[0]
 biases = jnp.log(prob_dist[1:])
-params = copy_dict(psi._param_unflatten_cpx(psi.get_parameters()))
+params = copy_dict(psi._param_unflatten(psi.get_parameters()))
 
 params["params"]["outputDense"]["bias"] = biases
 params["params"]["outputDense"]["kernel"] = 1e-15 * params["params"]["outputDense"]["kernel"]
