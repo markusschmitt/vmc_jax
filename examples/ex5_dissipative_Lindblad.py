@@ -56,8 +56,8 @@ prob_dist /= prob_dist[0]
 biases = jnp.log(prob_dist[1:])
 params = copy_dict(psi._param_unflatten(psi.get_parameters()))
 
-params["params"]["outputDense"]["bias"] = biases
-params["params"]["outputDense"]["kernel"] = 1e-15 * params["params"]["outputDense"]["kernel"]
+params["outputDense"]["bias"] = biases
+params["outputDense"]["kernel"] = 1e-15 * params["outputDense"]["kernel"]
 params = jnp.concatenate([p.ravel()
                           for p in jax.tree_util.tree_flatten(params)[0]])
 psi.set_parameters(params)
