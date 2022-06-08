@@ -83,7 +83,7 @@ def get_1_particle_distributions(state, povm):
     else:
         raise ValueError("The desired state is not recognized.")
     for (idx, ele) in enumerate(M):
-        probs = jax.ops.index_add(probs, jax.ops.index[idx], jnp.real(jnp.dot(jnp.conj(jnp.transpose(s)), jnp.dot(ele, s))))
+        probs = probs.at[idx].set(jnp.real(jnp.dot(jnp.conj(jnp.transpose(s)), jnp.dot(ele, s))))
     return probs
 
 
