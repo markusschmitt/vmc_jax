@@ -136,6 +136,46 @@ def get_M(theta, phi, name):
     return M
 
 
+def matrix_to_povm(A, M, T_inv, mode='unitary'):
+    """Get operator from a matrix representation in POVM-formalism for the Lindblad equation or an observable.
+
+
+    In unitary mode this function implements
+        :math:`\Omega^{ab} = -i\left(A_{ij} T^{-1 bc} M_{jk}^c M_{ki}^a - A_{ij} M_{jk}^a T^{-1 bc} M_{ki}^c\right)`
+    in dissipative mode
+        :math:`\Omega^{ab} = A_{ij} T^{-1 bc} M_{jk}^c A^\dagger_{kl} M_{li}^a
+                            - 1/2 \left(A^\dagger_{ij} A_{jk} T^{-1 bc} M_{kl}^c M_{li}^a
+                                       + A^\dagger_{ij} A_{jk} M_{kl}^a T^{-1 bc} M_{li}^c \right)`
+    and in observable mode
+        :math:`O^a = T^{-1 ab} M_{ij}^b A_{ji}`
+
+
+    Args:
+        * ``A``: Matrix representation of desired operator
+        * ``M``: POVM-Measurement operators
+        * ``T_inv``: Inverse POVM-Overlap matrix
+        * ``mode``: String specifying the conversion mode. Possible values are 'unitary' ('uni'), 'dissipative' ('dis')
+                    and 'observable' ('obs')
+
+    Returns:
+        jax.numpy.ndarray
+    """
+    if mode in ['unitary', 'uni']:
+        return jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', A, T_inv, M, M)
+                                  + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', A, M, T_inv, M)),
+                         dtype=opDtype)
+    elif mode in ['dissipative', 'dis']:
+        return jnp.array(jnp.real(jnp.einsum('ij, bc, cjk, kl, ali -> ab', A, T_inv, M, jnp.conj(A).T, M)
+                                  - 0.5 * jnp.einsum('ij, jk, bc, ckl, ali -> ab', jnp.conj(A).T, A, T_inv, M, M)
+                                  - 0.5 * jnp.einsum('ij, jk, akl, bc, cli -> ab', jnp.conj(A).T, A, M, T_inv, M)),
+                         dtype=opDtype)
+    elif mode in ['observable', 'obs']:
+        return jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, A)), dtype=opDtype)
+    else:
+        raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis') "
+                         "and 'observable' ('obs').")
+
+
 def get_dissipators(M, T_inv):
     """Get the dissipation operators in the POVM-formalism.
 
@@ -152,9 +192,7 @@ def get_dissipators(M, T_inv):
     dissipators_POVM = {}
 
     for key, value in dissipators_DM.items():
-        dissipators_POVM[key] = jnp.array(jnp.real(jnp.einsum('ij, bc, cjk, kl, ali -> ab', value, T_inv, M, jnp.conj(value).T, M)
-                                                   - 0.5 * jnp.einsum('ij, jk, bc, ckl, ali -> ab', jnp.conj(value).T, value, T_inv, M, M)
-                                                   - 0.5 * jnp.einsum('ij, jk, akl, bc, cli -> ab', jnp.conj(value).T, value, M, T_inv, M)), dtype=opDtype)
+        dissipators_POVM[key] = matrix_to_povm(value, M, T_inv, mode='dissipative')
     return dissipators_POVM
 
 
@@ -178,11 +216,9 @@ def get_unitaries(M, T_inv):
 
     for key, value in unitaries_DM.items():
         if len(key) == 1:
-            unitaries_POVM[key] = jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', value, T_inv, M, M)
-                                                     + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', value, M, T_inv, M)), dtype=opDtype)
+            unitaries_POVM[key] = matrix_to_povm(value, M, T_inv, mode='unitary')
         else:
-            unitaries_POVM[key] = jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', value, T_inv_2Body, M_2Body, M_2Body)
-                                                     + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', value, M_2Body, T_inv_2Body, M_2Body)), dtype=opDtype)
+            unitaries_POVM[key] = matrix_to_povm(value, M_2Body, T_inv_2Body, mode='unitary')
     return unitaries_POVM
 
 
@@ -200,7 +236,7 @@ def get_observables(M, T_inv):
     observables_DM = {"X": sigmas[0], "Y": sigmas[1], "Z": sigmas[2]}
     observables_POVM = {}
     for key, value in observables_DM.items():
-        observables_POVM[key] = jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, value)), dtype=opDtype)
+        observables_POVM[key] = matrix_to_povm(value, M, T_inv, mode='observable')
     return observables_POVM
 
 
