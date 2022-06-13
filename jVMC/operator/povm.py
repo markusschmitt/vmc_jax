@@ -141,14 +141,12 @@ def matrix_to_povm(A, M, T_inv, mode='unitary'):
 
 
     In unitary mode this function implements
-        :math:`\Omega^{ab} = -i\left(A_{ij} T^{-1 bc} M_{jk}^c M_{ki}^a - A_{ij} M_{jk}^a T^{-1 bc} M_{ki}^c\right)`
+        :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`
     in dissipative mode
-        :math:`\Omega^{ab} = A_{ij} T^{-1 bc} M_{jk}^c A^\dagger_{kl} M_{li}^a
-                            - 1/2 \left(A^\dagger_{ij} A_{jk} T^{-1 bc} M_{kl}^c M_{li}^a
-                                       + A^\dagger_{ij} A_{jk} M_{kl}^a T^{-1 bc} M_{li}^c \right)`
+        :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`
     and in observable mode
-        :math:`O^a = T^{-1 ab} M_{ij}^b A_{ji}`
-
+        :math:`O^a = T^{-1 ab} \mathrm{Tr}(M^b A)`
+    where the Einstein sum convention is assumed.
 
     Args:
         * ``A``: Matrix representation of desired operator
