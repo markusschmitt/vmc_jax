@@ -1,5 +1,6 @@
 numpy
-jax
-jaxlib
-flax
+jax<=0.3.13
+jaxlib<=0.3.10
+flax<=0.5.1
 h5py
+pyyaml

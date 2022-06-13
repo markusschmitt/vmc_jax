@@ -376,7 +376,7 @@ class NQS:
             self.set_parameters(deltaP)
 
         # Compute new parameters
-        newParams = jax.tree_util.tree_multimap(
+        newParams = jax.tree_util.tree_map(
             jax.lax.add, self.params,
             self._param_unflatten(deltaP)
         )
