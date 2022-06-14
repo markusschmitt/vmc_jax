@@ -136,6 +136,43 @@ def get_M(theta, phi, name):
     return M
 
 
+def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
+    """Get operator from a matrix representation in POVM-formalism for the Lindblad equation or an observable.
+
+
+    In unitary mode this function implements
+        :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`
+    in dissipative mode
+        :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`
+    and in observable mode
+        :math:`O^a = T^{-1 ab} \mathrm{Tr}(M^b A)`
+    where the Einstein sum convention is assumed.
+
+    Args:
+        * ``A``: Matrix representation of desired operator
+        * ``M``: POVM-Measurement operators
+        * ``T_inv``: Inverse POVM-Overlap matrix
+        * ``mode``: String specifying the conversion mode. Possible values are 'unitary' ('uni'), 'dissipative' ('dis')
+                    and 'observable' ('obs')
+
+    Returns:
+        jax.numpy.ndarray
+    """
+    if mode in ['unitary', 'uni']:
+        return jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', A, T_inv, M, M)
+                                  + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', A, M, T_inv, M)), dtype=dtype)
+    elif mode in ['dissipative', 'dis']:
+        return jnp.array(jnp.real(jnp.einsum('ij, bc, cjk, kl, ali -> ab', A, T_inv, M, jnp.conj(A).T, M)
+                                  - 0.5 * jnp.einsum('ij, jk, bc, ckl, ali -> ab', jnp.conj(A).T, A, T_inv, M, M)
+                                  - 0.5 * jnp.einsum('ij, jk, akl, bc, cli -> ab', jnp.conj(A).T, A, M, T_inv, M)),
+                         dtype=dtype)
+    elif mode in ['observable', 'obs']:
+        return jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, A)), dtype=dtype)
+    else:
+        raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis') "
+                         "and 'observable' ('obs').")
+
+
 def get_dissipators(M, T_inv):
     """Get the dissipation operators in the POVM-formalism.
 
@@ -152,9 +189,7 @@ def get_dissipators(M, T_inv):
     dissipators_POVM = {}
 
     for key, value in dissipators_DM.items():
-        dissipators_POVM[key] = jnp.array(jnp.real(jnp.einsum('ij, bc, cjk, kl, ali -> ab', value, T_inv, M, jnp.conj(value).T, M)
-                                                   - 0.5 * jnp.einsum('ij, jk, bc, ckl, ali -> ab', jnp.conj(value).T, value, T_inv, M, M)
-                                                   - 0.5 * jnp.einsum('ij, jk, akl, bc, cli -> ab', jnp.conj(value).T, value, M, T_inv, M)), dtype=opDtype)
+        dissipators_POVM[key] = matrix_to_povm(value, M, T_inv, mode='dissipative')
     return dissipators_POVM
 
 
@@ -178,11 +213,9 @@ def get_unitaries(M, T_inv):
 
     for key, value in unitaries_DM.items():
         if len(key) == 1:
-            unitaries_POVM[key] = jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', value, T_inv, M, M)
-                                                     + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', value, M, T_inv, M)), dtype=opDtype)
+            unitaries_POVM[key] = matrix_to_povm(value, M, T_inv, mode='unitary')
         else:
-            unitaries_POVM[key] = jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', value, T_inv_2Body, M_2Body, M_2Body)
-                                                     + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', value, M_2Body, T_inv_2Body, M_2Body)), dtype=opDtype)
+            unitaries_POVM[key] = matrix_to_povm(value, M_2Body, T_inv_2Body, mode='unitary')
     return unitaries_POVM
 
 
@@ -200,7 +233,7 @@ def get_observables(M, T_inv):
     observables_DM = {"X": sigmas[0], "Y": sigmas[1], "Z": sigmas[2]}
     observables_POVM = {}
     for key, value in observables_DM.items():
-        observables_POVM[key] = jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, value)), dtype=opDtype)
+        observables_POVM[key] = matrix_to_povm(value, M, T_inv, mode='observable')
     return observables_POVM
 
 
@@ -239,8 +272,33 @@ class POVM():
         self.T_inv = jnp.linalg.inv(self.T)
         self.dissipators = get_dissipators(self.M, self.T_inv)
         self.unitaries = get_unitaries(self.M, self.T_inv)
-        self.operators = {**self.unitaries, **self.dissipators}
+        self._update_operators()  # This creates self.operators
         self.observables = get_observables(self.M, self.T_inv)
+
+    def _update_operators(self):
+        self.operators = {**self.unitaries, **self.dissipators}
+
+    def _check_name_availabilty(self, name):
+        """
+        Raises ValueError if ``name`` is already used by a unitary or dissipator.
+        """
+        if name in self.unitaries.keys():
+            raise ValueError("There already exists a unitary with name " + name + "!")
+        if name in self.dissipators.keys():
+            raise ValueError("There already exists a dissipator with name " + name + "!")
+        if name in self.operators.keys():
+            raise ValueError("There already exists an operator with name " + name + ", that has not been added"
+                                                                                    " using the appropriate methods!")
+
+    def add_unitary(self, name, omega):
+        self._check_name_availabilty(name)
+        self.unitaries[name] = omega
+        self._update_operators()
+
+    def add_dissipator(self, name, omega):
+        self._check_name_availabilty(name)
+        self.dissipators[name] = omega
+        self._update_operators()
 
     #@partial(jax.vmap, in_axes=(None, None, 0))
     @functools.partial(jax.vmap, in_axes=(None, None, 0))
