@@ -136,7 +136,7 @@ def get_M(theta, phi, name):
     return M
 
 
-def matrix_to_povm(A, M, T_inv, mode='unitary'):
+def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
     """Get operator from a matrix representation in POVM-formalism for the Lindblad equation or an observable.
 
 
@@ -160,15 +160,14 @@ def matrix_to_povm(A, M, T_inv, mode='unitary'):
     """
     if mode in ['unitary', 'uni']:
         return jnp.array(jnp.real(- 1.j * jnp.einsum('ij, bc, cjk, aki -> ab', A, T_inv, M, M)
-                                  + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', A, M, T_inv, M)),
-                         dtype=opDtype)
+                                  + 1.j * jnp.einsum('ij, ajk, bc, cki -> ab', A, M, T_inv, M)), dtype=dtype)
     elif mode in ['dissipative', 'dis']:
         return jnp.array(jnp.real(jnp.einsum('ij, bc, cjk, kl, ali -> ab', A, T_inv, M, jnp.conj(A).T, M)
                                   - 0.5 * jnp.einsum('ij, jk, bc, ckl, ali -> ab', jnp.conj(A).T, A, T_inv, M, M)
                                   - 0.5 * jnp.einsum('ij, jk, akl, bc, cli -> ab', jnp.conj(A).T, A, M, T_inv, M)),
-                         dtype=opDtype)
+                         dtype=dtype)
     elif mode in ['observable', 'obs']:
-        return jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, A)), dtype=opDtype)
+        return jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, A)), dtype=dtype)
     else:
         raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis') "
                          "and 'observable' ('obs').")
