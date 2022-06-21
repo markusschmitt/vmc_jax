@@ -354,7 +354,7 @@ class POVMOperator(Operator):
         self.ops.append(opDescr)
         self.compiled = False
 
-    def _get_s_primes(self, s, *args, stateCouplings, matEls, siteCouplings):
+    def _get_s_primes(self, s, *args):
         def apply_on_singleSiteCoupling(s, stateCouplings, matEls, siteCoupling):
             stateIndices = tuple(s[siteCoupling])
             OffdConfig = jnp.vstack([s] * 16)
@@ -362,7 +362,7 @@ class POVMOperator(Operator):
             return OffdConfig.reshape((4, 4, -1)), matEls[stateIndices]
 
         sample_shape = s.shape
-        OffdConfigs, matEls = jax.vmap(apply_on_singleSiteCoupling, in_axes=(None, None, 0, 0))(s.reshape(-1), stateCouplings, matEls, siteCouplings)
+        OffdConfigs, matEls = jax.vmap(apply_on_singleSiteCoupling, in_axes=(None, None, 0, 0))(s.reshape(-1), self.stateCouplings, self.matEls, self.siteCouplings)
         return OffdConfigs.reshape((-1,) + s.shape), matEls.reshape(-1)
 
     def compile(self):
@@ -411,4 +411,4 @@ class POVMOperator(Operator):
 
         self.siteCouplings = jnp.array(self.siteCouplings)
         self.matEls = jnp.array(self.matEls)
-        return functools.partial(self._get_s_primes, stateCouplings=self.stateCouplings, matEls=self.matEls, siteCouplings=self.siteCouplings)
+        return self._get_s_primes
