@@ -108,7 +108,6 @@ class TestPOVM(unittest.TestCase):
 
         res = {"X": [], "Y": [], "Z": []}
 
-        t = 0
         times = jnp.linspace(0, Tmax, int(Tmax / dt))
         for i in range(int(Tmax / dt)):
             result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler)
@@ -116,7 +115,6 @@ class TestPOVM(unittest.TestCase):
                 res[dim].append(result[dim]["mean"])
 
             dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=Lindbladian, psi=psi)
-            t += dt
             psi.set_parameters(dp)
 
         # Analytical solution
