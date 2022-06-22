@@ -127,6 +127,79 @@ class TestPOVM(unittest.TestCase):
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))
 
+    def test_time_evolution_two_site(self):
+        # This tests the time evolution of a sample system and compares it with the analytical solution
+        def copy_dict(a):
+            b = {}
+            for key, value in a.items():
+                if type(value) == type(a):
+                    b[key] = copy_dict(value)
+                else:
+                    b[key] = value
+            return b
+
+        L = 2
+        Tmax = 2
+        dt = 1E-3
+
+        sample_shape = (L,)
+        psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1":
+            {"type": "RNN",
+             "translation": True,
+             "parameters": {"inputDim": 4,
+                            "realValuedOutput": True,
+                            "realValuedParams": True,
+                            "logProbFactor": 1, "hiddenSize": 3, "L": L, "depth": 1}}},
+                                      sample_shape, 1234)
+
+        system_data = {"dim": "1D", "L": L}
+        povm = op.POVM(system_data)
+
+        Lindbladian = op.POVMOperator(povm)
+        Lindbladian.add({"name": "XX", "strength": 3.0, "sites": (0, 1)})
+        Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (0,)})
+        Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (1,)})
+
+        # Set initial state
+        prob_dist = jVMC.operator.povm.get_1_particle_distributions("y_up", Lindbladian.povm)
+        prob_dist /= prob_dist[0]
+        biases = jnp.log(prob_dist[1:])
+        params = copy_dict(psi._param_unflatten(psi.get_parameters()))
+
+        params["outputDense"]["bias"] = biases
+        params["outputDense"]["kernel"] = 1e-15 * params["outputDense"]["kernel"]
+        params = jnp.concatenate([p.ravel()
+                                  for p in jax.tree_util.tree_flatten(params)[0]])
+        psi.set_parameters(params)
+
+        sampler = jVMC.sampler.ExactSampler(psi, (L,), lDim=4, logProbFactor=1)
+
+        tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=-1.,
+                                           svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
+
+        stepper = jVMC.util.stepper.Euler(timeStep=dt)  # ODE integrator
+
+        res = {"X": [], "Y": [], "Z": []}
+
+        times = jnp.linspace(0, Tmax, int(Tmax / dt))
+        for i in range(int(Tmax / dt)):
+            result = jVMC.operator.povm.measure_povm(Lindbladian.povm, sampler)
+            for dim in ["X", "Y", "Z"]:
+                res[dim].append(result[dim]["mean"])
+
+            dp, _ = stepper.step(0, tdvpEquation, psi.get_parameters(), hamiltonian=Lindbladian, psi=psi)
+            psi.set_parameters(dp)
+
+        # Analytical solution
+        w = 6
+        Sx_avg = jnp.zeros_like(times)
+        Sy_avg = jnp.cos(w*times)*jnp.exp(-2*times)
+        Sz_avg = jnp.zeros_like(times)
+
+        self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
+        self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
+        self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))
+
 
 if __name__ == '__main__':
     unittest.main()
