@@ -54,7 +54,7 @@ class TestPOVM(unittest.TestCase):
         self.assertRaises(ValueError, povm.add_dissipator, "unity", op.matrix_to_povm(unity, povm.M,
                                                                                       povm.T_inv, mode='dissipative'))
 
-    def test_time_evolution(self):
+    def test_time_evolution_one_site(self):
         # This tests the time evolution of a sample system and compares it with the analytical solution
         def copy_dict(a):
             b = {}
