@@ -139,10 +139,6 @@ class TestPOVM(unittest.TestCase):
         Tmax = 2
         dt = 1E-3
 
-        Lindbladian = op.POVMOperator(povm)
-        Lindbladian.add({"name": "XX", "strength": 3.0, "sites": (0, 1)})
-        Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (0,)})
-        Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (1,)})
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
 
         sx = op.get_paulis()[0]
@@ -153,6 +149,11 @@ class TestPOVM(unittest.TestCase):
 
         self.povm.add_dissipator("XX_", op.matrix_to_povm(XX_, M_2_body, T_inv_2_body, mode="dissipative"))
 
+        Lindbladian = op.POVMOperator(self.povm)
+        Lindbladian.add({"name": "XX_", "strength": 1.0, "sites": (0, 1)})
+        Lindbladian.add({"name": "Z", "strength": 3.0, "sites": (0,)})
+        Lindbladian.add({"name": "Z", "strength": 3.0, "sites": (1,)})
+        Lindbladian.add({"name": "Z", "strength": 3.0, "sites": (2,)})
 
         res = {"X": [], "Y": [], "Z": []}
 
@@ -167,9 +168,9 @@ class TestPOVM(unittest.TestCase):
             self.psi.set_parameters(dp)
 
         # Analytical solution
-        w = 6
-        Sx_avg = jnp.zeros_like(times)
-        Sy_avg = jnp.cos(w*times)*jnp.exp(-2*times)
+        w = jnp.sqrt(35)
+        Sx_avg = -jnp.sin(6*times)/3 - 4/w*jnp.sin(w*times)*jnp.exp(-times)
+        Sy_avg = jnp.cos(6*times)/3 + (2/3*jnp.cos(w*times) - 2/3/w*jnp.sin(w*times))*jnp.exp(-times)
         Sz_avg = jnp.zeros_like(times)
 
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
