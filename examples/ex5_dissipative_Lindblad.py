@@ -70,7 +70,7 @@ sampler = jVMC.sampler.ExactSampler(psi, (L,), lDim=4, logProbFactor=logProbFact
 tdvpEquation = jVMC.util.tdvp.TDVP(sampler, rhsPrefactor=-1.,
                                    svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
 
-stepper = jVMC.util.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-3)  # ODE integrator
+stepper = jVMC.util.stepper.AdaptiveHeun(timeStep=1e-3, tol=1e-4)  # ODE integrator
 
 res = {"X": [], "Y": [], "Z": [], "X_corr_L1": [],
        "Y_corr_L1": [], "Z_corr_L1": []}
