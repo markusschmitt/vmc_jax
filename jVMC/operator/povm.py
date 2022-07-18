@@ -8,6 +8,7 @@ import jVMC.mpi_wrapper as mpi
 from jVMC.operator import Operator
 
 import functools
+import itertools
 
 opDtype = global_defs.tReal
 
@@ -351,18 +352,23 @@ class POVMOperator(Operator):
         Args:
             * ``opDescr``: Operator dictionary to be added to the operator.
         """
+        id = len(self.ops) + 1
+        opDescr["id"] = id
         self.ops.append(opDescr)
         self.compiled = False
 
-    def _get_s_primes(self, s, *args, stateCouplings, matEls, siteCouplings):
-        def apply_on_singleSiteCoupling(s, stateCouplings, matEls, siteCoupling):
+    def _get_s_primes(self, s, *args):
+        def apply_on_singleSiteCoupling(s, stateCouplings, matEls, siteCoupling, max_int_size):
             stateIndices = tuple(s[siteCoupling])
-            OffdConfig = jnp.vstack([s] * 16)
-            OffdConfig = OffdConfig.at[:, siteCoupling].set(stateCouplings[stateIndices].reshape(-1, 2))
-            return OffdConfig.reshape((4, 4, -1)), matEls[stateIndices]
+            OffdConfig = jnp.vstack([s] * 4**max_int_size)
+            OffdConfig = OffdConfig.at[:, siteCoupling].set(stateCouplings[stateIndices].reshape(4**max_int_size, max_int_size))
+            return OffdConfig.reshape((4,) * max_int_size + (-1,)), matEls[stateIndices]
 
-        sample_shape = s.shape
-        OffdConfigs, matEls = jax.vmap(apply_on_singleSiteCoupling, in_axes=(None, None, 0, 0))(s.reshape(-1), stateCouplings, matEls, siteCouplings)
+        OffdConfigs, matEls = jax.vmap(apply_on_singleSiteCoupling, in_axes=(None, None, 0, 0, None))(s.reshape(-1),
+                                                                                                      self.stateCouplings,
+                                                                                                      self.matEls,
+                                                                                                      self.siteCouplings,
+                                                                                                      self.max_int_size)
         return OffdConfigs.reshape((-1,) + s.shape), matEls.reshape(-1)
 
     def compile(self):
@@ -370,45 +376,55 @@ class POVMOperator(Operator):
         """
         self.siteCouplings = []
         self.matEls = []
-        self.idxbase = jnp.array([[[i, j] for j in range(4)] for i in range(4)])
-        self.stateCouplings = jnp.array([[self.idxbase for j in range(4)] for i in range(4)])
 
-        # find the highest index of the (many) local Hilbert spaces
+        # Get maximum interaction size (max_int_size)
+        self.max_int_size = max([len(op["sites"]) for op in self.ops])
+
+        self.idxbase = jnp.array(list(itertools.product([0, 1, 2, 3],
+                                                        repeat=self.max_int_size))).reshape((4,)*self.max_int_size+(self.max_int_size,))
+        self.stateCouplings = jnp.tile(self.idxbase, (4,)*self.max_int_size + (1,)*self.max_int_size + (1,))
+
+        # Find the highest index of the (many) local Hilbert spaces
         self.max_site = max([max(op["sites"]) for op in self.ops])
 
         # loop over all local Hilbert spaces
         for idx in range(self.max_site + 1):
-            # sort interactions that involve the current local Hilbert space in the 0-th index into one- and two-body interactions
-            ops_oneBody = [op for op in self.ops if op["sites"][0] == idx and len(op["sites"]) == 1]
-            ops_twoBody = [op for op in self.ops if op["sites"][0] == idx and len(op["sites"]) == 2]
+            # Sort interactions that involve the current local Hilbert space in the 0-th index according to number of
+            # sites
+            ops_ordered = [[op for op in self.ops if op["sites"][0] == idx and len(op["sites"]) == (n + 1)]
+                           for n in range(self.max_int_size)]
 
-            # find all the local Hilbert spaces that are coupled to the one we currently selected ("idx")
-            neighbour_indices = set([op["sites"][1] for op in ops_twoBody])
-            if len(ops_twoBody) == 0 and len(ops_oneBody) > 0:
-                # the current local Hilbert space is not listed in the 0-th index of any of the two body interactions, but 1-body interactions still need to respected
-                # create artificial coupling to a second spin with a unity operator acting on spin #2
-                neighbour_op_comp = jnp.zeros((16, 16), dtype=opDtype)
-                for op_oneBody in ops_oneBody:
-                    neighbour_op_comp += op_oneBody["strength"] * jnp.kron(self.povm.operators[op_oneBody["name"]], jnp.eye(4, dtype=opDtype))
+            for n in range(self.max_int_size - 1, -1, -1):
+                all_indices = set(op["sites"] for op in ops_ordered[n])
+                for i, indices in enumerate(all_indices):
+                    # Search for operators acting on the same indices, also operators acting on fewer sites are
+                    # accounted for here
+                    ops_same_indices = [[op for op in ops_ordered[_n] if op["sites"] == indices[:_n+1]]
+                                        for _n in range(n+1)]
+                    used_op_ids = [[op["id"] for op in ops_same_indices[_n]] for _n in range(n+1)]
 
-                self.matEls.append(neighbour_op_comp.reshape((4,) * 4))
-                self.siteCouplings.append([idx, (idx + 1) % (self.max_site + 1)])
-            else:
-                for neighbour_idx in neighbour_indices:
-                    # get all the operators that include the neighbour index
-                    neighbour_ops = [op for op in ops_twoBody if op["sites"][1] == neighbour_idx]
+                    # Add contribution of all operators in ops_same_indices, if necessary multiply unity interaction
+                    # to additional sites to make them `max_int_size`-body interactions
+                    neighbour_op_comp = jnp.zeros((4**self.max_int_size, 4**self.max_int_size), dtype=opDtype)
+                    for j, ops in enumerate(ops_same_indices):
+                        for op in ops:
+                            op_matrix = self.povm.operators[op["name"]]
+                            for _ in range(self.max_int_size - j - 1):
+                                op_matrix = jnp.kron(op_matrix, jnp.eye(4, dtype=opDtype))
+                            neighbour_op_comp += op["strength"] * op_matrix
 
-                    # obtain 16x16 matrices for these operators and add the single particle  operators with weight 1 / # of neighbours
-                    neighbour_op_comp = jnp.zeros((16, 16), dtype=opDtype)
-                    for neighbour_op in neighbour_ops:
-                        neighbour_op_comp += neighbour_op["strength"] * self.povm.operators[neighbour_op["name"]]
-                    for op_oneBody in ops_oneBody:
-                        neighbour_op_comp += op_oneBody["strength"] * jnp.kron(self.povm.operators[op_oneBody["name"]], jnp.eye(4, dtype=opDtype)) / len(neighbour_indices)
+                    # Avoid counting operators multiple times
+                    ops_ordered = [[op for op in ops_ordered[k] if op["id"] not in used_op_ids[k]]
+                                   for k in range(self.max_int_size)]
 
-                    # for the computed operator (16x16) obtain a representation in which a matrix element and the connected indices are stored
-                    self.matEls.append(neighbour_op_comp.reshape((4,) * 4))
-                    self.siteCouplings.append([idx, neighbour_idx])
+                    while len(indices) < self.max_int_size:
+                        empty_idx = (indices[-1] + 1) % (self.max_site + 1)
+                        while empty_idx in indices:
+                            empty_idx = (empty_idx + 1) % (self.max_site + 1)
+                        indices += (empty_idx,)
+                    self.matEls.append(neighbour_op_comp.reshape((4,) * 2 * self.max_int_size))
+                    self.siteCouplings.append(indices)
 
         self.siteCouplings = jnp.array(self.siteCouplings)
         self.matEls = jnp.array(self.matEls)
-        return functools.partial(self._get_s_primes, stateCouplings=self.stateCouplings, matEls=self.matEls, siteCouplings=self.siteCouplings)
+        return self._get_s_primes
