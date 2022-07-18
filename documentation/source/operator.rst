@@ -141,7 +141,7 @@ resulting in
 
     :math:`\dot{P}^\textbf{a} = \mathrm{tr}(\mathcal{L}[M^\textbf{c}]M^\textbf{a}) T^{-1\textbf{cb}} P^\textbf{b} = \mathcal{L}^\textbf{ab}P^\textbf{b}`.
 
-Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored.
+Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored, but :math:`n-body operators for :math:`n>2` are also supported.
 Frequently encountered unitary and dissipative operators are pre-defined and can be constructed as explained below.
 
 Assembling operators
@@ -165,7 +165,7 @@ Using the POVM-operator class, the expression for the operator that corresponds 
         Lindbladian.add({"name": "decaydown", "strength": gamma, "sites": (l,)})
 
 Adding terms to the Lindbladian is done using dictionaries, which have three entries: The name of the operator to be added, its prefactor and the site-ids that are involved.
-Valid names that are recognized are the unitary 2-body (1-body) operators [``"XX"``, ``"YY"``, ``"ZZ"``] ([``"X"``, ``"Y"``, ``"Z"``]) corresponding to couplings and external magnetic fields aswell as the single-particle dissipation terms [``"dephasing"``, ``"decaydown"``, ``"decayup"``] corresponding to the dissipation operators [:math:`\sigma^z`, :math:`\sigma^-`, :math:`\sigma^+`].
+Valid names that are recognized by default are the unitary 2-body (1-body) operators [``"XX"``, ``"YY"``, ``"ZZ"``] ([``"X"``, ``"Y"``, ``"Z"``]) corresponding to couplings and external magnetic fields aswell as the single-particle dissipation terms [``"dephasing"``, ``"decaydown"``, ``"decayup"``] corresponding to the dissipation operators [:math:`\sigma^z`, :math:`\sigma^-`, :math:`\sigma^+`].
 
 Detailed documentation
 ----------------------
@@ -183,3 +183,4 @@ Detailed documentation
 .. autofunction:: jVMC.operator.get_observables
 .. autofunction:: jVMC.operator.get_1_particle_distributions
 .. autofunction:: jVMC.operator.get_paulis
+.. autofunction:: jVMC.operator.matrix_to_povm
