@@ -85,7 +85,7 @@ def init_net(descr, dims, seed=0):
 
         model = get_net(descr["net1"], dims)
 
-        psi = jVMC.vqs.NQS(model, batchSize=descr["gradient_batch_size"], seed=seed)
+        psi = jVMC.vqs.NQS(model, batchSize=descr["batch_size"], seed=seed)
 
     else:
 
