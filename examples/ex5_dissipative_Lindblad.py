@@ -31,7 +31,7 @@ inputDim = 4
 
 # Initialize net
 sample_shape = (L,)
-psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1":
+psi = jVMC.util.util.init_net({"batch_size": 5000, "net1":
                                {"type": "RNN",
                                 "translation": True,
                                 "parameters": {"inputDim": inputDim,

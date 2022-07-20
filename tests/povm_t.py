@@ -18,7 +18,7 @@ class TestPOVM(unittest.TestCase):
             return b
 
         sample_shape = (L,)
-        self.psi = jVMC.util.util.init_net({"gradient_batch_size": 5000, "net1":
+        self.psi = jVMC.util.util.init_net({"batch_size": 5000, "net1":
             {"type": "RNN",
              "translation": True,
              "parameters": {"inputDim": 4,
