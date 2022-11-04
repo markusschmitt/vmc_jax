@@ -76,6 +76,8 @@ class TDVP:
 
         self.diagonalizeOnDevice = diagonalizeOnDevice
 
+        self.metaData = None
+
         self.makeReal = realFun
         if makeReal == 'imag':
             self.makeReal = imagFun
@@ -102,15 +104,19 @@ class TDVP:
 
     def get_residuals(self):
 
-        return self.tdvpError, self.solverResidual
+        return self.metaData["tdvp_error"], self.metaData["tdvp_residual"]
 
     def get_snr(self):
 
-        return self.snr0
+        return self.metaData["SNR"]
 
     def get_spectrum(self):
 
-        return self.ev0
+        return self.metaData["spectrum"]
+
+    def get_metadata(self):
+
+        return self.metaData
 
     def get_energy_variance(self):
 
@@ -286,10 +292,13 @@ class TDVP:
 
                 self.ElocMean0 = self.ElocMean
                 self.ElocVar0 = self.ElocVar
-                self.tdvpError = self._get_tdvp_error(update)
-                self.solverResidual = solverResidual
-                self.snr0 = self.snr
-                self.ev0 = self.ev
+
+                self.metaData = {
+                    "tdvp_error": self._get_tdvp_error(update),
+                    "tdvp_residual": solverResidual,
+                    "SNR": self.snr, 
+                    "Spectrum": self.ev,
+                }
 
                 if self.crossValidation:
 
