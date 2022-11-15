@@ -10,6 +10,8 @@ import jax.random as random
 import jax.numpy as jnp
 import numpy as np
 
+import jVMC.util.symmetries as symmetries
+
 class TestCNN(unittest.TestCase):
     
     def test_cnn_1d(self):
@@ -41,6 +43,24 @@ class TestCNN(unittest.TestCase):
                 [S0[i:i+4, j:j+4] for i in range(4) for j in range(4)]
             )
         psiS=jax.vmap(lambda s:cnn.apply(params,s))(S)
+        psiS=psiS-psiS[0]
+
+        self.assertTrue( jnp.max( jnp.abs( psiS ) ) < 1e-12 )
+
+
+class TestSymNet(unittest.TestCase):
+    
+    def test_sym_net(self):
+        rbm = nets.RBM(numHidden=5)
+        orbit = symmetries.get_orbit_1d(5, reflection=False, translation=True)
+        rbm_sym = nets.SymNet(net=rbm,orbit=orbit)
+        params = rbm_sym.init(random.PRNGKey(0),jnp.zeros((5,), dtype=np.int32))
+
+        S0=jnp.pad(jnp.array([1,0,1,1,0]),(0,4),'wrap')
+        S=jnp.array(
+                [S0[i:i+5]for i in range(5)]
+            )
+        psiS=jax.vmap(lambda s: rbm_sym.apply(params,s))(S)
         psiS=psiS-psiS[0]
 
         self.assertTrue( jnp.max( jnp.abs( psiS ) ) < 1e-12 )

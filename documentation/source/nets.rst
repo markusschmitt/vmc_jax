@@ -7,6 +7,9 @@ This module provides implementations of standard neural network architectures.
 
 .. automodule:: jVMC.nets
 
+    .. autoclass:: SymNet
+        :no-inherited-members:
+
     .. autoclass:: CpxRBM
         :no-inherited-members:
 
