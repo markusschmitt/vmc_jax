@@ -133,10 +133,10 @@ class OutputManager:
 
         if mpi.rank == 0:
 
-            if time > 0:
-                
-                with h5py.File(self.fn, "r") as f:
-                    times = np.array(f[self.currentGroup + "/" + groupname + "/times"])
+            with h5py.File(self.fn, "r") as f:
+                times = np.array(f[self.currentGroup + "/" + groupname + "/times"])
+
+            if time >= 0:
                 idx = np.argmin(np.abs(times-time))
 
             with h5py.File(self.fn, "r") as f:
