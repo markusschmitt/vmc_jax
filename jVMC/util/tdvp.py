@@ -314,7 +314,7 @@ class TDVP:
                     validation_residual = (jnp.linalg.norm(S2.dot(update_1) - F2) / jnp.linalg.norm(F2)) / solverResidual
 
                     self.crossValidationFactor_residual = validation_residual
-                    self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.tdvpError
+                    self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.metaData["tdvp_error"]
 
                     self.S, _, _ = self.get_tdvp_equation(Eloc, sampleGradients, p)
 
