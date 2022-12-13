@@ -162,7 +162,7 @@ class TDVP:
 
     def get_sr_equation(self, Eloc, gradients):
 
-        return get_tdvp_equation(Eloc, gradients, rhsPrefactor=1.)
+        return self.get_tdvp_equation(Eloc, gradients, rhsPrefactor=1.)
 
     def transform_to_eigenbasis(self, S, F, EOdata):
 
