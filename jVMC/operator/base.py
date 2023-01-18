@@ -53,12 +53,13 @@ class Operator(metaclass=abc.ABCMeta):
 
     """
 
-    def __init__(self):
+    def __init__(self, ElocBatchSize=-1):
         """Initialize ``Operator``.
         """
 
         self.compiled = False
         self.compiled_argnum = -1
+        self.ElocBatchSize = ElocBatchSize
 
         # pmap'd member functions
         self._get_s_primes_pmapd = None
