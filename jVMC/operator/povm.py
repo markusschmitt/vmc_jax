@@ -278,11 +278,12 @@ class POVM():
         self.T_inv = jnp.linalg.inv(self.T)
         self.dissipators = get_dissipators(self.M, self.T_inv)
         self.unitaries = get_unitaries(self.M, self.T_inv)
+        self.imaginaries = {}
         self._update_operators()  # This creates self.operators
         self.observables = get_observables(self.M, self.T_inv)
 
     def _update_operators(self):
-        self.operators = {**self.unitaries, **self.dissipators}
+        self.operators = {**self.unitaries, **self.dissipators, **self.imaginaries}
 
     def _check_name_availabilty(self, name):
         """
@@ -292,6 +293,8 @@ class POVM():
             raise ValueError("There already exists a unitary with name " + name + "!")
         if name in self.dissipators.keys():
             raise ValueError("There already exists a dissipator with name " + name + "!")
+        if name in self.imaginaries.keys():
+            raise ValueError("There already exists a imaginary time operator with name " + name + "!")
         if name in self.operators.keys():
             raise ValueError("There already exists an operator with name " + name + ", that has not been added"
                                                                                     " using the appropriate methods!")
@@ -304,6 +307,11 @@ class POVM():
     def add_dissipator(self, name, omega):
         self._check_name_availabilty(name)
         self.dissipators[name] = omega
+        self._update_operators()
+
+    def add_imaginary(self, name, omega):
+        self._check_name_availabilty(name)
+        self.imaginaries[name] = omega
         self._update_operators()
 
     #@partial(jax.vmap, in_axes=(None, None, 0))
