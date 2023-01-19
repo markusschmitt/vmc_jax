@@ -141,7 +141,7 @@ resulting in
 
     :math:`\dot{P}^\textbf{a} = \mathrm{tr}(\mathcal{L}[M^\textbf{c}]M^\textbf{a}) T^{-1\textbf{cb}} P^\textbf{b} = \mathcal{L}^\textbf{ab}P^\textbf{b}`.
 
-Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored, but :math:`n-body operators for :math:`n>2` are also supported.
+Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored, but :math:`n`-body operators for :math:`n>2` are also supported.
 Frequently encountered unitary and dissipative operators are pre-defined and can be constructed as explained below.
 
 Assembling operators
