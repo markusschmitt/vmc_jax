@@ -266,11 +266,7 @@ class TDVP:
 
         # Evaluate local energy
         start_timing(outp, "compute Eloc")
-        sampleOffdConfigs, matEls = hamiltonian.get_s_primes(sampleConfigs, t)
-        start_timing(outp, "evaluate off-diagonal")
-        sampleLogPsiOffd = psi(sampleOffdConfigs)
-        stop_timing(outp, "evaluate off-diagonal", waitFor=sampleLogPsiOffd)
-        Eloc = hamiltonian.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
+        Eloc = hamiltonian.get_O_loc(sampleConfigs, psi, sampleLogPsi, t)
         stop_timing(outp, "compute Eloc", waitFor=Eloc)
 
         # Evaluate gradients

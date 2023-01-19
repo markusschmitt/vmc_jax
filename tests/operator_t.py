@@ -39,7 +39,7 @@ class TestOperator(unittest.TestCase):
         logPsi=jnp.ones(s.shape[:-1])
         logPsiSP=jnp.ones(sp.shape[:-1])
 
-        tmp = h.get_O_loc(logPsi,logPsiSP)
+        tmp = h.get_O_loc_unbatched(logPsi, logPsiSP)
 
         self.assertTrue( jnp.sum(jnp.abs( tmp - 2. * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
@@ -64,7 +64,7 @@ class TestOperator(unittest.TestCase):
             logPsi=jnp.ones(s.shape[:-1])
             logPsiSP=jnp.ones(sp.shape[:-1])
 
-            tmp = h.get_O_loc(logPsi,logPsiSP)
+            tmp = h.get_O_loc_unbatched(logPsi, logPsiSP)
 
             self.assertTrue( jnp.sum(jnp.abs( tmp - f(t) * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
@@ -87,7 +87,7 @@ class TestOperator(unittest.TestCase):
 
         sp, matEl = h.get_s_primes(s)
         logPsiSp = psi(sp)
-        Oloc1 = h.get_O_loc(logPsi, logPsiSp)
+        Oloc1 = h.get_O_loc_unbatched(logPsi, logPsiSp)
         
         batchSize = 13
         Oloc2 = h.get_O_loc_batched(s, psi, logPsi, batchSize)
