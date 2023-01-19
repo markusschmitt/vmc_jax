@@ -227,6 +227,30 @@ class TestPOVM(unittest.TestCase):
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))
 
+    def test_ground_state_search(self):
+        L = 2
+        dt = 1E-2
+
+        self.prepare_net(L, dt)
+
+        sz = op.get_paulis()[2]
+        self.povm.add_imaginary("imag_Z", op.matrix_to_povm(sz, self.povm.M, self.povm.T_inv, mode='imag'))
+
+        Lindbladian = op.POVMOperator(self.povm)
+        Lindbladian.add({"name": "imag_Z", "strength": 4., "sites": (0, )})
+        Lindbladian.add({"name": "imag_Z", "strength": 4., "sites": (1, )})
+
+        def measure_energy(confs, probs):
+            return jnp.sum(jVMC.mpi_wrapper.global_mean(self.povm.observables["Z"][confs], probs))
+
+        for i in range(40):
+            dp, _ = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
+                                      psi=self.psi)
+            self.psi.set_parameters(dp)
+
+        confs, _, probs = self.sampler.sample()
+        self.assertTrue(jnp.allclose(measure_energy(confs, probs), -2, atol=1e-2))
+
 
 if __name__ == '__main__':
     unittest.main()
