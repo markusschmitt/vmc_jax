@@ -58,16 +58,20 @@ class TestPOVM(unittest.TestCase):
         self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='observable'),
                                     jnp.ones(4)).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='unitary'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='dissipative'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
+        self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='imaginary'),
+                                    -2*jnp.eye(4)).all())
 
         self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='observable'),
                                     jnp.zeros(4)).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='unitary'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='dissipative'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
+        self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='imaginary'),
+                                    jnp.zeros((4, 4))).all())
 
         self.assertRaises(ValueError, op.matrix_to_povm, zero_matrix, povm.M, povm.T_inv, mode='wrong_mode')
 
