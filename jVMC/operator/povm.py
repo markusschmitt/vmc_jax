@@ -142,19 +142,21 @@ def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
 
 
     In unitary mode this function implements
-        :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`
+        :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`,
     in dissipative mode
-        :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`
-    and in observable mode
+        :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`,
+    in observable mode
         :math:`O^a = T^{-1 ab} \mathrm{Tr}(M^b A)`
+    and in imaginary time mode
+        :math:`\Omega^{ab} = - T^{-1 bc} \mathrm{Tr}(A \{M^c, M^a\})`
     where the Einstein sum convention is assumed.
 
     Args:
         * ``A``: Matrix representation of desired operator
         * ``M``: POVM-Measurement operators
         * ``T_inv``: Inverse POVM-Overlap matrix
-        * ``mode``: String specifying the conversion mode. Possible values are 'unitary' ('uni'), 'dissipative' ('dis')
-                    and 'observable' ('obs')
+        * ``mode``: String specifying the conversion mode. Possible values are 'unitary' ('uni'), 'dissipative' ('dis'),
+                    'observable' ('obs') and 'imaginary' ('imag')
 
     Returns:
         jax.numpy.ndarray
@@ -169,9 +171,12 @@ def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
                          dtype=dtype)
     elif mode in ['observable', 'obs']:
         return jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, A)), dtype=dtype)
+    elif mode in ['imaginary', 'imag']:
+        return jnp.array(jnp.real(- jnp.einsum('ij, bc, cjk, aki -> ab', A, T_inv, M, M)
+                                  - jnp.einsum('ij, ajk, bc, cki -> ab', A, M, T_inv, M)), dtype=dtype)
     else:
-        raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis') "
-                         "and 'observable' ('obs').")
+        raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis'), "
+                         "'observable' ('obs') and 'imaginary' ('imag').")
 
 
 def get_dissipators(M, T_inv):
