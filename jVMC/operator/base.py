@@ -53,12 +53,13 @@ class Operator(metaclass=abc.ABCMeta):
 
     """
 
-    def __init__(self):
+    def __init__(self, ElocBatchSize=-1):
         """Initialize ``Operator``.
         """
 
         self.compiled = False
         self.compiled_argnum = -1
+        self.ElocBatchSize = ElocBatchSize
 
         # pmap'd member functions
         self._get_s_primes_pmapd = None
@@ -146,13 +147,37 @@ class Operator(metaclass=abc.ABCMeta):
 
         return self._flatten_pmapd(self.sp), self.matEl
 
-
     def _get_O_loc(self, matEl, logPsiS, logPsiSP):
 
         return jax.vmap(lambda x, y, z: jnp.sum(x * jnp.exp(z - y)), in_axes=(0, 0, 0))(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
 
+    def get_O_loc(self, samples, psi, logPsiS=None, *args):
+        """Compute :math:`O_{loc}(s)`.
 
-    def get_O_loc(self, logPsiS, logPsiSP):
+        If the instance parameter ElocBatchSize is larger than 0 :math:`O_{loc}(s)` is computed in a batch-wise manner
+        to avoid out-of-memory issues.
+
+        Arguments:
+            * ``samples``: Sample of computational basis configurations :math:`s`.
+            * ``psi``: Neural quantum state.
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+            * ``*args``: Further positional arguments for the operator.
+
+        Returns:
+            :math:`O_{loc}(s)` for each configuration :math:`s`.
+        """
+
+        if logPsiS is None:
+            logPsiS = psi(samples)
+
+        if self.ElocBatchSize > 0:
+            return self.get_O_loc_batched(samples, psi, logPsiS, self.ElocBatchSize, *args)
+        else:
+            sampleOffdConfigs, _ = self.get_s_primes(samples, *args)
+            logPsiSP = psi(sampleOffdConfigs)
+            return self.get_O_loc_unbatched(logPsiS, logPsiSP)
+
+    def get_O_loc_unbatched(self, logPsiS, logPsiSP):
         """Compute :math:`O_{loc}(s)`.
 
         This member function assumes that ``get_s_primes(s)`` has been called before, as \
@@ -196,7 +221,7 @@ class Operator(metaclass=abc.ABCMeta):
         remainder = numSamples % batchSize
 
         # Minimize mismatch
-        if remainder>0:
+        if remainder > 0:
             batchSize = numSamples // (numBatches+1)
             numBatches = numSamples // batchSize
             remainder = numSamples % batchSize
@@ -208,7 +233,7 @@ class Operator(metaclass=abc.ABCMeta):
 
             sp, _ = self.get_s_primes(batch, *args)
 
-            OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
+            OlocBatch = self.get_O_loc_unbatched(logPsiSbatch, psi(sp))
 
             Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, b * batchSize)
         
@@ -226,7 +251,7 @@ class Operator(metaclass=abc.ABCMeta):
 
             sp, _ = self.get_s_primes(batch, *args)
 
-            OlocBatch = self.get_O_loc(logPsiSbatch, psi(sp))
+            OlocBatch = self.get_O_loc_unbatched(logPsiSbatch, psi(sp))
         
             OlocBatch = global_defs.pmap_for_my_devices(
                             lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), 

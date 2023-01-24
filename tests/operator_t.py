@@ -39,7 +39,7 @@ class TestOperator(unittest.TestCase):
         logPsi=jnp.ones(s.shape[:-1])
         logPsiSP=jnp.ones(sp.shape[:-1])
 
-        tmp = h.get_O_loc(logPsi,logPsiSP)
+        tmp = h.get_O_loc_unbatched(logPsi, logPsiSP)
 
         self.assertTrue( jnp.sum(jnp.abs( tmp - 2. * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
@@ -64,7 +64,7 @@ class TestOperator(unittest.TestCase):
             logPsi=jnp.ones(s.shape[:-1])
             logPsiSP=jnp.ones(sp.shape[:-1])
 
-            tmp = h.get_O_loc(logPsi,logPsiSP)
+            tmp = h.get_O_loc_unbatched(logPsi, logPsiSP)
 
             self.assertTrue( jnp.sum(jnp.abs( tmp - f(t) * jnp.sum(-(s[...,:3]-1), axis=-1) )) < 1e-7 )
 
@@ -87,10 +87,36 @@ class TestOperator(unittest.TestCase):
 
         sp, matEl = h.get_s_primes(s)
         logPsiSp = psi(sp)
-        Oloc1 = h.get_O_loc(logPsi, logPsiSp)
+        Oloc1 = h.get_O_loc_unbatched(logPsi, logPsiSp)
         
         batchSize = 13
         Oloc2 = h.get_O_loc_batched(s, psi, logPsi, batchSize)
+
+        self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)
+
+    def test_batched_Oloc2(self):
+        L = 4
+
+        hamilton_unbatched = op.BranchFreeOperator()
+        hamilton_batched = op.BranchFreeOperator(ElocBatchSize=13)
+        for i in range(L):
+            hamilton_unbatched.add(op.scal_opstr(2., (op.Sx(i),)))
+            hamilton_unbatched.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
+            hamilton_batched.add(op.scal_opstr(2., (op.Sx(i),)))
+            hamilton_batched.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
+
+        rbm = nets.CpxRBM(numHidden=2, bias=False)
+        psi = NQS(rbm)
+
+        mcSampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip,
+                                           numChains=1)
+
+        numSamples = 100
+        s, logPsi, _ = mcSampler.sample(numSamples=numSamples)
+
+        Oloc1 = hamilton_unbatched.get_O_loc(s, psi, logPsi)
+
+        Oloc2 = hamilton_batched.get_O_loc(s, psi, logPsi)
 
         self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)
 

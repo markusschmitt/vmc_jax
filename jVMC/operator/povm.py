@@ -338,13 +338,13 @@ class POVMOperator(Operator):
         * ``lDim``: Dimension of local Hilbert space.
     """
 
-    def __init__(self, povm, ldim=4):
+    def __init__(self, povm, ldim=4, **kwargs):
         """Initialize ``Operator``.
         """
         self.povm = povm
         self.ldim = ldim
         self.ops = []
-        super().__init__()
+        super().__init__(**kwargs)
 
     def add(self, opDescr):
         """Add another operator to the operator.

@@ -157,10 +157,8 @@ def measure(observables, psi, sampler, numSamples=None):
             if isinstance(op, collections.abc.Iterable):
                 args = tuple(op[1:])
                 op = op[0]
-            
-            sampleOffdConfigs, matEls = op.get_s_primes(sampleConfigs, *args)
-            sampleLogPsiOffd = psi(sampleOffdConfigs)
-            Oloc = op.get_O_loc(sampleLogPsi, sampleLogPsiOffd)
+
+            Oloc = op.get_O_loc(sampleConfigs, psi, sampleLogPsi, *args)
 
             if p is not None:
                 tmpMeans.append(mpi.global_mean(Oloc, p))

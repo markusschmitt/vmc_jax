@@ -147,7 +147,7 @@ class BranchFreeOperator(Operator):
         * ``lDim``: Dimension of local Hilbert space.
     """
 
-    def __init__(self, lDim=2):
+    def __init__(self, lDim=2, **kwargs):
         """Initialize ``Operator``.
 
         Arguments:
@@ -156,7 +156,7 @@ class BranchFreeOperator(Operator):
         self.ops = []
         self.lDim = lDim
 
-        super().__init__()
+        super().__init__(**kwargs)
 
     def add(self, opDescr):
         """Add another operator to the operator
