@@ -151,7 +151,7 @@ class Operator(metaclass=abc.ABCMeta):
 
         return jax.vmap(lambda x, y, z: jnp.sum(x * jnp.exp(z - y)), in_axes=(0, 0, 0))(matEl, logPsiS, logPsiSP.reshape(matEl.shape))
 
-    def get_O_loc(self, samples, psi, logPsiS, *args):
+    def get_O_loc(self, samples, psi, logPsiS=None, *args):
         """Compute :math:`O_{loc}(s)`.
 
         If the instance parameter ElocBatchSize is larger than 0 :math:`O_{loc}(s)` is computed in a batch-wise manner
@@ -166,6 +166,9 @@ class Operator(metaclass=abc.ABCMeta):
         Returns:
             :math:`O_{loc}(s)` for each configuration :math:`s`.
         """
+
+        if logPsiS is None:
+            logPsiS = psi(samples)
 
         if self.ElocBatchSize > 0:
             return self.get_O_loc_batched(samples, psi, logPsiS, self.ElocBatchSize, *args)
