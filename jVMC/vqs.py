@@ -196,7 +196,7 @@ class NQS:
                 return jnp.concatenate([p.ravel() for p in tree_flatten(t)[0]])
             grads_r = make_flat( jax.grad(lambda a,b: jnp.real(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
             grads_i = make_flat( jax.grad(lambda a,b: jnp.imag(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
-            if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i), 0.0):
+            if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i)/grads_r.shape[0], 0.0, abs_tol=1e-14):
                 self.holomorphic = True
                 self.flat_gradient_function = flat_gradient_holo
             else:

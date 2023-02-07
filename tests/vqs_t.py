@@ -19,6 +19,17 @@ def get_shape(shape):
 
 class TestGradients(unittest.TestCase):
     
+    def test_automatic_holomorphicity_recognition(self):
+
+        for k in range(10):
+            rbmModel = nets.CpxRBM(numHidden=2**k,bias=True)
+            s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
+            psiC = NQS(rbmModel)
+            psiC(s)
+
+            self.assertTrue(psiC.holomorphic)
+        
+
     def test_gradients_cpx(self):
 
         dlist=[jax.devices()[0], jax.devices()]
