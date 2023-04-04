@@ -208,6 +208,34 @@ class TDVP:
 
         return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F)
 
+    def solve_minSR(self, eloc, gradients, p=None, r_pinv=1e-8):
+        """
+        Uses the techique proposed in arXiv:2302.01941 to compute the updates.
+        Efficient only if number of samples << number of parameters.
+        """
+
+        # Collect all gradients & local energies
+        def soft_cutoff(eigvals):
+            return 1 / (eigvals * (1 + (r_pinv * jnp.max(eigvals) / eigvals)**6))
+
+        def hard_cutoff(eigvals):
+            return jnp.where(eigvals / jnp.max(eigvals) > r_pinv, 1 / eigvals, 0)
+
+        eloc = mpi.gather(eloc).reshape((-1,))
+        gradients = mpi.gather(gradients).reshape((-1, gradients.shape[-1]))
+        n_samples = eloc.shape[0]
+
+        eloc_bar = (eloc - jnp.mean(eloc)) / jnp.sqrt(n_samples)
+        gradients_bar = (gradients - jnp.mean(gradients, axis=0)) / jnp.sqrt(n_samples)
+
+        T = gradients_bar @ gradients_bar.conj().T
+        eigvals, eigvecs = jnp.linalg.eigh(T)
+        inv_eigvals = hard_cutoff(eigvals)
+        T_inv = eigvecs @ jnp.diag(inv_eigvals) @ eigvecs.conj().T
+        self.update = - self.rhsPrefactor * gradients_bar.conj().T @ T_inv @ eloc_bar
+
+        return self.update, None
+
     def S_dot(self, v):
 
         return jnp.dot(self.S0, v)
@@ -292,7 +320,7 @@ class TDVP:
                 self.metaData = {
                     "tdvp_error": self._get_tdvp_error(update),
                     "tdvp_residual": solverResidual,
-                    "SNR": self.snr, 
+                    "SNR": self.snr,
                     "Spectrum": self.ev,
                 }
 

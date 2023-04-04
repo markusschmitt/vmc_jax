@@ -330,6 +330,23 @@ def bcast_unknown_size(data, root=0):
     return buf
 
 
+def gather(data):
+    """ Gathers and distributes data all-to-all.
+    The returned data is therefore of shape ``(commSize * data.shape[0],) + data.shape[1:]``.
+
+    Arguments:
+        * ``data``: Array of input data.
+
+    Returns:
+        Concatenated data from all devices.
+    """
+
+    res = comm.gather(data, root=0)
+    res = comm.bcast(res, root=0)
+    res = np.concatenate(res)
+    return res
+
+
 def get_communication_time():
     global communicationTime
     t = communicationTime
