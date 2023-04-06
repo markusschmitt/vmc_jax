@@ -39,8 +39,6 @@ def init_net(descr, dims, seed=0):
         "CNN": jVMC.nets.CNN,
         "RNN": jVMC.nets.RNN1DGeneral,
         "RNN2D": jVMC.nets.RNN2DGeneral,
-        "RNNsym": jVMC.nets.RNN1DGeneralSym,
-        "RNN2Dsym": jVMC.nets.RNN2DGeneralSym,
         "CpxRBM": jVMC.nets.CpxRBM,
         "CpxCNN": jVMC.nets.CpxCNN
     }
@@ -52,40 +50,18 @@ def init_net(descr, dims, seed=0):
     if "actFun" in descr["net1"]["parameters"]:
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
-    if descr["net1"]["type"][-3:] == "sym":
-        L = dims[0]
+    keys_sim = ["translation", "rotation", "reflection", "z2sym"]
+    kwargs_sym = {key: descr[key] if key in descr else False for key in keys_sim}
 
-        # set symmetries ON - turn each one off manually
-        kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
-        for key in kwargs_sym.keys():
-            if key in descr["net1"]:
-                kwargs_sym[key] = descr["net1"][key]
-
-        if descr["net1"]["type"][-5:-3] == "2D":
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, **kwargs_sym)
-        else:
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_1d(L, **kwargs_sym)
-
-    if "net2" in descr:
-        if descr["net2"]["type"][-3:] == "sym":
-
-            # set symmetries ON - turn each one off manually
-            kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
-            for key in kwargs_sym.keys():
-                if key in descr["net2"]:
-                    kwargs_sym[key] = descr["net2"][key]
-
-            L = dims[0]
-            if descr["net2"]["type"][-5:-3] == "2D":
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, **kwargs_sym)
-            else:
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_1d(L, **kwargs_sym)
+    if len(dims) == 2:
+        orbit = sym.get_orbit_2d_square(dims[0], **kwargs_sym)
+    if len(dims) == 1:
+        orbit = sym.get_orbit_1d(dims[0], **kwargs_sym)
 
     if not "net2" in descr:
 
         model = get_net(descr["net1"], dims)
-
-        psi = jVMC.vqs.NQS(model, batchSize=descr["batch_size"], seed=seed)
+        isGenerator = "sample" in dir(model)
 
     else:
 
@@ -95,8 +71,12 @@ def init_net(descr, dims, seed=0):
 
         model1 = get_net(descr["net1"], dims)
         model2 = get_net(descr["net2"], dims)
+        model = jVMC.nets.two_nets_wrapper.TwoNets([model1, model2])
+        isGenerator = "sample" in dir(model1)
 
-        psi = jVMC.vqs.NQS((model1, model2), batchSize=descr["batch_size"], seed=seed)
+    avgFun = jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep if isGenerator else jVMC.nets.sym_wrapper.avgFun_Coefficients_Exp
+    model = jVMC.nets.sym_wrapper.SymNet(orbit=orbit, net=model, avgFun=avgFun)
+    psi = jVMC.vqs.NQS(model, batchSize=descr["batch_size"], seed=seed)
 
     psi(jnp.zeros((jVMC.global_defs.device_count(), 1) + dims, dtype=np.int32))
 
