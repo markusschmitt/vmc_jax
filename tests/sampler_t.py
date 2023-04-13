@@ -84,7 +84,7 @@ class TestMC(unittest.TestCase):
         # Set up variational wave function
         rbm1 = nets.RBM(numHidden=2, bias=False)
         rbm2 = nets.RBM(numHidden=2, bias=False)
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rbm1, rbm2])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rbm1, net2=rbm2)
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
         psi = NQS(net)
@@ -164,7 +164,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, depth=2)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rnn, rbm])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -207,7 +207,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, realValuedOutput=True)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rnn, rbm])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
 
@@ -246,7 +246,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True, inputDim=2)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rnn, rbm])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -286,7 +286,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, cell="GRU", realValuedParams=True, realValuedOutput=True, inputDim=2)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rnn, rbm])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -323,7 +323,7 @@ class TestMC(unittest.TestCase):
         #rnn = nets.RNN2D( L=L, hiddenSize=5 )
         rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="RNN", realValuedParams=True, realValuedOutput=True)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rnn, rnn])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rnn)
         orbit = jVMC.util.symmetries.get_orbit_2d_square(L, translation=False, reflection=False, rotation=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -361,7 +361,7 @@ class TestMC(unittest.TestCase):
         # Set up variational wave function
         rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets([rnn, rnn])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rnn)
         orbit = jVMC.util.symmetries.get_orbit_2d_square(L, translation=False, reflection=False, rotation=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)

@@ -145,8 +145,8 @@ class NQS:
 
         self._isGenerator = False
         if isinstance(net.net, jVMC.nets.two_nets_wrapper.TwoNets):
-            if "sample" in dir(net.net.net[0]):
-                if callable(net.net.net[0].sample):
+            if "sample" in dir(net.net.net1):
+                if callable(net.net.net1.sample):
                     self._isGenerator = True
         else:
             if "sample" in dir(net.net):

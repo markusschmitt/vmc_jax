@@ -78,7 +78,7 @@ class TestGradients(unittest.TestCase):
             L = 3
             rbmModel1 = nets.RBM(numHidden=2, bias=True)
             rbmModel2 = nets.RBM(numHidden=3, bias=True)
-            model = nets.two_nets_wrapper.TwoNets([rbmModel1, rbmModel2])
+            model = nets.two_nets_wrapper.TwoNets(net1=rbmModel1, net2=rbmModel2)
             orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
             net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
             psi = NQS(net)

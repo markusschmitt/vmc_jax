@@ -71,7 +71,7 @@ def init_net(descr, dims, seed=0):
 
         model1 = get_net(descr["net1"], dims)
         model2 = get_net(descr["net2"], dims)
-        model = jVMC.nets.two_nets_wrapper.TwoNets([model1, model2])
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=model1, net2=model2)
         isGenerator = "sample" in dir(model1)
 
     avgFun = jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep if isGenerator else jVMC.nets.sym_wrapper.avgFun_Coefficients_Exp
