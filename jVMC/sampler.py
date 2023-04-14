@@ -39,6 +39,7 @@ def propose_spin_flip_Z2(key, s, info):
     doFlip = random.randint(flipKey, (1,), 0, 5)[0]
     return jax.lax.cond(doFlip == 0, lambda x: 1 - x, lambda x: x, s)
 
+
 def propose_spin_flip_zeroMag(key, s, info):
     # propose spin flips that stay in the zero magnetization sector
 
@@ -89,10 +90,12 @@ class MCSampler:
         * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
         * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
         * ``sweepSteps``: Number of proposed updates per sweep.
+        * ``mu``: exponent, giving the probability of a configuration. \
+        The usual choice is :math: `|\psi(s)|^2`, i.e. mu=2.
     """
 
     def __init__(self, net, sampleShape, key, updateProposer=None, numChains=1, updateProposerArg=None,
-                 numSamples=100, thermalizationSweeps=10, sweepSteps=10, initState=None):
+                 numSamples=100, thermalizationSweeps=10, sweepSteps=10, initState=None, mu=2):
         """Initializes the MCSampler class.
 
         """
@@ -106,15 +109,18 @@ class MCSampler:
         stateShape = (global_defs.device_count(), numChains) + sampleShape
         if initState is None:
             initState = jnp.zeros(sampleShape, dtype=np.int32)
-        self.states = jnp.stack([initState] * (global_defs.device_count()*numChains), axis=0).reshape(stateShape)
+        self.states = jnp.stack([initState] * (global_defs.device_count() * numChains), axis=0).reshape(stateShape)
 
         # Make sure that net is initialized
         self.net(self.states)
 
+        self.mu = mu
+        if mu < 0 or mu > 2:
+            raise ValueError("mu must be in the range [0, 2]")
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        if isinstance(key,jax.lib.xla_extension.DeviceArray):
+        if isinstance(key, jax.lib.xla_extension.DeviceArray):
             self.key = key
         else:
             self.key = jax.random.PRNGKey(key)
@@ -194,14 +200,12 @@ class MCSampler:
             numSamples = self.numSamples
 
         if self.net.is_generator:
-
             configs = self._get_samples_gen(parameters, numSamples, multipleOf)
-
-            return configs, self.net(configs), None
+            return configs, self.net(configs), jnp.ones(configs.shape[:2]) / jnp.prod(jnp.asarray(configs.shape[:2]))
 
         configs, logPsi = self._get_samples_mcmc(parameters, numSamples, multipleOf)
-
-        return configs, logPsi, None
+        p = jnp.exp((2 - self.mu) * jnp.real(logPsi))
+        return configs, logPsi, p / jnp.sum(p)
 
     def _randomize_samples(self, samples, key, orbit):
         """ For a given set of samples apply a random symmetry transformation to each sample
@@ -245,9 +249,9 @@ class MCSampler:
                                                                                     static_broadcasted_argnums=(1, 2, 3, 9, 11),
                                                                                     in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None, None))
 
-        (self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted), configs =\
+        (self.states, self.log_accProb, self.key, self.numProposed, self.numAccepted), configs =\
             self._get_samples_jitd[numSamplesStr](params, numSamples, self.thermalizationSweeps, self.sweepSteps,
-                                                  self.states, self.logPsiSq, self.key, self.numProposed, self.numAccepted,
+                                                  self.states, self.log_accProb, self.key, self.numProposed, self.numAccepted,
                                                   self.updateProposer, self.updateProposerArg, self.sampleShape)
 
         # return configs, None
@@ -255,29 +259,29 @@ class MCSampler:
 
     def _get_samples(self, params, numSamples,
                      thermSweeps, sweepSteps,
-                     states, logPsiSq, key,
+                     states, log_accProb, key,
                      numProposed, numAccepted,
                      updateProposer, updateProposerArg,
                      sampleShape, sweepFunction=None):
 
         # Thermalize
-        states, logPsiSq, key, numProposed, numAccepted =\
-            sweepFunction(states, logPsiSq, key, numProposed, numAccepted, params, thermSweeps * sweepSteps, updateProposer, updateProposerArg)
+        states, log_accProb, key, numProposed, numAccepted =\
+            sweepFunction(states, log_accProb, key, numProposed, numAccepted, params, thermSweeps * sweepSteps, updateProposer, updateProposerArg)
 
         # Collect samples
         def scan_fun(c, x):
 
-            states, logPsiSq, key, numProposed, numAccepted =\
+            states, log_accProb, key, numProposed, numAccepted =\
                 sweepFunction(c[0], c[1], c[2], c[3], c[4], params, sweepSteps, updateProposer, updateProposerArg)
 
-            return (states, logPsiSq, key, numProposed, numAccepted), states
+            return (states, log_accProb, key, numProposed, numAccepted), states
 
-        meta, configs = jax.lax.scan(scan_fun, (states, logPsiSq, key, numProposed, numAccepted), None, length=numSamples)
+        meta, configs = jax.lax.scan(scan_fun, (states, log_accProb, key, numProposed, numAccepted), None, length=numSamples)
 
         # return meta, configs.reshape((configs.shape[0]*configs.shape[1], -1))
         return meta, configs.reshape((configs.shape[0] * configs.shape[1],) + sampleShape)
 
-    def _sweep(self, states, logPsiSq, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
+    def _sweep(self, states, log_accProb, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
 
         def perform_mc_update(i, carry):
 
@@ -287,8 +291,8 @@ class MCSampler:
             newStates = vmap(updateProposer, in_axes=(0, 0, None))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
 
             # Compute acceptance probabilities
-            newLogPsiSq = jax.vmap(lambda y: 2. * jnp.real(net(params, y)), in_axes=(0,))(newStates)
-            P = jnp.exp(newLogPsiSq - carry[1])
+            new_log_accProb = jax.vmap(lambda y: self.mu * jnp.real(net(params, y)), in_axes=(0,))(newStates)
+            P = jnp.exp(new_log_accProb - carry[1])
 
             # Roll dice
             newKey, carryKey = random.split(carryKey,)
@@ -303,23 +307,22 @@ class MCSampler:
                 return jax.lax.cond(acc, lambda x: x[1], lambda x: x[0], (old, new))
             carryStates = vmap(update, in_axes=(0, 0, 0))(accepted, carry[0], newStates)
 
-            carryLogPsiSq = jnp.where(accepted == True, newLogPsiSq, carry[1])
+            carryLog_accProb = jnp.where(accepted == True, new_log_accProb, carry[1])
 
-            return (carryStates, carryLogPsiSq, carryKey, numProposed, numAccepted)
+            return (carryStates, carryLog_accProb, carryKey, numProposed, numAccepted)
 
-        (states, logPsiSq, key, numProposed, numAccepted) =\
-            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, logPsiSq, key, numProposed, numAccepted))
+        (states, log_accProb, key, numProposed, numAccepted) =\
+            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, log_accProb, key, numProposed, numAccepted))
 
-        return states, logPsiSq, key, numProposed, numAccepted
+        return states, log_accProb, key, numProposed, numAccepted
 
     def _mc_init(self, netParams):
 
-        # Initialize logPsiSq
-        #self.logPsiSq = 2. * net.real_coefficients(self.states)
+        # Initialize log_accProb
         net, _ = self.net.get_sampler_net()
-        self.logPsiSq = global_defs.pmap_for_my_devices(
-                                    lambda x: jax.vmap(lambda y: 2. * jnp.real(net(netParams, y)), in_axes=(0,))(x)
-                                )(self.states)
+        self.log_accProb = global_defs.pmap_for_my_devices(
+            lambda x: jax.vmap(lambda y: self.mu * jnp.real(net(netParams, y)), in_axes=(0,))(x)
+        )(self.states)
 
         shape = (global_defs.device_count(),) + (1,)
 
@@ -370,7 +373,7 @@ class ExactSampler:
         self._normalize_pmapd = global_defs.pmap_for_my_devices(self._normalize, in_axes=(0, None))
 
         self.get_basis()
-        
+
         # Make sure that net params are initialized
         self.psi(self.basis)
 
@@ -480,5 +483,8 @@ class ExactSampler:
 
     def set_number_of_samples(self, N):
         pass
+
+    def get_last_number_of_samples(self):
+        return jnp.inf
 
 # ** end class ExactSampler

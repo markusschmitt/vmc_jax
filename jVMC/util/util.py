@@ -133,21 +133,16 @@ def measure(observables, psi, sampler, numSamples=None):
 
         for op in get_iterable(ops):
 
-            args=()
+            args = ()
             if isinstance(op, collections.abc.Iterable):
                 args = tuple(op[1:])
                 op = op[0]
 
             Oloc = op.get_O_loc(sampleConfigs, psi, sampleLogPsi, *args)
 
-            if p is not None:
-                tmpMeans.append(mpi.global_mean(Oloc, p))
-                tmpVariances.append(mpi.global_variance(Oloc, p))
-                tmpErrors.append(0.)
-            else:
-                tmpMeans.append(mpi.global_mean(Oloc))
-                tmpVariances.append(mpi.global_variance(Oloc))
-                tmpErrors.append(jnp.sqrt(tmpVariances[-1]) / jnp.sqrt(sampler.get_last_number_of_samples()))
+            tmpMeans.append(mpi.global_mean(Oloc[..., None], p)[0])
+            tmpVariances.append(mpi.global_variance(Oloc[..., None], p)[0])
+            tmpErrors.append(jnp.sqrt(tmpVariances[-1]) / jnp.sqrt(sampler.get_last_number_of_samples()))
 
         result[name] = {}
         result[name]["mean"] = jnp.real(jnp.array(tmpMeans))

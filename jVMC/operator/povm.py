@@ -35,27 +35,16 @@ def measure_povm(povm, sampler, sampleConfigs=None, probs=None, observables=None
     for name, ops in observables.items():
         results = povm.evaluate_observable(ops, sampleConfigs)
         result[name] = {}
-        if probs is not None:
-            result[name]["mean"] = jnp.array(mpi.global_mean(results[0], probs))
-            result[name]["variance"] = jnp.array(mpi.global_variance(results[0], probs))
-            result[name]["MC_error"] = jnp.array(0)
-
-        else:
-            result[name]["mean"] = jnp.array(mpi.global_mean(results[0]))
-            result[name]["variance"] = jnp.array(mpi.global_variance(results[0]))
-            result[name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
+        result[name]["mean"] = jnp.array(mpi.global_mean(results[0][..., None], probs)[0])
+        result[name]["variance"] = jnp.array(mpi.global_variance(results[0][..., None], probs)[0])
+        result[name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
 
         for key, value in results[1].items():
             result_name = name + "_corr_L" + str(key)
             result[result_name] = {}
-            if probs is not None:
-                result[result_name]["mean"] = jnp.array(mpi.global_mean(value, probs) - result[name]["mean"]**2)
-                result[result_name]["variance"] = jnp.array(mpi.global_variance(value, probs))
-                result[result_name]["MC_error"] = jnp.array(0.)
-            else:
-                result[result_name]["mean"] = jnp.array(mpi.global_mean(value) - result[name]["mean"]**2)
-                result[result_name]["variance"] = jnp.array(mpi.global_variance(value))
-                result[result_name]["MC_error"] = jnp.array(result[result_name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
+            result[result_name]["mean"] = jnp.array(mpi.global_mean(value[..., None], probs)[0] - result[name]["mean"]**2)
+            result[result_name]["variance"] = jnp.array(mpi.global_variance(value[..., None], probs)[0])
+            result[result_name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
 
     return result
 

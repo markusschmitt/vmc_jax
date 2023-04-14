@@ -8,6 +8,9 @@ import jax.numpy as jnp
 
 import numpy as np
 
+import sys
+sys.path.append(sys.path[0] + '/../')
+
 import jVMC
 import jVMC.nets as nets
 from jVMC.vqs import NQS
@@ -59,7 +62,7 @@ class TestMC(unittest.TestCase):
 
         # Get samples from MCMC sampler
         numSamples = 500000
-        smc, _, _ = mcSampler.sample(numSamples=numSamples)
+        smc, _, p = mcSampler.sample(numSamples=numSamples)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -67,10 +70,56 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
         # Compare histogram to exact probabilities
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 2e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
+
+    def test_MCMC_sampling_with_mu(self):
+        mu = 1
+
+        L = 4
+
+        weights = jnp.array(
+            [0.23898957, 0.12614753, 0.19479055, 0.17325271, 0.14619853, 0.21392751,
+             0.19648707, 0.17103704, -0.15457255, 0.10954413, 0.13228065, -0.14935214,
+             -0.09963073, 0.17610707, 0.13386381, -0.14836467]
+        )
+
+        # Set up variational wave function
+        rbm = nets.CpxRBM(numHidden=2, bias=False)
+        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
+        psi = NQS(net)
+
+        # Set up exact sampler
+        exactSampler = sampler.ExactSampler(psi, L)
+
+        # Set up MCMC sampler
+        mcSampler = sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777, mu=mu)
+
+        psi.set_parameters(weights)
+
+        # Compute exact probabilities
+        _, _, pex = exactSampler.sample()
+
+        # Get samples from MCMC sampler
+        numSamples = 500000
+        smc, logPsi, weighting_probs = mcSampler.sample(numSamples=numSamples)
+
+        smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
+
+        self.assertTrue(smc.shape[0] >= numSamples)
+
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+
+        psi_log_basis = psi(exactSampler.basis)
+
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=weighting_probs[0, :])
+
+        # Compare histogram to exact probabilities
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
 
     def test_MCMC_sampling_with_two_nets(self):
         L = 4
@@ -102,7 +151,7 @@ class TestMC(unittest.TestCase):
 
         # Get samples from MCMC sampler
         numSamples = 500000
-        smc, _, _ = mcSampler.sample(numSamples=numSamples)
+        smc, _, p = mcSampler.sample(numSamples=numSamples)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -110,10 +159,10 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
         # Compare histogram to exact probabilities
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 2e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
 
     def test_MCMC_sampling_with_integer_key(self):
         L = 4
@@ -143,7 +192,7 @@ class TestMC(unittest.TestCase):
 
         # Get samples from MCMC sampler
         numSamples = 500000
-        smc, _, _ = mcSampler.sample(numSamples=numSamples)
+        smc, _, p = mcSampler.sample(numSamples=numSamples)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -151,10 +200,10 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
         # Compare histogram to exact probabilities
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 2e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
 
     def test_autoregressive_sampling(self):
 
@@ -182,9 +231,9 @@ class TestMC(unittest.TestCase):
         _, _, pex = exactSampler.sample()
 
         numSamples = 1000000
-        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+        smc, logPsi, p = mcSampler.sample(numSamples=numSamples)
 
-        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - logPsi))) < 1e-12)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -192,9 +241,9 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 1.1e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1.1e-3)
 
     def test_autoregressive_sampling_with_symmetries(self):
 
@@ -221,9 +270,9 @@ class TestMC(unittest.TestCase):
         _, logPsi, pex = exactSampler.sample()
 
         numSamples = 1000000
-        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+        smc, logPsi, p = mcSampler.sample(numSamples=numSamples)
 
-        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - logPsi))) < 1e-12)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -231,9 +280,9 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 2e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
 
     def test_autoregressive_sampling_with_lstm(self):
 
@@ -261,9 +310,9 @@ class TestMC(unittest.TestCase):
         _, logPsi, pex = exactSampler.sample()
 
         numSamples = 1000000
-        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+        smc, logPsi, p = mcSampler.sample(numSamples=numSamples)
 
-        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - logPsi))) < 1e-12)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -271,9 +320,9 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 1e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1e-3)
 
     def test_autoregressive_sampling_with_gru(self):
 
@@ -301,9 +350,9 @@ class TestMC(unittest.TestCase):
         _, logPsi, pex = exactSampler.sample()
 
         numSamples = 1000000
-        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+        smc, logPsi, p = mcSampler.sample(numSamples=numSamples)
 
-        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - logPsi))) < 1e-12)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -311,9 +360,9 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 1e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1e-3)
 
     def test_autoregressive_sampling_with_rnn2d(self):
 
@@ -340,9 +389,9 @@ class TestMC(unittest.TestCase):
         self.assertTrue(jnp.abs(jnp.sum(pex) - 1.) < 1e-12)
 
         numSamples = 1000000
-        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+        smc, logPsi, p = mcSampler.sample(numSamples=numSamples)
 
-        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - logPsi))) < 1e-12)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -350,9 +399,9 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 1e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1e-3)
 
     def test_autoregressive_sampling_with_lstm2d(self):
 
@@ -378,9 +427,9 @@ class TestMC(unittest.TestCase):
         self.assertTrue(jnp.abs(jnp.sum(pex) - 1.) < 1e-12)
 
         numSamples = 1000000
-        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+        smc, logPsi, p = mcSampler.sample(numSamples=numSamples)
 
-        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - logPsi))) < 1e-12)
 
         smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
 
@@ -388,9 +437,9 @@ class TestMC(unittest.TestCase):
 
         # Compute histogram of sampled configurations
         smcInt = jax.vmap(state_to_int)(smc)
-        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
-        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 1e-3)
+        self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1e-3)
 
 
 if __name__ == "__main__":

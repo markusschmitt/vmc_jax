@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+import jVMC
 import jVMC.mpi_wrapper as mpi
 import jVMC.global_defs as global_defs
 
@@ -66,7 +67,6 @@ class TDVP:
     """
 
     def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
-
         self.sampler = sampler
         self.snrTol = snrTol
         self.svdTol = svdTol
@@ -85,10 +85,8 @@ class TDVP:
         # pmap'd member functions
         self.subtract_helper_Eloc = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
         self.subtract_helper_grad = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
-        self.get_EO = global_defs.pmap_for_my_devices(lambda f, Eloc, grad: -f * jnp.multiply(Eloc[:, None], jnp.conj(grad)),
+        self.get_EO = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
                                                       in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
-        self.get_EO_p = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
-                                                        in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
         self.transform_EO = global_defs.pmap_for_my_devices(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0, None))
         self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
 
@@ -130,26 +128,16 @@ class TDVP:
 
         return self.S
 
-    def get_tdvp_equation(self, Eloc, gradients, p=None):
-
-        self.ElocMean = mpi.global_mean(Eloc, p)
-        self.ElocVar = jnp.real(mpi.global_variance(Eloc, p))
+    def get_tdvp_equation(self, Eloc, gradients, p):
+        self.ElocMean = mpi.global_mean(Eloc[..., None], p)[..., 0]
+        self.ElocVar = jnp.real(mpi.global_variance(Eloc[..., None], p))[..., 0]
         Eloc = self.subtract_helper_Eloc(Eloc, self.ElocMean)
         gradientsMean = mpi.global_mean(gradients, p)
+
         gradients = self.subtract_helper_grad(gradients, gradientsMean)
 
-        if p is None:
-
-            EOdata = self.get_EO(self.rhsPrefactor, Eloc, gradients)
-
-            self.F0 = mpi.global_mean(EOdata)
-
-        else:
-
-            EOdata = self.get_EO_p(self.rhsPrefactor, p, Eloc, gradients)
-
-            self.F0 = mpi.global_sum(EOdata)
-
+        EOdata = self.get_EO(self.rhsPrefactor, p, Eloc, gradients)
+        self.F0 = mpi.global_sum(EOdata)
         F = self.makeReal(self.F0)
 
         self.S0 = mpi.global_covariance(gradients, p)
@@ -161,17 +149,12 @@ class TDVP:
         return S, F, EOdata
 
     def get_sr_equation(self, Eloc, gradients):
-
         return self.get_tdvp_equation(Eloc, gradients, rhsPrefactor=1.)
 
     def transform_to_eigenbasis(self, S, F, EOdata):
-
         if self.diagonalizeOnDevice:
-
             self.ev, self.V = jnp.linalg.eigh(S)
-
         else:
-
             tmpS = np.array(S)
             tmpEv, tmpV = np.linalg.eigh(tmpS)
             self.ev = jnp.array(tmpEv)
@@ -181,12 +164,12 @@ class TDVP:
 
         EOdata = self.transform_EO(self.makeReal_pmapd(EOdata), self.V)
         EOdata.block_until_ready()
-        self.rhoVar = mpi.global_variance(EOdata)
+
+        self.rhoVar = mpi.global_variance(EOdata, jnp.ones(EOdata.shape[:2]) / jnp.prod(jnp.asarray(EOdata.shape[:2])))
 
         self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples * (jnp.conj(self.VtF) * self.VtF) / self.rhoVar))
 
-    def solve(self, Eloc, gradients, p=None):
-
+    def solve(self, Eloc, gradients, p):
         # Get TDVP equation from MC data
         self.S, F, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
         F.block_until_ready()
@@ -200,7 +183,7 @@ class TDVP:
         # Set regularizer for singular value cutoff
         regularizer = 1. / (1. + (self.svdTol / jnp.abs(self.ev / self.ev[-1]))**6)
 
-        if p is None:
+        if not isinstance(self.sampler, jVMC.sampler.ExactSampler):
             # Construct a soft cutoff based on the SNR
             regularizer *= 1. / (1. + (self.snrTol / self.snr)**6)
 
@@ -292,13 +275,13 @@ class TDVP:
                 self.metaData = {
                     "tdvp_error": self._get_tdvp_error(update),
                     "tdvp_residual": solverResidual,
-                    "SNR": self.snr, 
+                    "SNR": self.snr,
                     "Spectrum": self.ev,
                 }
 
                 if self.crossValidation:
 
-                    if p != None:
+                    if isinstance(self.sampler, jVMC.sampler.ExactSampler):
                         update_1, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2], p[:, 0::2])
                         S2, F2, _ = self.get_tdvp_equation(Eloc[:, 1::2], sampleGradients[:, 1::2], p[:, 1::2])
                     else:
