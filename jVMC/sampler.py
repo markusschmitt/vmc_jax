@@ -205,7 +205,7 @@ class MCSampler:
 
         configs, logPsi = self._get_samples_mcmc(parameters, numSamples, multipleOf)
         p = jnp.exp((2 - self.mu) * jnp.real(logPsi))
-        return configs, logPsi, p / jnp.sum(p)
+        return configs, logPsi, p / mpi.global_sum(p)
 
     def _randomize_samples(self, samples, key, orbit):
         """ For a given set of samples apply a random symmetry transformation to each sample

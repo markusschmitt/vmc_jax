@@ -146,7 +146,7 @@ class TDVP:
         if self.diagonalShift > 1e-10:
             S = S + jnp.diag(self.diagonalShift * jnp.diag(S))
 
-        return S, F, EOdata
+        return S, F, EOdata * mpi.globNumSamples
 
     def get_sr_equation(self, Eloc, gradients):
         return self.get_tdvp_equation(Eloc, gradients, rhsPrefactor=1.)
@@ -165,7 +165,7 @@ class TDVP:
         EOdata = self.transform_EO(self.makeReal_pmapd(EOdata), self.V)
         EOdata.block_until_ready()
 
-        self.rhoVar = mpi.global_variance(EOdata, jnp.ones(EOdata.shape[:2]) / jnp.prod(jnp.asarray(EOdata.shape[:2])))
+        self.rhoVar = mpi.global_variance(EOdata, jnp.ones(EOdata.shape[:2]) / mpi.globNumSamples)
 
         self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples * (jnp.conj(self.VtF) * self.VtF) / self.rhoVar))
 
