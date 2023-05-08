@@ -225,6 +225,7 @@ class NQS:
             * ``s``: Array of computational basis states.
         Returns:
             Logarithmic wave function coefficients :math:`\ln\psi(s)`.
+        
         :meta public:
         """
 
