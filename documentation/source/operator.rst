@@ -141,7 +141,7 @@ resulting in
 
     :math:`\dot{P}^\textbf{a} = \mathrm{tr}(\mathcal{L}[M^\textbf{c}]M^\textbf{a}) T^{-1\textbf{cb}} P^\textbf{b} = \mathcal{L}^\textbf{ab}P^\textbf{b}`.
 
-Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored, but :math:`n-body operators for :math:`n>2` are also supported.
+Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored, but :math:`n`-body operators for :math:`n>2` are also supported.
 Frequently encountered unitary and dissipative operators are pre-defined and can be constructed as explained below.
 
 Assembling operators
@@ -166,6 +166,28 @@ Using the POVM-operator class, the expression for the operator that corresponds 
 
 Adding terms to the Lindbladian is done using dictionaries, which have three entries: The name of the operator to be added, its prefactor and the site-ids that are involved.
 Valid names that are recognized by default are the unitary 2-body (1-body) operators [``"XX"``, ``"YY"``, ``"ZZ"``] ([``"X"``, ``"Y"``, ``"Z"``]) corresponding to couplings and external magnetic fields aswell as the single-particle dissipation terms [``"dephasing"``, ``"decaydown"``, ``"decayup"``] corresponding to the dissipation operators [:math:`\sigma^z`, :math:`\sigma^-`, :math:`\sigma^+`].
+
+Adding new operators
+--------------------
+
+To add custom operators it is best to use the ``matrix_to_povm`` function and the appropiate adding
+method of the ``POVM`` object.
+For example adding the operator :math:`A = \sigma_i^x \sigma_j^z` as part of the unitary term can be done by::
+
+    povm = POVM({"dim": "1D", "L": L})
+    M, T_inv = povm.M, povm.T_inv
+    M_2body = jax.numpy.array([[jax.numpy.kron(M[i], M[j]) for j in range(4)]
+                                for i in range(4)]).reshape(4**2, 2**2, 2**2)
+    T_inv_2body = jax.numpy.kron(T_inv, T_inv)
+
+    omega = matrix_to_povm(A, M_2body, T_inv_2body, mode='unitary')
+    povm.add_unitary("XZ", omega)
+
+Valid values for the ``mode`` parameter are ``unitary`` (``uni``), ``dissipative`` (``dis``), ``observable`` (``obs``)
+and ``imaginary`` (``imag``).
+The name for a operator added to the ``POVM`` object can not be used twice even for different modes, trying to add an
+operator with a already used name will raise a ``ValueError``.
+
 
 Detailed documentation
 ----------------------
