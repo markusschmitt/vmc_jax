@@ -104,6 +104,7 @@ def dict_gradient_real(fun, params, arg):
 
 class NQS:
     """Wrapper class providing basic functionality of variational states.
+    
     This class can operate in two modi:
         #. Single-network ansatz
             Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
@@ -116,6 +117,7 @@ class NQS:
             with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
             :math:`\\varphi_{\\theta_\phi}` \
             parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
+
     Initializer arguments:
         * ``nets``: Variational network or tuple of networks.
         * ``batchSize``: Batch size for batched network evaluation. Choice \
@@ -127,6 +129,7 @@ class NQS:
 
     def __init__(self, nets, batchSize=1000, seed=1234):
         """Initializes NQS class.
+        
         This class can operate in two modi:
             #. Single-network ansatz
                 Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
@@ -214,8 +217,10 @@ class NQS:
 
     def __call__(self, s):
         """Evaluate variational wave function.
+        
         Compute the logarithmic wave function coefficients :math:`\ln\psi(s)` for \
         computational configurations :math:`s`.
+        
         Args:
             * ``s``: Array of computational basis states.
         Returns:
@@ -259,8 +264,10 @@ class NQS:
 
     def gradients(self, s):
         """Compute gradients of logarithmic wave function.
+        
         Compute gradient of the logarithmic wave function coefficients, \
         :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+        
         Args:
             * ``s``: Array of computational basis states.
         Returns:
@@ -278,8 +285,10 @@ class NQS:
 
     def gradients_dict(self, s):
         """Compute gradients of logarithmic wave function and return them as dictionary.
+        
         Compute gradient of the logarithmic wave function coefficients, \
         :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+        
         Args:
             * ``s``: Array of computational basis states.
         Returns:
@@ -366,8 +375,10 @@ class NQS:
 
     def update_parameters(self, deltaP):
         """Update variational parameters.
+        
         Sets new values of all variational parameters by adding given values.
         If parameters are not initialized, parameters are set to ``deltaP``.
+        
         Args:
             * ``deltaP``: Values to be added to variational parameters.
         """
@@ -389,7 +400,9 @@ class NQS:
 
     def set_parameters(self, P):
         """Set variational parameters.
+        
         Sets new values of all variational parameters.
+        
         Args:
             * ``P``: New values of variational parameters.
         """
@@ -424,6 +437,7 @@ class NQS:
 
     def get_parameters(self):
         """Get variational parameters.
+        
         Returns:
             Array holding current values of all variational parameters.
         """
