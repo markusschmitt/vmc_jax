@@ -167,11 +167,16 @@ class TDVP:
     def transform_to_eigenbasis(self, S, F, EOdata):
 
         if self.diagonalizeOnDevice:
-
-            self.ev, self.V = jnp.linalg.eigh(S)
-
+            try:
+                self.ev, self.V = jnp.linalg.eigh(S)
+            except ValueError:
+                raise Warning("jax.numpy.linalg.eigh raised an exception. Falling back to numpy.linalg.eigh for "
+                              "diagonalization.")
+                tmpS = np.array(S)
+                tmpEv, tmpV = np.linalg.eigh(tmpS)
+                self.ev = jnp.array(tmpEv)
+                self.V = jnp.array(tmpV)
         else:
-
             tmpS = np.array(S)
             tmpEv, tmpV = np.linalg.eigh(tmpS)
             self.ev = jnp.array(tmpEv)
