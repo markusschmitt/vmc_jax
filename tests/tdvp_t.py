@@ -32,7 +32,11 @@ class TestGsSearch(unittest.TestCase):
         for hx, exE in zip(hxs, exEs):
             # Set up variational wave function
             rbm = nets.CpxRBM(numHidden=6, bias=False)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+            symms = {"translation": {"use": False, "factor": 1},
+                     "reflection": {"use": False, "factor": 1},
+                     "z2sym": {"use": False, "factor": 1},
+                     }
+            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
             net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
             psi = NQS(net)
 
@@ -70,7 +74,11 @@ class TestTimeEvolution(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        symms = {"translation": {"use": False, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
         net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
         psi = NQS(net)
         psi(jnp.array([[[1, 1, 1, 1]]]))
@@ -142,7 +150,11 @@ class TestTimeEvolutionMCSampler(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        symms = {"translation": {"use": False, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
         net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
         psi = NQS(net)
         psi(jnp.array([[[1, 1, 1, 1]]]))

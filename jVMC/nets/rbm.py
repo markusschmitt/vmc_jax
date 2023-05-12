@@ -41,6 +41,30 @@ class CpxRBM(nn.Module):
 # ** end class CpxRBM
 
 
+class CpxRBM_NoZ2Sym(nn.Module):
+    """Restricted Boltzmann machine with complex parameters.
+
+    Initialization arguments:
+        * ``s``: Computational basis configuration.
+        * ``numHidden``: Number of hidden units.
+        * ``bias``: ``Boolean`` indicating whether to use bias.
+
+    """
+    numHidden: int = 2
+    bias: bool = False
+
+    @nn.compact
+    def __call__(self, s):
+
+        layer = nn.Dense(self.numHidden, use_bias=self.bias,
+                         **init_fn_args(kernel_init=jVMC.nets.initializers.cplx_init,
+                                        bias_init=jax.nn.initializers.zeros,
+                                        dtype=global_defs.tCpx)
+                         )
+
+        return jnp.sum(act_funs.log_cosh(layer(s.ravel())))
+
+
 class RBM(nn.Module):
     """Restricted Boltzmann machine with real parameters.
 

@@ -80,7 +80,11 @@ class TestOperator(unittest.TestCase):
             h.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
 
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        symms = {"translation": {"use": False, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
         net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
         psi = NQS(net)
 
@@ -110,7 +114,11 @@ class TestOperator(unittest.TestCase):
             hamilton_batched.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
 
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        symms = {"translation": {"use": False, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
         net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
         psi = NQS(net)
 

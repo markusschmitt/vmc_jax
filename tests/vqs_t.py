@@ -26,7 +26,11 @@ class TestGradients(unittest.TestCase):
         for k in range(10):
             L = 3
             rbm = nets.CpxRBM(numHidden=2**k, bias=True)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+            symms = {"translation": {"use": False, "factor": 1},
+                     "reflection": {"use": False, "factor": 1},
+                     "z2sym": {"use": False, "factor": 1},
+                     }
+            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
             net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
             s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
             psiC = NQS(net)
@@ -44,7 +48,12 @@ class TestGradients(unittest.TestCase):
 
             L = 3
             rbm = nets.CpxRBM(numHidden=2, bias=True)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+
+            symms = {"translation": {"use": False, "factor": 1},
+                     "reflection": {"use": False, "factor": 1},
+                     "z2sym": {"use": False, "factor": 1},
+                     }
+            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
             net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
             psiC = NQS(net)
 
@@ -79,7 +88,11 @@ class TestGradients(unittest.TestCase):
             rbmModel1 = nets.RBM(numHidden=2, bias=True)
             rbmModel2 = nets.RBM(numHidden=3, bias=True)
             model = nets.two_nets_wrapper.TwoNets(net1=rbmModel1, net2=rbmModel2)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+            symms = {"translation": {"use": False, "factor": 1},
+                     "reflection": {"use": False, "factor": 1},
+                     "z2sym": {"use": False, "factor": 1},
+                     }
+            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
             net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
             psi = NQS(net)
 
@@ -113,7 +126,11 @@ class TestGradients(unittest.TestCase):
 
             L = 3
             model = nets.RNN1DGeneral(L=L)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+            symms = {"translation": {"use": False, "factor": 1},
+                     "reflection": {"use": False, "factor": 1},
+                     "z2sym": {"use": False, "factor": 1},
+                     }
+            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
             net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
             psi = NQS(net)
 
@@ -141,7 +158,11 @@ class TestGradients(unittest.TestCase):
 
         L = 4
         model = jVMC.nets.CpxRBM(numHidden=8, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        symms = {"translation": {"use": False, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
         psi = NQS(net)
 
@@ -166,7 +187,11 @@ class TestEvaluation(unittest.TestCase):
 
             L = 3
             model = nets.CpxRBM(numHidden=2, bias=True)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+            symms = {"translation": {"use": False, "factor": 1},
+                     "reflection": {"use": False, "factor": 1},
+                     "z2sym": {"use": False, "factor": 1},
+                     }
+            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
             net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
             psiC = NQS(net)
 

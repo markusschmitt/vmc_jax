@@ -51,10 +51,15 @@ class TestCNN(unittest.TestCase):
 class TestSymNet(unittest.TestCase):
 
     def test_sym_net(self):
+        L = 5
         rbm = nets.RBM(numHidden=5)
-        orbit = symmetries.get_orbit_1d(5, reflection=False, translation=True, z2sym=False)
+        symms = {"translation": {"use": True, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
         rbm_sym = nets.SymNet(net=rbm, orbit=orbit)
-        params = rbm_sym.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
+        params = rbm_sym.init(random.PRNGKey(0), jnp.zeros((L,), dtype=np.int32))
 
         S0 = jnp.pad(jnp.array([1, 0, 1, 1, 0]), (0, 4), 'wrap')
         S = jnp.array(

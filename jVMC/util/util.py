@@ -51,12 +51,15 @@ def init_net(descr, dims, seed=0):
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
     keys_sim = ["translation", "rotation", "reflection", "z2sym"]
-    kwargs_sym = {key: descr[key] if key in descr else False for key in keys_sim}
+    kwargs_sym = {key: {"use": descr[key]} if key in descr else {"use": False} for key in keys_sim}
+    for key in keys_sim:
+        fac_key = key + "_factor"
+        kwargs_sym[key]["factor"] = descr[fac_key] if fac_key in descr else 1
 
     if len(dims) == 2:
-        orbit = sym.get_orbit_2d_square(dims[0], **kwargs_sym)
+        orbit = sym.get_orbit_2D_square(dims[0], **kwargs_sym)
     if len(dims) == 1:
-        orbit = sym.get_orbit_1d(dims[0], **kwargs_sym)
+        orbit = sym.get_orbit_1D(dims[0], **kwargs_sym)
 
     if not "net2" in descr:
 
