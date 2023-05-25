@@ -298,7 +298,7 @@ class TDVP:
                     "tdvp_error": self._get_tdvp_error(update),
                     "tdvp_residual": solverResidual,
                     "SNR": self.snr, 
-                    "Spectrum": self.ev,
+                    "spectrum": self.ev,
                 }
 
                 if self.crossValidation:
