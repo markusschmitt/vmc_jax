@@ -249,7 +249,7 @@ class GRUCell(nn.Module):
         cellCarryV = nn.Dense(features=carryV.shape[-1],
                               use_bias=False,
                               dtype=global_defs.tReal)
-        current_carry, newR = nn.GRUCell()(cellCarryH(carryH) + cellCarryV(carryV), state)
+        current_carry, newR = nn.GRUCell(param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
 
         return current_carry, newR[0]
 
@@ -259,11 +259,11 @@ class LSTMCell(nn.Module):
     def __call__(self, carryH, carryV, state):
         cellCarryH = nn.Dense(features=carryH.shape[-1],
                               use_bias=True,
-                              dtype=global_defs.tReal)
+                              param_dtype=global_defs.tReal)
         cellCarryV = nn.Dense(features=carryV.shape[-1],
                               use_bias=False,
-                              dtype=global_defs.tReal)
-        current_carry, newR = nn.OptimizedLSTMCell()(cellCarryH(carryH) + cellCarryV(carryV), state)
+                              param_dtype=global_defs.tReal)
+        current_carry, newR = nn.OptimizedLSTMCell(param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
 
         return jnp.asarray(current_carry), newR
 

@@ -77,6 +77,13 @@ def flat_gradient(fun, params, arg):
     gi = tree_flatten(tree_map(lambda x: x.ravel(), gi))[0]
     return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
 
+def flat_gradient_cpx_nonholo(fun, params, arg):
+    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
+    gr = tree_flatten(tree_map(lambda x: [jnp.real(x.ravel()), -jnp.imag(x.ravel())], gr))[0]
+    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)["params"]
+    gi = tree_flatten(tree_map(lambda x: [jnp.real(x.ravel()), -jnp.imag(x.ravel())], gi))[0]
+    return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
+
 
 def flat_gradient_real(fun, params, arg):
     g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
@@ -193,7 +200,13 @@ class NQS:
         if not self.initialized:
     
             self.parameters = self.net.init(jax.random.PRNGKey(self.seed), s[0,0,...])
-            
+            self.realParams = False
+            dtypes = [a.dtype for a in tree_flatten(self.parameters)[0]]
+            if not all(d == dtypes[0] for d in dtypes):
+                raise Exception("Network uses different parameter data types. This is not supported.")
+            if dtypes[0] == np.single or dtypes[0] == np.double:
+                self.realParams = True
+ 
             # check Cauchy-Riemann condition to test for holomorphicity
             def make_flat(t):
                 return jnp.concatenate([p.ravel() for p in tree_flatten(t)[0]])
@@ -203,8 +216,11 @@ class NQS:
                 self.holomorphic = True
                 self.flat_gradient_function = flat_gradient_holo
             else:
-                self.flat_gradient_function = flat_gradient
-                self.dict_gradient_function = dict_gradient
+                if self.realParams:
+                    self.flat_gradient_function = flat_gradient
+                    self.dict_gradient_function = dict_gradient
+                else:
+                    self.flat_gradient_function = flat_gradient_cpx_nonholo
 
             self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters["params"])[0]]
             self.netTreeDef = jax.tree_util.tree_structure(self.parameters["params"])
@@ -300,6 +316,7 @@ class NQS:
         
         self.init_net(s)
 
+        # Here we need to add the treatment for the complex non-holomorphic case
         gradOut = self._get_gradients_dict_pmapd(self.net, self.parameters, s, self.batchSize, self.dict_gradient_function)
 
         if self.holomorphic:
@@ -316,6 +333,7 @@ class NQS:
         start = 0
         P = jnp.arange(2*self.numParameters)
         for s in self.paramShapes:
+            # Here we need to add the treatment for the complex non-holomorphic case
             if self.holomorphic:
                 PTreeShape.append( ( P[start:start + 2*s[0]]) )
                 start += 2*s[0]
@@ -423,7 +441,7 @@ class NQS:
         PTreeShape = []
         start = 0
         for s in self.paramShapes:
-            if self.holomorphic:
+            if not self.realParams:
                 PTreeShape.append( ( P[start:start + s[0]] + 1.j * P[start + s[0]:start + 2*s[0]]).reshape(s[1]) )
                 start += 2*s[0]
             else:
@@ -448,7 +466,7 @@ class NQS:
             return None
 
 
-        if self.holomorphic:
+        if not self.realParams:
             paramOut = jnp.concatenate([jnp.concatenate([p.ravel().real, p.ravel().imag]) for p in tree_flatten(self.params)[0]])
         else:
             paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.params)[0]])
