@@ -8,7 +8,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 
-DEFAULT_DEPENDENCIES = ["setuptools", "wheel", "numpy", "jax>=0.2.11,<=0.3.24", "jaxlib>=0.1.64,<=0.3.24", "flax>=0.3.6,<=0.6.1", "mpi4py", "h5py", "PyYAML"]
+DEFAULT_DEPENDENCIES = ["setuptools", "wheel", "numpy", "jax>=0.4.9,<=0.4.11", "jaxlib>=0.4.9,<=0.4.11", "flax>=0.6.10", "mpi4py", "h5py", "PyYAML"]
 #CUDA_DEPENDENCIES = ["setuptools", "wheel", "numpy", "jax[cuda]>=0.2.11,<=0.2.25", "flax>=0.3.6,<=0.3.6", "mpi4py", "h5py"]
 DEV_DEPENDENCIES = DEFAULT_DEPENDENCIES + ["sphinx", "mock", "sphinx_rtd_theme"]
 

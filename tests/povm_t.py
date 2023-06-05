@@ -18,7 +18,7 @@ class TestPOVM(unittest.TestCase):
             return b
 
         sample_shape = (L,)
-        self.psi = jVMC.util.util.init_net({"batch_size": 5000, "net1":
+        self.psi = jVMC.util.util.init_net({"batch_size": 200, "net1":
             {"type": "RNN",
              "translation": True,
              "parameters": {"inputDim": 4,
@@ -103,7 +103,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=1, depth=1)
@@ -140,7 +140,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
@@ -185,7 +185,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)

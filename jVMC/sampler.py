@@ -114,7 +114,8 @@ class MCSampler:
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        if isinstance(key,jax.lib.xla_extension.DeviceArray):
+        #if isinstance(key,jax.lib.xla_extension.DeviceArray):
+        if isinstance(key,jax.Array):
             self.key = key
         else:
             self.key = jax.random.PRNGKey(key)
