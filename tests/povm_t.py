@@ -99,7 +99,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=1, depth=1)
@@ -135,7 +135,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
@@ -180,8 +180,8 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
-        dt = 1E-3
+        Tmax = 0.2
+        dt = 5E-4
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
 

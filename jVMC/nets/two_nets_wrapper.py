@@ -2,20 +2,30 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from typing import Sequence
+from typing import Sequence, Union
 
 
 class TwoNets(nn.Module):
-    net1: callable
-    net2: callable
+    nets: Sequence[callable]
+
+    def __post_init__(self):
+
+        if "sample" in dir(self.nets[0]):
+            self.sample = self._sample_fun
+
+        super().__post_init__()
+
 
     def __call__(self, s):
-        return self.net1(s) + 1j * self.net2(s)
 
-    def sample(self, *args):
-        # Will produce exact samples if net[0] contains a sample function.
-        # Won't be called if net[0] does not have a sample method.
-        return self.net1.sample(*args)
+        return self.nets[0](s) + 1j * self.nets[1](s)
+
 
     def eval_real(self, s):
-        return self.net1(s)
+        
+        return self.nets[0](s)
+        
+    
+    def _sample_fun(self, *args):
+
+        return self.nets[0].sample(*args)
