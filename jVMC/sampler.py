@@ -256,9 +256,9 @@ class MCSampler:
                                                                                     static_broadcasted_argnums=(1, 2, 3, 9, 11),
                                                                                     in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None, None))
 
-        (self.states, self.log_accProb, self.key, self.numProposed, self.numAccepted), configs =\
+        (self.states, self.logAccProb, self.key, self.numProposed, self.numAccepted), configs =\
             self._get_samples_jitd[numSamplesStr](params, numSamples, self.thermalizationSweeps, self.sweepSteps,
-                                                  self.states, self.log_accProb, self.key, self.numProposed, self.numAccepted,
+                                                  self.states, self.logAccProb, self.key, self.numProposed, self.numAccepted,
                                                   self.updateProposer, self.updateProposerArg, self.sampleShape)
 
         # return configs, None
@@ -266,29 +266,29 @@ class MCSampler:
 
     def _get_samples(self, params, numSamples,
                      thermSweeps, sweepSteps,
-                     states, log_accProb, key,
+                     states, logAccProb, key,
                      numProposed, numAccepted,
                      updateProposer, updateProposerArg,
                      sampleShape, sweepFunction=None):
 
         # Thermalize
-        states, log_accProb, key, numProposed, numAccepted =\
-            sweepFunction(states, log_accProb, key, numProposed, numAccepted, params, thermSweeps * sweepSteps, updateProposer, updateProposerArg)
+        states, logAccProb, key, numProposed, numAccepted =\
+            sweepFunction(states, logAccProb, key, numProposed, numAccepted, params, thermSweeps * sweepSteps, updateProposer, updateProposerArg)
 
         # Collect samples
         def scan_fun(c, x):
 
-            states, log_accProb, key, numProposed, numAccepted =\
+            states, logAccProb, key, numProposed, numAccepted =\
                 sweepFunction(c[0], c[1], c[2], c[3], c[4], params, sweepSteps, updateProposer, updateProposerArg)
 
-            return (states, log_accProb, key, numProposed, numAccepted), states
+            return (states, logAccProb, key, numProposed, numAccepted), states
 
-        meta, configs = jax.lax.scan(scan_fun, (states, log_accProb, key, numProposed, numAccepted), None, length=numSamples)
+        meta, configs = jax.lax.scan(scan_fun, (states, logAccProb, key, numProposed, numAccepted), None, length=numSamples)
 
         # return meta, configs.reshape((configs.shape[0]*configs.shape[1], -1))
         return meta, configs.reshape((configs.shape[0] * configs.shape[1],) + sampleShape)
 
-    def _sweep(self, states, log_accProb, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
+    def _sweep(self, states, logAccProb, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
 
         def perform_mc_update(i, carry):
 
@@ -298,8 +298,8 @@ class MCSampler:
             newStates = vmap(updateProposer, in_axes=(0, 0, None))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
 
             # Compute acceptance probabilities
-            new_log_accProb = jax.vmap(lambda y: self.mu * jnp.real(net(params, y)), in_axes=(0,))(newStates)
-            P = jnp.exp(new_log_accProb - carry[1])
+            newLogAccProb = jax.vmap(lambda y: self.mu * jnp.real(net(params, y)), in_axes=(0,))(newStates)
+            P = jnp.exp(newLogAccProb - carry[1])
 
             # Roll dice
             newKey, carryKey = random.split(carryKey,)
@@ -314,20 +314,20 @@ class MCSampler:
                 return jax.lax.cond(acc, lambda x: x[1], lambda x: x[0], (old, new))
             carryStates = vmap(update, in_axes=(0, 0, 0))(accepted, carry[0], newStates)
 
-            carryLog_accProb = jnp.where(accepted == True, new_log_accProb, carry[1])
+            carryLogAccProb = jnp.where(accepted == True, newLogAccProb, carry[1])
 
-            return (carryStates, carryLog_accProb, carryKey, numProposed, numAccepted)
+            return (carryStates, carryLogAccProb, carryKey, numProposed, numAccepted)
 
-        (states, log_accProb, key, numProposed, numAccepted) =\
-            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, log_accProb, key, numProposed, numAccepted))
+        (states, logAccProb, key, numProposed, numAccepted) =\
+            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, logAccProb, key, numProposed, numAccepted))
 
-        return states, log_accProb, key, numProposed, numAccepted
+        return states, logAccProb, key, numProposed, numAccepted
 
     def _mc_init(self, netParams):
 
-        # Initialize log_accProb
+        # Initialize logAccProb
         net, _ = self.net.get_sampler_net()
-        self.log_accProb = global_defs.pmap_for_my_devices(
+        self.logAccProb = global_defs.pmap_for_my_devices(
             lambda x: jax.vmap(lambda y: self.mu * jnp.real(net(netParams, y)), in_axes=(0,))(x)
         )(self.states)
 
