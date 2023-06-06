@@ -112,7 +112,7 @@ def get_translation_orbit_2d_square(L, translation):
     return LatticeSymmetry(orbit)
 
 
-def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
+def get_orbit_2d_square(L, **kwargs):
     ''' This function generates the group of lattice symmetries in a two-dimensional square lattice.
 
     Arguments:
@@ -126,13 +126,16 @@ def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
         symmetry operations and the following two dimensions correspond to the corresponding permuation matrix.
     '''
 
-    po = get_point_orbit_2d_square(L, rotation, reflection).orbit
+    po = get_point_orbit_2d_square(L, kwargs["rotation"], kwargs["reflection"]).orbit
 
-    to = get_translation_orbit_2d_square(L, translation).orbit
+    to = get_translation_orbit_2d_square(L, kwargs["translation"]).orbit
 
     orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(b, a), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
 
     orbit = orbit.reshape((-1, L**2, L**2))
+
+    if kwargs["z2sym"]:
+        orbit = jnp.concatenate([orbit, - orbit], axis=0)
 
     newOrbit = [tuple(x.ravel()) for x in orbit]
 
@@ -141,7 +144,7 @@ def get_orbit_2d_square(L, rotation=True, reflection=True, translation=True):
     return LatticeSymmetry(jnp.array(uniqueOrbit))
 
 
-def get_orbit_1d(L, translation=True, reflection=True, **kwargs):
+def get_orbit_1d(L, **kwargs):
     ''' This function generates the group of lattice symmetries in a one-dimensional lattice.
 
     Arguments:
@@ -163,9 +166,12 @@ def get_orbit_1d(L, translation=True, reflection=True, **kwargs):
             to[idx] = np.roll(t, idx, axis=1)
         return jnp.array(to) if translation else jnp.array([jnp.eye(L)])
 
-    po = get_point_orbit_1D(L, reflection)
-    to = get_translation_orbit_1D(L, translation)
+    po = get_point_orbit_1D(L, kwargs["reflection"])
+    to = get_translation_orbit_1D(L, kwargs["translation"])
     orbit = jax.vmap(lambda x, y: jax.vmap(lambda a, b: jnp.dot(a, b), in_axes=(None, 0))(x, y), in_axes=(0, None))(to, po)
+
+    if kwargs["z2sym"]:
+        orbit = jnp.concatenate([orbit, - orbit], axis=0)
 
     orbit = orbit.reshape((-1, L, L))
     return LatticeSymmetry(orbit.astype(np.int32))

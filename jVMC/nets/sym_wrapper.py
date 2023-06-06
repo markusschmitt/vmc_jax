@@ -3,6 +3,22 @@ import jax.numpy as jnp
 import flax.linen as nn
 from jVMC.util.symmetries import LatticeSymmetry
 
+
+def avgFun_Coefficients_Exp(coeffs):
+    # average (complex) coefficients
+    return jnp.log(jnp.mean(jnp.exp(coeffs)))
+
+
+def avgFun_Coefficients_Log(coeffs):
+    return jnp.mean(coeffs)
+
+
+def avgFun_Coefficients_Sep(coeffs):
+    re = jnp.real(coeffs)
+    im = jnp.imag(coeffs)
+    return 0.5 * jnp.log(jnp.mean(jnp.exp(2 * re))) + 1j * jnp.angle(jnp.mean(jnp.exp(1j * im)))
+
+
 class SymNet(nn.Module):
     """
     Wrapper module for symmetrization.
@@ -16,22 +32,38 @@ class SymNet(nn.Module):
     Initialization arguments:
         * ``orbit``: orbits which define the symmetry operations (instance of ``util.symmetries.LatticeSymmetry``)
         * ``net``: Flax module defining the plain ansatz.
+        * ``avgFun``: Different choices for the details of averaging.
 
     """
     orbit: LatticeSymmetry
     net: callable
+    avgFun: callable = avgFun_Coefficients_Exp
 
-    @nn.compact
+    def __post_init__(self):
+
+        if "sample" in dir(self.net):
+            self.sample = self._sample_fun
+
+        super().__post_init__()
+
+
     def __call__(self, x):
 
         inShape = x.shape
+        x = 2 * x - 1
         x = jax.vmap(lambda o, s: jnp.dot(o, s.ravel()).reshape(inShape), in_axes=(0, None))(self.orbit.orbit, x)
+        x = (x + 1) // 2
 
         def evaluate(x):
             return self.net(x)
 
-        res = jnp.mean(jax.vmap(evaluate)(x), axis=0)
+        res = self.avgFun(jax.vmap(evaluate)(x))
 
         return res
+    
+    
+    def _sample_fun(self, *args):
+
+        return self.net.sample(*args)
 
 # ** end class SymNet

@@ -23,22 +23,26 @@ class TestSymmetries(unittest.TestCase):
         rotation_f = 4
         reflection_f = 2
         translation_f = L**2
+        z2sym_f = 2
         for rotation in [True, False]:
             for reflection in [True, False]:
                 for translation in [True, False]:
-                    orbit = symmetries.get_orbit_2d_square(L, rotation=rotation, reflection=reflection, translation=translation)
-                    self.assertTrue(orbit.shape[0] == (rotation_f if rotation else 1) * (reflection_f if reflection else 1) * (translation_f if translation else 1))
-                    self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
+                    for z2sym in [True, False]:
+                        orbit = symmetries.get_orbit_2d_square(L, rotation=rotation, reflection=reflection, translation=translation, z2sym=z2sym)
+                        self.assertTrue(orbit.shape[0] == (rotation_f if rotation else 1) * (reflection_f if reflection else 1) * (translation_f if translation else 1) * (z2sym_f if z2sym else 1))
+                        self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
 
     def test_symmetries1D(self):
         L = 3
         reflection_f = 2
         translation_f = L
+        z2sym_f = 2
         for translation in [True, False]:
             for reflection in [True, False]:
-                orbit = symmetries.get_orbit_1d(L, reflection=reflection, translation=translation)
-                self.assertTrue(orbit.shape[0] == (reflection_f if reflection else 1) * (translation_f if translation else 1))
-                self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
+                for z2sym in [True, False]:
+                    orbit = symmetries.get_orbit_1d(L, reflection=reflection, translation=translation, z2sym=z2sym)
+                    self.assertTrue(orbit.shape[0] == (reflection_f if reflection else 1) * (translation_f if translation else 1) * (z2sym_f if z2sym else 1))
+                    self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
 
 
 if __name__ == "__main__":

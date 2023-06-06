@@ -5,6 +5,7 @@ import numpy as np
 from jax import vmap, jit
 
 import jVMC.mpi_wrapper as mpi
+from jVMC.nets.sym_wrapper import SymNet
 
 from functools import partial
 
@@ -102,6 +103,9 @@ class MCSampler:
         self.net = net
         if (not net.is_generator) and (updateProposer is None):
             raise RuntimeError("Instantiation of MCSampler: `updateProposer` is `None` and cannot be used for MCMC sampling.")
+        self.orbit = None
+        if isinstance(self.net.net, SymNet):
+            self.orbit = self.net.net.orbit.orbit
 
         stateShape = (global_defs.device_count(), numChains) + sampleShape
         if initState is None:
@@ -114,7 +118,7 @@ class MCSampler:
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        if isinstance(key,jax.lib.xla_extension.DeviceArray):
+        if isinstance(key,jax.Array):
             self.key = key
         else:
             self.key = jax.random.PRNGKey(key)
@@ -132,6 +136,7 @@ class MCSampler:
 
         # jit'd member functions
         self._get_samples_jitd = {}  # will hold a jit'd function for each number of samples
+        self._randomize_samples_jitd = {}  # will hold a jit'd function for each number of samples
 
     def set_number_of_samples(self, N):
         """Set default number of samples.
@@ -202,15 +207,31 @@ class MCSampler:
 
         return configs, logPsi, None
 
+    def _randomize_samples(self, samples, key, orbit):
+        """ For a given set of samples apply a random symmetry transformation to each sample
+        """
+        orbit_indices = random.choice(key, orbit.shape[0], shape=(samples.shape[0],))
+        samples = samples * 2 - 1
+        return jax.vmap(lambda o, idx, s: (o[idx].dot(s.ravel()).reshape(s.shape) + 1) // 2, in_axes=(None, 0, 0))(orbit, orbit_indices, samples)
+
     def _get_samples_gen(self, params, numSamples, multipleOf=1):
 
         numSamples = mpi.distribute_sampling(numSamples, localDevices=global_defs.device_count(), numChainsPerDevice=multipleOf)
 
-        tmpKey = random.split(self.key[0], 2 * global_defs.device_count())
-        self.key = tmpKey[:global_defs.device_count()]
-        tmpKey = tmpKey[global_defs.device_count():]
+        tmpKeys = random.split(self.key[0], 3 * global_defs.device_count())
+        self.key = tmpKeys[:global_defs.device_count()]
+        tmpKey = tmpKeys[global_defs.device_count():2 * global_defs.device_count()]
+        tmpKey2 = tmpKeys[2 * global_defs.device_count():]
 
-        return self.net.sample(numSamples, tmpKey, parameters=params)
+        samples = self.net.sample(numSamples, tmpKey, parameters=params)
+
+        if not str(numSamples) in self._randomize_samples_jitd:
+            self._randomize_samples_jitd[str(numSamples)] = global_defs.pmap_for_my_devices(self._randomize_samples, static_broadcasted_argnums=(), in_axes=(0, 0, None))
+
+        if not self.orbit is None:
+            return self._randomize_samples_jitd[str(numSamples)](samples, tmpKey2, self.orbit)
+        
+        return samples
 
     def _get_samples_mcmc(self, params, numSamples, multipleOf=1):
 
