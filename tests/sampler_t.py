@@ -133,7 +133,7 @@ class TestMC(unittest.TestCase):
         # Set up variational wave function
         rbm1 = nets.RBM(numHidden=2, bias=False)
         rbm2 = nets.RBM(numHidden=2, bias=False)
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rbm1, net2=rbm2)
+        model = jVMC.nets.two_nets_wrapper.TwoNets((rbm1, rbm2))
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
         psi = NQS(net)
@@ -213,7 +213,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, depth=2)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
+        model = jVMC.nets.two_nets_wrapper.TwoNets((rnn, rbm))
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -256,9 +256,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, realValuedOutput=True)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
-        net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
-        psi = NQS(net)
+        psi = NQS((rnn, rbm), orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
 
         # Set up exact sampler
         exactSampler = sampler.ExactSampler(psi, L)
@@ -295,7 +293,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True, inputDim=2)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
+        model = jVMC.nets.two_nets_wrapper.TwoNets((rnn, rbm))
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -335,7 +333,7 @@ class TestMC(unittest.TestCase):
         rnn = nets.RNN1DGeneral(L=L, hiddenSize=5, cell="GRU", realValuedParams=True, realValuedOutput=True, inputDim=2)
         rbm = nets.RBM(numHidden=2, bias=False)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rbm)
+        model = jVMC.nets.two_nets_wrapper.TwoNets((rnn, rbm))
         orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
         net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
         psi = NQS(net)
@@ -372,10 +370,45 @@ class TestMC(unittest.TestCase):
         #rnn = nets.RNN2D( L=L, hiddenSize=5 )
         rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="RNN", realValuedParams=True, realValuedOutput=True)
 
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rnn)
         orbit = jVMC.util.symmetries.get_orbit_2d_square(L, translation=False, reflection=False, rotation=False, z2sym=False)
-        net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
-        psi = NQS(net)
+        psi = NQS((rnn,rnn), orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
+
+        # Set up exact sampler
+        exactSampler = sampler.ExactSampler(psi, (L, L))
+
+        # Set up MCMC sampler
+        mcSampler = sampler.MCSampler(psi, (L, L), random.PRNGKey(0), numChains=777)
+
+        # Compute exact probabilities
+        _, logPsi, pex = exactSampler.sample()
+
+        self.assertTrue(jnp.abs(jnp.sum(pex) - 1.) < 1e-12)
+
+        numSamples = 1000000
+        smc, p, _ = mcSampler.sample(numSamples=numSamples)
+
+        self.assertTrue(jnp.max(jnp.abs(jnp.real(psi(smc) - p))) < 1e-12)
+
+        smc = smc.reshape((smc.shape[0] * smc.shape[1], -1))
+
+        self.assertTrue(smc.shape[0] >= numSamples)
+
+        # Compute histogram of sampled configurations
+        smcInt = jax.vmap(state_to_int)(smc)
+        pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17))
+
+        self.assertTrue(jnp.max(jnp.abs(pmc / mcSampler.get_last_number_of_samples() - pex.reshape((-1,))[:16])) < 1e-3)
+
+    def test_autoregressive_sampling_with_rnn2d_symmetric(self):
+
+        L = 2
+
+        # Set up variational wave function
+        #rnn = nets.RNN2D( L=L, hiddenSize=5 )
+        rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="RNN", realValuedParams=True, realValuedOutput=True)
+
+        orbit = jVMC.util.symmetries.get_orbit_2d_square(L, translation=True, reflection=False, rotation=False, z2sym=False)
+        psi = NQS((rnn,rnn), orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
 
         # Set up exact sampler
         exactSampler = sampler.ExactSampler(psi, (L, L))
@@ -409,11 +442,7 @@ class TestMC(unittest.TestCase):
 
         # Set up variational wave function
         rnn = nets.RNN2DGeneral(L=L, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True)
-
-        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=rnn, net2=rnn)
-        orbit = jVMC.util.symmetries.get_orbit_2d_square(L, translation=False, reflection=False, rotation=False, z2sym=False)
-        net = nets.sym_wrapper.SymNet(net=model, orbit=orbit, avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep)
-        psi = NQS(net)
+        psi = NQS((rnn,rnn))
 
         # Set up exact sampler
         exactSampler = sampler.ExactSampler(psi, (L, L))

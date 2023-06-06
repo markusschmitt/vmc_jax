@@ -5,6 +5,7 @@ import numpy as np
 from jax import vmap, jit
 
 import jVMC.mpi_wrapper as mpi
+from jVMC.nets.sym_wrapper import SymNet
 
 from functools import partial
 
@@ -105,6 +106,9 @@ class MCSampler:
         self.net = net
         if (not net.is_generator) and (updateProposer is None):
             raise RuntimeError("Instantiation of MCSampler: `updateProposer` is `None` and cannot be used for MCMC sampling.")
+        self.orbit = None
+        if isinstance(self.net.net, SymNet):
+            self.orbit = self.net.net.orbit.orbit
 
         stateShape = (global_defs.device_count(), numChains) + sampleShape
         if initState is None:
@@ -120,7 +124,7 @@ class MCSampler:
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        if isinstance(key, jax.lib.xla_extension.DeviceArray):
+        if isinstance(key,jax.Array):
             self.key = key
         else:
             self.key = jax.random.PRNGKey(key)
@@ -228,7 +232,10 @@ class MCSampler:
         if not str(numSamples) in self._randomize_samples_jitd:
             self._randomize_samples_jitd[str(numSamples)] = global_defs.pmap_for_my_devices(self._randomize_samples, static_broadcasted_argnums=(), in_axes=(0, 0, None))
 
-        return self._randomize_samples_jitd[str(numSamples)](samples, tmpKey2, self.net.net.orbit.orbit)
+        if not self.orbit is None:
+            return self._randomize_samples_jitd[str(numSamples)](samples, tmpKey2, self.orbit)
+        
+        return samples
 
     def _get_samples_mcmc(self, params, numSamples, multipleOf=1):
 
