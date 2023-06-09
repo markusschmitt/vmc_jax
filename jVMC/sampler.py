@@ -97,10 +97,13 @@ class MCSampler:
         * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
         * ``sweepSteps``: Number of proposed updates per sweep.
         * ``mu``: Parameter for the distribution :math:`p_{\\mu}(s)`, see above.
+        * ``logProbFactor``: Factor for the log-probabilities, aquivalent to the exponent for the probability \
+        distribution. For pure wave functions this should be 0.5, and 1.0 for POVMs. In the POVM case, the \
+        ``mu`` parameter must be set to 1.0, to sample the unchanged POVM distribution.
     """
 
     def __init__(self, net, sampleShape, key, updateProposer=None, numChains=1, updateProposerArg=None,
-                 numSamples=100, thermalizationSweeps=10, sweepSteps=10, initState=None, mu=2):
+                 numSamples=100, thermalizationSweeps=10, sweepSteps=10, initState=None, mu=2, logProbFactor=0.5):
         """Initializes the MCSampler class.
 
         """
@@ -122,6 +125,7 @@ class MCSampler:
         # Make sure that net is initialized
         self.net(self.states)
 
+        self.logProbFactor = logProbFactor
         self.mu = mu
         if mu < 0 or mu > 2:
             raise ValueError("mu must be in the range [0, 2]")
@@ -212,7 +216,7 @@ class MCSampler:
             return configs, self.net(configs), jnp.ones(configs.shape[:2]) / jnp.prod(jnp.asarray(configs.shape[:2]))
 
         configs, logPsi = self._get_samples_mcmc(parameters, numSamples, multipleOf)
-        p = jnp.exp((2 - self.mu) * jnp.real(logPsi))
+        p = jnp.exp((1.0 / self.logProbFactor - self.mu) * jnp.real(logPsi))
         return configs, logPsi, p / mpi.global_sum(p)
 
     def _randomize_samples(self, samples, key, orbit):
@@ -367,6 +371,8 @@ class ExactSampler:
         * ``net``: Network defining the probability distribution.
         * ``sampleShape``: Shape of computational basis states.
         * ``lDim``: Local Hilbert space dimension.
+        * ``logProbFactor``: Factor for the log-probabilities, aquivalent to the exponent for the probability \
+        distribution. For pure wave functions this should be 0.5, and 1.0 for POVMs.
     """
 
     def __init__(self, net, sampleShape, lDim=2, logProbFactor=0.5):
