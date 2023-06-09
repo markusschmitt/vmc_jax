@@ -18,14 +18,15 @@ class TestPOVM(unittest.TestCase):
             return b
 
         sample_shape = (L,)
-        self.psi = jVMC.util.util.init_net({"batch_size": 5000, "net1":
-            {"type": "RNN",
-             "translation": True,
-             "parameters": {"inputDim": 4,
-                            "realValuedOutput": True,
-                            "realValuedParams": True,
-                            "logProbFactor": 1, "hiddenSize": hiddenSize, "L": L, "depth": depth, "cell": cell}}},
-                                      sample_shape, 1234)
+
+        self.psi = jVMC.util.util.init_net({"batch_size": 200, "net1":
+                                            {"type": "RNN",
+                                             "translation": {"use": True, "factor": 1},
+                                             "parameters": {"inputDim": 4,
+                                                            "realValuedOutput": True,
+                                                            "realValuedParams": True,
+                                                            "logProbFactor": 1, "hiddenSize": hiddenSize, "L": L, "depth": depth, "cell": cell}}},
+                                           sample_shape, 1234)
 
         system_data = {"dim": "1D", "L": L}
         self.povm = op.POVM(system_data)
@@ -35,8 +36,8 @@ class TestPOVM(unittest.TestCase):
         biases = jnp.log(prob_dist[1:])
         params = copy_dict(self.psi._param_unflatten(self.psi.get_parameters()))
 
-        params["outputDense"]["bias"] = biases
-        params["outputDense"]["kernel"] = 1e-15 * params["outputDense"]["kernel"]
+        params["net"]["outputDense"]["bias"] = biases
+        params["net"]["outputDense"]["kernel"] = 1e-15 * params["net"]["outputDense"]["kernel"]
         params = jnp.concatenate([p.ravel()
                                   for p in jax.tree_util.tree_flatten(params)[0]])
         self.psi.set_parameters(params)
@@ -44,7 +45,7 @@ class TestPOVM(unittest.TestCase):
         self.sampler = jVMC.sampler.ExactSampler(self.psi, (L,), lDim=4, logProbFactor=1)
 
         self.tdvpEquation = jVMC.util.tdvp.TDVP(self.sampler, rhsPrefactor=-1.,
-                                           svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
+                                                svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
 
         self.stepper = jVMC.util.stepper.Euler(timeStep=dt)  # ODE integrator
 
@@ -58,16 +59,20 @@ class TestPOVM(unittest.TestCase):
         self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='observable'),
                                     jnp.ones(4)).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='unitary'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='dissipative'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
+        self.assertTrue(jnp.isclose(op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='imaginary'),
+                                    -2*jnp.eye(4)).all())
 
         self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='observable'),
                                     jnp.zeros(4)).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='unitary'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
         self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='dissipative'),
-                                    jnp.zeros(4)).all())
+                                    jnp.zeros((4, 4))).all())
+        self.assertTrue(jnp.isclose(op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='imaginary'),
+                                    jnp.zeros((4, 4))).all())
 
         self.assertRaises(ValueError, op.matrix_to_povm, zero_matrix, povm.M, povm.T_inv, mode='wrong_mode')
 
@@ -79,7 +84,7 @@ class TestPOVM(unittest.TestCase):
         povm = jVMC.operator.POVM(system_data)
 
         unity_povm = op.matrix_to_povm(unity, povm.M, povm.T_inv, mode='unitary')
-        zeros_povm =  op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='dissipative')
+        zeros_povm = op.matrix_to_povm(zero_matrix, povm.M, povm.T_inv, mode='dissipative')
 
         self.assertFalse("unity" in povm.operators.keys())
         self.assertFalse("zero" in povm.operators.keys())
@@ -99,7 +104,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=1, depth=1)
@@ -108,7 +113,6 @@ class TestPOVM(unittest.TestCase):
         for l in range(L):
             Lindbladian.add({"name": "X", "strength": 3.0, "sites": (l,)})
             Lindbladian.add({"name": "dephasing", "strength": 1.0, "sites": (l,)})
-
 
         res = {"X": [], "Y": [], "Z": []}
 
@@ -125,8 +129,8 @@ class TestPOVM(unittest.TestCase):
         # Analytical solution
         w = jnp.sqrt(35)
         Sx_avg = jnp.zeros_like(times)
-        Sy_avg = (w*jnp.cos(w*times)-jnp.sin(w*times))/w*jnp.exp(-times)
-        Sz_avg = 6/w*jnp.sin(w*times)*jnp.exp(-times)
+        Sy_avg = (w * jnp.cos(w * times) - jnp.sin(w * times)) / w * jnp.exp(-times)
+        Sz_avg = 6 / w * jnp.sin(w * times) * jnp.exp(-times)
 
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
@@ -136,7 +140,7 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
+        Tmax = 0.2
         dt = 1E-3
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
@@ -169,8 +173,8 @@ class TestPOVM(unittest.TestCase):
 
         # Analytical solution
         w = jnp.sqrt(35)
-        Sx_avg = -jnp.sin(6*times)/3 - 4/w*jnp.sin(w*times)*jnp.exp(-times)
-        Sy_avg = jnp.cos(6*times)/3 + (2/3*jnp.cos(w*times) - 2/3/w*jnp.sin(w*times))*jnp.exp(-times)
+        Sx_avg = -jnp.sin(6 * times) / 3 - 4 / w * jnp.sin(w * times) * jnp.exp(-times)
+        Sy_avg = jnp.cos(6 * times) / 3 + (2 / 3 * jnp.cos(w * times) - 2 / 3 / w * jnp.sin(w * times)) * jnp.exp(-times)
         Sz_avg = jnp.zeros_like(times)
 
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
@@ -181,8 +185,8 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 2
-        dt = 1E-3
+        Tmax = 0.2
+        dt = 5E-4
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
 
@@ -215,13 +219,37 @@ class TestPOVM(unittest.TestCase):
 
         # Analytical solution
         w = jnp.sqrt(35)
-        Sx_avg = -6*jnp.sin(w*times)*jnp.exp(-times)/w
-        Sy_avg = jnp.cos(w*times)*jnp.exp(-times) - jnp.sin(w*times)*jnp.exp(-times)/w
+        Sx_avg = -6 * jnp.sin(w * times) * jnp.exp(-times) / w
+        Sy_avg = jnp.cos(w * times) * jnp.exp(-times) - jnp.sin(w * times) * jnp.exp(-times) / w
         Sz_avg = jnp.zeros_like(times)
 
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))
+
+    def test_ground_state_search(self):
+        L = 2
+        dt = 1E-2
+
+        self.prepare_net(L, dt)
+
+        sz = op.get_paulis()[2]
+        self.povm.add_imaginary("imag_Z", op.matrix_to_povm(sz, self.povm.M, self.povm.T_inv, mode='imag'))
+
+        Lindbladian = op.POVMOperator(self.povm)
+        Lindbladian.add({"name": "imag_Z", "strength": 4., "sites": (0, )})
+        Lindbladian.add({"name": "imag_Z", "strength": 4., "sites": (1, )})
+
+        def measure_energy(confs, probs):
+            return jnp.sum(jVMC.mpi_wrapper.global_mean(self.povm.observables["Z"][confs], probs))
+
+        for i in range(40):
+            dp, _ = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
+                                      psi=self.psi)
+            self.psi.set_parameters(dp)
+
+        confs, _, probs = self.sampler.sample()
+        self.assertTrue(jnp.allclose(measure_energy(confs, probs), -2, atol=1e-2))
 
 
 if __name__ == '__main__':

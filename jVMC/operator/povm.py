@@ -35,27 +35,16 @@ def measure_povm(povm, sampler, sampleConfigs=None, probs=None, observables=None
     for name, ops in observables.items():
         results = povm.evaluate_observable(ops, sampleConfigs)
         result[name] = {}
-        if probs is not None:
-            result[name]["mean"] = jnp.array(mpi.global_mean(results[0], probs))
-            result[name]["variance"] = jnp.array(mpi.global_variance(results[0], probs))
-            result[name]["MC_error"] = jnp.array(0)
-
-        else:
-            result[name]["mean"] = jnp.array(mpi.global_mean(results[0]))
-            result[name]["variance"] = jnp.array(mpi.global_variance(results[0]))
-            result[name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
+        result[name]["mean"] = jnp.array(mpi.global_mean(results[0][..., None], probs)[0])
+        result[name]["variance"] = jnp.array(mpi.global_variance(results[0][..., None], probs)[0])
+        result[name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
 
         for key, value in results[1].items():
             result_name = name + "_corr_L" + str(key)
             result[result_name] = {}
-            if probs is not None:
-                result[result_name]["mean"] = jnp.array(mpi.global_mean(value, probs) - result[name]["mean"]**2)
-                result[result_name]["variance"] = jnp.array(mpi.global_variance(value, probs))
-                result[result_name]["MC_error"] = jnp.array(0.)
-            else:
-                result[result_name]["mean"] = jnp.array(mpi.global_mean(value) - result[name]["mean"]**2)
-                result[result_name]["variance"] = jnp.array(mpi.global_variance(value))
-                result[result_name]["MC_error"] = jnp.array(result[result_name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
+            result[result_name]["mean"] = jnp.array(mpi.global_mean(value[..., None], probs)[0] - result[name]["mean"]**2)
+            result[result_name]["variance"] = jnp.array(mpi.global_variance(value[..., None], probs)[0])
+            result[result_name]["MC_error"] = jnp.array(result[name]["variance"] / jnp.sqrt(sampler.get_last_number_of_samples()))
 
     return result
 
@@ -142,19 +131,21 @@ def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
 
 
     In unitary mode this function implements
-        :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`
+    :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`,
     in dissipative mode
-        :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`
-    and in observable mode
-        :math:`O^a = T^{-1 ab} \mathrm{Tr}(M^b A)`
+    :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`,
+    in observable mode
+    :math:`O^a = T^{-1 ab} \mathrm{Tr}(M^b A)`
+    and in imaginary time mode
+    :math:`\Omega^{ab} = - T^{-1 bc} \mathrm{Tr}(A \{M^c, M^a\})`
     where the Einstein sum convention is assumed.
 
     Args:
         * ``A``: Matrix representation of desired operator
         * ``M``: POVM-Measurement operators
         * ``T_inv``: Inverse POVM-Overlap matrix
-        * ``mode``: String specifying the conversion mode. Possible values are 'unitary' ('uni'), 'dissipative' ('dis')
-                    and 'observable' ('obs')
+        * ``mode``: String specifying the conversion mode. Possible values are 'unitary' ('uni'), 'dissipative' ('dis'),
+          'observable' ('obs') and 'imaginary' ('imag')
 
     Returns:
         jax.numpy.ndarray
@@ -169,9 +160,12 @@ def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
                          dtype=dtype)
     elif mode in ['observable', 'obs']:
         return jnp.array(jnp.real(jnp.einsum('ab, bij, ji -> a', T_inv, M, A)), dtype=dtype)
+    elif mode in ['imaginary', 'imag']:
+        return jnp.array(jnp.real(- jnp.einsum('ij, bc, cjk, aki -> ab', A, T_inv, M, M)
+                                  - jnp.einsum('ij, ajk, bc, cki -> ab', A, M, T_inv, M)), dtype=dtype)
     else:
-        raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis') "
-                         "and 'observable' ('obs').")
+        raise ValueError("Unknown mode string given. Allowed modes are 'unitary' ('uni'), 'dissipative' ('dis'), "
+                         "'observable' ('obs') and 'imaginary' ('imag').")
 
 
 def get_dissipators(M, T_inv):
@@ -273,11 +267,12 @@ class POVM():
         self.T_inv = jnp.linalg.inv(self.T)
         self.dissipators = get_dissipators(self.M, self.T_inv)
         self.unitaries = get_unitaries(self.M, self.T_inv)
+        self.imaginaries = {}
         self._update_operators()  # This creates self.operators
         self.observables = get_observables(self.M, self.T_inv)
 
     def _update_operators(self):
-        self.operators = {**self.unitaries, **self.dissipators}
+        self.operators = {**self.unitaries, **self.dissipators, **self.imaginaries}
 
     def _check_name_availabilty(self, name):
         """
@@ -287,6 +282,8 @@ class POVM():
             raise ValueError("There already exists a unitary with name " + name + "!")
         if name in self.dissipators.keys():
             raise ValueError("There already exists a dissipator with name " + name + "!")
+        if name in self.imaginaries.keys():
+            raise ValueError("There already exists a imaginary time operator with name " + name + "!")
         if name in self.operators.keys():
             raise ValueError("There already exists an operator with name " + name + ", that has not been added"
                                                                                     " using the appropriate methods!")
@@ -299,6 +296,11 @@ class POVM():
     def add_dissipator(self, name, omega):
         self._check_name_availabilty(name)
         self.dissipators[name] = omega
+        self._update_operators()
+
+    def add_imaginary(self, name, omega):
+        self._check_name_availabilty(name)
+        self.imaginaries[name] = omega
         self._update_operators()
 
     #@partial(jax.vmap, in_axes=(None, None, 0))

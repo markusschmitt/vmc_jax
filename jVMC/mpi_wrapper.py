@@ -17,38 +17,28 @@ import time
 communicationTime = 0.
 
 
-def _cov_helper_with_p(data, p):
+def _cov_helper(data, p):
     return jnp.expand_dims(
         jnp.matmul(jnp.conj(jnp.transpose(data)), jnp.multiply(p[:, None], data)),
         axis=0
     )
 
 
-def _cov_helper_without_p(data):
-    return jnp.expand_dims(
-        jnp.matmul(jnp.conj(jnp.transpose(data)), data),
-        axis=0
-    )
-
-
 _sum_up_pmapd = None
 _sum_sq_pmapd = None
-_sum_sq_withp_pmapd = None
 mean_helper = None
-cov_helper_with_p = None
-cov_helper_without_p = None
+cov_helper = None
 
-pmapDevices = None
+#pmapDevices = None
+
 
 import collections
 
 
-def pmap_devices_updated():
-
-    if collections.Counter(pmapDevices) == collections.Counter(global_defs.myPmapDevices):
-        return False
-
-    return True
+# def pmap_devices_updated():
+#     if collections.Counter(pmapDevices) == collections.Counter(global_defs.myPmapDevices):
+#         return False
+#     return True
 
 
 def jit_my_stuff():
@@ -57,19 +47,16 @@ def jit_my_stuff():
 
     global _sum_up_pmapd
     global _sum_sq_pmapd
-    global _sum_sq_withp_pmapd
     global mean_helper
-    global cov_helper_with_p
-    global cov_helper_without_p
+    global cov_helper
     global pmapDevices
 
-    if pmap_devices_updated():
+    if global_defs.pmap_devices_updated():
         _sum_up_pmapd = global_defs.pmap_for_my_devices(lambda x: jax.lax.psum(jnp.sum(x, axis=0), 'i'), axis_name='i')
-        _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean: jax.lax.psum(jnp.sum(jnp.conj(data - mean) * (data - mean), axis=0), 'i'), axis_name='i', in_axes=(0, None))
-        _sum_sq_withp_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jax.lax.psum(jnp.conj(data - mean).dot(p * (data - mean)), 'i'), axis_name='i', in_axes=(0, None, 0))
+        # _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jax.lax.psum(jnp.conj(data - mean).dot(p[..., None] * (data - mean)), 'i'), axis_name='i', in_axes=(0, None, 0))
+        _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jnp.einsum('ij, ij, i -> j', jnp.conj(data - mean[None, ...]), (data - mean[None, ...]), p), in_axes=(0, None, 0))
         mean_helper = global_defs.pmap_for_my_devices(lambda data, p: jnp.expand_dims(jnp.dot(p, data), axis=0), in_axes=(0, 0))
-        cov_helper_with_p = global_defs.pmap_for_my_devices(_cov_helper_with_p, in_axes=(0, 0))
-        cov_helper_without_p = global_defs.pmap_for_my_devices(_cov_helper_without_p)
+        cov_helper = global_defs.pmap_for_my_devices(_cov_helper, in_axes=(0, 0))
 
         pmapDevices = global_defs.myPmapDevices
 
@@ -111,7 +98,7 @@ def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1) -> 
     numChainsPerProcess = localDevices * numChainsPerDevice
 
     def spc(spp):
-        return int( (spp + numChainsPerProcess - 1) // numChainsPerProcess )
+        return int((spp + numChainsPerProcess - 1) // numChainsPerProcess)
 
     a = numSamples % commSize
     globNumSamples = (a * spc(1 + numSamples // commSize) + (commSize - a) * spc(numSamples // commSize)) * numChainsPerProcess
@@ -171,7 +158,7 @@ def global_sum(data):
     return jax.device_put(res, global_defs.myDevice)
 
 
-def global_mean(data, p=None):
+def global_mean(data, p):
     """ Computes the mean of input data across MPI processes and device/batch dimensions.
 
     On each MPI process the input data is assumed to be a ``jax.numpy.array`` with a leading
@@ -179,11 +166,7 @@ def global_mean(data, p=None):
     along device and batch dimensions as well as accross MPI processes. Hence, the result is
     an array of shape ``data.shape[2:]``.
 
-    If no probabilities ``p`` are given, the empirical mean is computed, i.e.,
-
-        :math:`\\langle X\\rangle=\\frac{1}{N_S}\sum_{j=1}^{N_S} X_j`
-
-    Otherwise, the mean is computed using the given probabilities, i.e.,
+    The mean is computed using the given probabilities, i.e.,
 
         :math:`\\langle X\\rangle=\sum_{j=1}^{N_S} p_jX_j`
 
@@ -195,17 +178,14 @@ def global_mean(data, p=None):
         Mean of data across MPI processes and device/batch dimensions.
     """
 
+
+
     jit_my_stuff()
 
-    if p is not None:
-        return global_sum(mean_helper(data, p))
-
-    global globNumSamples
-
-    return global_sum(data) / globNumSamples
+    return global_sum(mean_helper(data, p))
 
 
-def global_variance(data, p=None):
+def global_variance(data, p):
     """ Computes the variance of input data across MPI processes and device/batch dimensions.
 
     On each MPI process the input data is assumed to be a ``jax.numpy.array`` with a leading
@@ -213,11 +193,7 @@ def global_variance(data, p=None):
     along device and batch dimensions as well as accross MPI processes. Hence, the result is
     an array of shape ``data.shape[2:]``.
 
-    If no probabilities ``p`` are given, the empirical element-wise variance is computed, i.e.,
-
-        :math:`\\text{Var}(X)=\\frac{1}{N_S}\sum_{j=1}^{N_S} |X_j-\\langle X\\rangle|^2`
-
-    Otherwise, the mean is computed using the given probabilities, i.e.,
+    The mean is computed using the given probabilities, i.e.,
 
         :math:`\\text{Var}(X)=\sum_{j=1}^{N_S} p_j |X_j-\\langle X\\rangle|^2`
 
@@ -234,15 +210,8 @@ def global_variance(data, p=None):
     data.block_until_ready()
 
     mean = global_mean(data, p)
-
     # Compute sum locally
-    localSum = None
-    if p is not None:
-        localSum = np.array(_sum_sq_withp_pmapd(data, mean, p)[0])
-    else:
-        res = _sum_sq_pmapd(data, mean)[0]
-        res.block_until_ready()
-        localSum = np.array(res)
+    localSum = np.array(_sum_sq_pmapd(data, mean, p)[0])
 
     # Allocate memory for result
     res = np.empty_like(localSum, dtype=localSum.dtype)
@@ -256,15 +225,10 @@ def global_variance(data, p=None):
     global communicationTime
     communicationTime += time.perf_counter() - t0
 
-    if p is not None:
-        # return jnp.array(res)
-        return jax.device_put(res, global_defs.myDevice)
-    else:
-        # return jnp.array(res) / globNumSamples
-        return jax.device_put(res / globNumSamples, global_defs.myDevice)
+    return jax.device_put(res, global_defs.myDevice)
 
 
-def global_covariance(data, p=None):
+def global_covariance(data, p):
     """ Computes the covariance matrix of input data across MPI processes and device/batch dimensions.
 
     On each MPI process the input data is assumed to be a ``jax.numpy.array`` with a leading
@@ -273,11 +237,7 @@ def global_covariance(data, p=None):
     matrix along device and batch dimensions as well as accross MPI processes. Hence, the result is
     an array of shape ``data.shape[2]`` :math:`\\times` ``data.shape[2]``.
 
-    If no probabilities ``p`` are given, the empirical covariance is computed, i.e.,
-
-        :math:`\\text{Cov}(X)=\\frac{1}{N_S}\sum_{j=1}^{N_S} X_j\\cdot X_j^\\dagger - \\bigg(\\frac{1}{N_S}\sum_{j=1}^{N_S} X_j\\bigg)\\cdot\\bigg(\\frac{1}{N_S}\sum_{j=1}^{N_S}X_j^\\dagger\\bigg)`
-
-    Otherwise, the mean is computed using the given probabilities, i.e.,
+    The mean is computed using the given probabilities, i.e.,
 
         :math:`\\text{Cov}(X)=\sum_{j=1}^{N_S} p_jX_j\\cdot X_j^\\dagger - \\bigg(\sum_{j=1}^{N_S} p_jX_j\\bigg)\\cdot\\bigg(\sum_{j=1}^{N_S}p_jX_j^\\dagger\\bigg)`
 
@@ -291,11 +251,7 @@ def global_covariance(data, p=None):
 
     jit_my_stuff()
 
-    if p is not None:
-
-        return global_sum(cov_helper_with_p(data, p))
-
-    return global_mean(cov_helper_without_p(data))
+    return global_sum(cov_helper(data, p))
 
 
 def bcast_unknown_size(data, root=0):

@@ -10,6 +10,7 @@ from mpi4py import MPI
 import jax
 
 from functools import partial
+import collections
 
 try:
     myDevice = jax.devices()[MPI.COMM_WORLD.Get_rank() % len(jax.devices())]
@@ -21,7 +22,11 @@ myPmapDevices = jax.devices()  # [myDevice]
 myDeviceCount = len(myPmapDevices)
 pmap_for_my_devices = partial(jax.pmap, devices=myPmapDevices)
 
-import collections
+pmapDevices = None
+def pmap_devices_updated():
+    if collections.Counter(pmapDevices) == collections.Counter(myPmapDevices):
+        return False
+    return True
 
 
 def get_iterable(x):
