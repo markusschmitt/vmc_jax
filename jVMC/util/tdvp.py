@@ -5,10 +5,7 @@ import numpy as np
 import jVMC
 import jVMC.mpi_wrapper as mpi
 import jVMC.global_defs as global_defs
-
-from functools import partial
-
-import time
+from jVMC.stats import SampledObs
 
 
 def realFun(x):
@@ -83,11 +80,6 @@ class TDVP:
             self.makeReal = imagFun
 
         # pmap'd member functions
-        self.subtract_helper_Eloc = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
-        self.subtract_helper_grad = global_defs.pmap_for_my_devices(lambda x, y: x - y, in_axes=(0, None))
-        self.get_EO = global_defs.pmap_for_my_devices(lambda f, p, Eloc, grad: -f * jnp.multiply((p * Eloc)[:, None], jnp.conj(grad)),
-                                                      in_axes=(None, 0, 0, 0), static_broadcasted_argnums=(0))
-        self.transform_EO = global_defs.pmap_for_my_devices(lambda eo, v: jnp.matmul(eo, jnp.conj(v)), in_axes=(0, None))
         self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
 
     def set_diagonal_shift(self, delta):
@@ -128,30 +120,27 @@ class TDVP:
 
         return self.S
 
-    def get_tdvp_equation(self, Eloc, gradients, p):
-        self.ElocMean = mpi.global_mean(Eloc[..., None], p)[..., 0]
-        self.ElocVar = jnp.real(mpi.global_variance(Eloc[..., None], p))[..., 0]
-        Eloc = self.subtract_helper_Eloc(Eloc, self.ElocMean)
-        gradientsMean = mpi.global_mean(gradients, p)
+    def get_tdvp_equation(self, Eloc, gradients):
 
-        gradients = self.subtract_helper_grad(gradients, gradientsMean)
+        self.ElocMean = Eloc.mean()
+        self.ElocVar = Eloc.var()
 
-        EOdata = self.get_EO(self.rhsPrefactor, p, Eloc, gradients)
-        self.F0 = mpi.global_sum(EOdata)
+        self.F0 = (-self.rhsPrefactor) * gradients.covar(Eloc).ravel() #* EOdata.mean()
         F = self.makeReal(self.F0)
 
-        self.S0 = mpi.global_covariance(gradients, p)
+        self.S0 = gradients.covar()
         S = self.makeReal(self.S0)
 
         if self.diagonalShift > 1e-10:
             S = S + jnp.diag(self.diagonalShift * jnp.diag(S))
 
-        return S, F, EOdata * mpi.globNumSamples
+        return S, F
 
     def get_sr_equation(self, Eloc, gradients):
         return self.get_tdvp_equation(Eloc, gradients, rhsPrefactor=1.)
 
-    def transform_to_eigenbasis(self, S, F, EOdata):
+    def _transform_to_eigenbasis(self, S, F):
+        
         if self.diagonalizeOnDevice:
             try:
                 self.ev, self.V = jnp.linalg.eigh(S)
@@ -170,20 +159,23 @@ class TDVP:
 
         self.VtF = jnp.dot(jnp.transpose(jnp.conj(self.V)), F)
 
-        EOdata = self.transform_EO(self.makeReal_pmapd(EOdata), self.V)
-        EOdata.block_until_ready()
+    def _get_snr(self, Eloc, gradients):
 
-        self.rhoVar = mpi.global_variance(EOdata, jnp.ones(EOdata.shape[:2]) / mpi.globNumSamples)
+        EO = gradients.covar_data(Eloc).transform(
+                        fun=lambda x: jnp.matmul(jnp.transpose(jnp.conj(self.V)), jVMC.util.imagFun(x))
+                    )
+        self.rhoVar = EO.var().ravel()
 
-        self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples * (jnp.conj(self.VtF) * self.VtF) / self.rhoVar))
+        self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples * (jnp.conj(self.VtF) * self.VtF) / self.rhoVar)).ravel()
 
     def solve(self, Eloc, gradients, p):
         # Get TDVP equation from MC data
-        self.S, F, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
+        self.S, F = self.get_tdvp_equation(Eloc, gradients) #, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
         F.block_until_ready()
 
-        # Transform TDVP equation to eigenbasis
-        self.transform_to_eigenbasis(self.S, F, Fdata)
+        # Transform TDVP equation to eigenbasis and compute SNR
+        self._transform_to_eigenbasis(self.S, F) #, Fdata)
+        self._get_snr(Eloc, gradients)
 
         # Discard eigenvalues below numerical precision
         self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1. / self.ev, 0.)
@@ -259,11 +251,13 @@ class TDVP:
         start_timing(outp, "compute Eloc")
         Eloc = hamiltonian.get_O_loc(sampleConfigs, psi, sampleLogPsi, t)
         stop_timing(outp, "compute Eloc", waitFor=Eloc)
+        Eloc = SampledObs( Eloc, p)
 
         # Evaluate gradients
         start_timing(outp, "compute gradients")
         sampleGradients = psi.gradients(sampleConfigs)
         stop_timing(outp, "compute gradients", waitFor=sampleGradients)
+        sampleGradients = SampledObs( sampleGradients, p)
 
         start_timing(outp, "solve TDVP eqn.")
         update, solverResidual = self.solve(Eloc, sampleGradients, p)

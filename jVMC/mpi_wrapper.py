@@ -29,16 +29,16 @@ _sum_sq_pmapd = None
 mean_helper = None
 cov_helper = None
 
-pmapDevices = None
+#pmapDevices = None
 
 
 import collections
 
 
-def pmap_devices_updated():
-    if collections.Counter(pmapDevices) == collections.Counter(global_defs.myPmapDevices):
-        return False
-    return True
+# def pmap_devices_updated():
+#     if collections.Counter(pmapDevices) == collections.Counter(global_defs.myPmapDevices):
+#         return False
+#     return True
 
 
 def jit_my_stuff():
@@ -51,7 +51,7 @@ def jit_my_stuff():
     global cov_helper
     global pmapDevices
 
-    if pmap_devices_updated():
+    if global_defs.pmap_devices_updated():
         _sum_up_pmapd = global_defs.pmap_for_my_devices(lambda x: jax.lax.psum(jnp.sum(x, axis=0), 'i'), axis_name='i')
         # _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jax.lax.psum(jnp.conj(data - mean).dot(p[..., None] * (data - mean)), 'i'), axis_name='i', in_axes=(0, None, 0))
         _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jnp.einsum('ij, ij, i -> j', jnp.conj(data - mean[None, ...]), (data - mean[None, ...]), p), in_axes=(0, None, 0))
@@ -177,6 +177,8 @@ def global_mean(data, p):
     Returns:
         Mean of data across MPI processes and device/batch dimensions.
     """
+
+
 
     jit_my_stuff()
 
