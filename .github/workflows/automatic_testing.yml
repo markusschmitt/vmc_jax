@@ -10,8 +10,10 @@ jobs:
       - name: Checkout under $GITHUB_WORKSPACE
         uses: actions/checkout@main
 
-      - name: Install stuff
-        run: pip install -e .[dev]       
+      - name: Setup MPI
+        uses: mpi4py/setup-mpi@v1
+#      - name: Install stuff
+#        run: pip install -e .[dev]       
  
       - name: Do something
         run: echo "hi!"
