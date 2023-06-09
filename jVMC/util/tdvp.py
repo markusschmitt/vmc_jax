@@ -7,6 +7,8 @@ import jVMC.mpi_wrapper as mpi
 import jVMC.global_defs as global_defs
 from jVMC.stats import SampledObs
 
+import warnings
+
 
 def realFun(x):
     return jnp.real(x)
@@ -145,8 +147,8 @@ class TDVP:
             try:
                 self.ev, self.V = jnp.linalg.eigh(S)
             except ValueError:
-                raise Warning("jax.numpy.linalg.eigh raised an exception. Falling back to numpy.linalg.eigh for "
-                              "diagonalization.")
+                warnings.warn("jax.numpy.linalg.eigh raised an exception. Falling back to numpy.linalg.eigh for "
+                              "diagonalization.", RuntimeWarning)
                 tmpS = np.array(S)
                 tmpEv, tmpV = np.linalg.eigh(tmpS)
                 self.ev = jnp.array(tmpEv)

@@ -50,13 +50,19 @@ def init_net(descr, dims, seed=0):
     if "actFun" in descr["net1"]["parameters"]:
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
-    keys_sim = ["translation", "rotation", "reflection", "z2sym"]
-    kwargs_sym = {key: descr[key] if key in descr else False for key in keys_sim}
+    symms = tuple()
+    for key in ["translation", "rotation", "reflection", "spinflip"]:
+        if key in descr:
+            symms = symms + (key,)
+    symm_factors = {}
+    for key in symms:
+        fac_key = key + "_factor"
+        symm_factors[fac_key] = descr[fac_key] if fac_key in descr else 1
 
     if len(dims) == 2:
-        orbit = sym.get_orbit_2d_square(dims[0], **kwargs_sym)
+        orbit = sym.get_orbit_2D_square(dims[0], *symms, **symm_factors)
     if len(dims) == 1:
-        orbit = sym.get_orbit_1d(dims[0], **kwargs_sym)
+        orbit = sym.get_orbit_1D(dims[0], *symms, **symm_factors)
 
     if not "net2" in descr:
 

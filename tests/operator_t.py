@@ -80,9 +80,7 @@ class TestOperator(unittest.TestCase):
             h.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
 
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
-        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-        psi = NQS(net)
+        psi = NQS(rbm)
 
         mcSampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=1)
 
@@ -110,9 +108,7 @@ class TestOperator(unittest.TestCase):
             hamilton_batched.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
 
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
-        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-        psi = NQS(net)
+        psi = NQS(rbm)
 
         mcSampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip,
                                            numChains=1)

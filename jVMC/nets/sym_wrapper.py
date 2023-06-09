@@ -4,16 +4,16 @@ import flax.linen as nn
 from jVMC.util.symmetries import LatticeSymmetry
 
 
-def avgFun_Coefficients_Exp(coeffs):
+def avgFun_Coefficients_Exp(coeffs, sym_factor):
     # average (complex) coefficients
-    return jnp.log(jnp.mean(jnp.exp(coeffs)))
+    return jax.scipy.special.logsumexp(coeffs, b=sym_factor)
 
 
-def avgFun_Coefficients_Log(coeffs):
+def avgFun_Coefficients_Log(coeffs, sym_factor):
     return jnp.mean(coeffs)
 
 
-def avgFun_Coefficients_Sep(coeffs):
+def avgFun_Coefficients_Sep(coeffs, sym_factor):
     re = jnp.real(coeffs)
     im = jnp.imag(coeffs)
     return 0.5 * jnp.log(jnp.mean(jnp.exp(2 * re))) + 1j * jnp.angle(jnp.mean(jnp.exp(1j * im)))
@@ -57,9 +57,8 @@ class SymNet(nn.Module):
         def evaluate(x):
             return self.net(x)
 
-        res = self.avgFun(jax.vmap(evaluate)(x))
-
-        return res
+        res = jax.vmap(evaluate)(x)
+        return self.avgFun(res, self.orbit.factor)
     
     
     def _sample_fun(self, *args):

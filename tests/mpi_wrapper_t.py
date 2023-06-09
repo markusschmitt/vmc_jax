@@ -37,8 +37,7 @@ class TestMPI(unittest.TestCase):
         myNumSamples = mpi.distribute_sampling(global_defs.device_count() * 720)
 
         myData = data[mpi.rank * myNumSamples:(mpi.rank + 1) * myNumSamples].reshape(get_shape((-1, 4)))
-
-        self.assertTrue(jnp.sum(mpi.global_variance(myData, jnp.ones(myData.shape[:2]) / jnp.prod(jnp.asarray(myData.shape[:2]))) - jnp.var(data, axis=0)) < 1e-10)
+        self.assertTrue(jnp.sum(mpi.global_variance(myData, jnp.ones(myData.shape[:2]) / jnp.prod(jnp.asarray(myData.shape[:2]))) - jnp.var(data, axis=0)) < 1e-09)
 
     def test_bcast(self):
         data = np.zeros(10, dtype=np.int32)

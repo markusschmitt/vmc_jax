@@ -33,9 +33,7 @@ class TestGsSearch(unittest.TestCase):
         for hx, exE in zip(hxs, exEs):
             # Set up variational wave function
             rbm = nets.CpxRBM(numHidden=6, bias=False)
-            orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
-            net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-            psi = NQS(net)
+            psi = NQS(rbm)
 
             # Set up hamiltonian for ground state search
             hamiltonianGS = op.BranchFreeOperator()
@@ -71,9 +69,7 @@ class TestTimeEvolution(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
-        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-        psi = NQS(net)
+        psi = NQS(rbm)
         psi(jnp.array([[[1, 1, 1, 1]]]))
         psi.set_parameters(weights)
 
@@ -143,9 +139,7 @@ class TestTimeEvolutionMCSampler(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
-        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-        psi = NQS(net, batchSize=5000)
+        psi = NQS(rbm, batchSize=5000)
         psi(jnp.array([[[1, 1, 1, 1]]]))
         psi.set_parameters(weights)
 
@@ -215,7 +209,7 @@ class TestSNRConsistency(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        orbit = jVMC.util.symmetries.get_orbit_1d(L, translation=False, reflection=False, z2sym=False)
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, "translation")
         net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
         psi = NQS(net, batchSize=5000)
         psi(jnp.array([[[1, 1, 1, 1]]]))

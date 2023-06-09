@@ -20,7 +20,7 @@ class TestPOVM(unittest.TestCase):
         sample_shape = (L,)
         self.psi = jVMC.util.util.init_net({"batch_size": 5000, "net1":
                                             {"type": "RNN",
-                                             "translation": True,
+                                             "translation": {"use": True, "factor": 1},
                                              "parameters": {"inputDim": 4,
                                                             "realValuedOutput": True,
                                                             "realValuedParams": True,
