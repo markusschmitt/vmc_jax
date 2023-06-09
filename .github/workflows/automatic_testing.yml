@@ -1,8 +1,5 @@
 name: Automatic testing
-on:
-  push:
-    branches:
-      - origin/test_action
+on: workflow_dispatch
 
 jobs:
   run-tests:
