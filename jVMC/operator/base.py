@@ -68,7 +68,10 @@ class Operator(metaclass=abc.ABCMeta):
         self._array_idx_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda data, idx: data[idx], in_axes=(0, 0)), in_axes=(0, 0))
         self._get_O_loc_pmapd = global_defs.pmap_for_my_devices(self._get_O_loc)
         self._flatten_pmapd = global_defs.pmap_for_my_devices(lambda x: x.reshape(-1, *x.shape[2:]))
-        self._alloc_Oloc_pmapd = global_defs.pmap_for_my_devices(lambda s: jnp.zeros(s.shape[0], dtype=global_defs.tCpx))
+        self._alloc_Oloc_cpx_pmapd = global_defs.pmap_for_my_devices(lambda s: jnp.zeros(s.shape[0],
+                                                                                         dtype=global_defs.tCpx))
+        self._alloc_Oloc_real_pmapd = global_defs.pmap_for_my_devices(lambda s: jnp.zeros(s.shape[0],
+                                                                                          dtype=global_defs.tReal))
         self._get_config_batch_pmapd = global_defs.pmap_for_my_devices(lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), in_axes=(0, None, None), static_broadcasted_argnums=(2,))
         self._get_logPsi_batch_pmapd = global_defs.pmap_for_my_devices(lambda d, startIdx, sliceSize: jax.lax.dynamic_slice_in_dim(d, startIdx, sliceSize), in_axes=(0, None, None), static_broadcasted_argnums=(2,))
         self._insert_Oloc_batch_pmapd = global_defs.pmap_for_my_devices(
@@ -214,7 +217,7 @@ class Operator(metaclass=abc.ABCMeta):
             :math:`O_{loc}(s)` for each configuration :math:`s`.
         """
 
-        Oloc = self._alloc_Oloc_pmapd(samples)
+        Oloc = None
 
         numSamples = samples.shape[1]
         numBatches = numSamples // batchSize
@@ -234,6 +237,12 @@ class Operator(metaclass=abc.ABCMeta):
             sp, _ = self.get_s_primes(batch, *args)
 
             OlocBatch = self.get_O_loc_unbatched(logPsiSbatch, psi(sp))
+
+            if Oloc is None:
+                if OlocBatch.dtype == global_defs.tCpx:
+                    Oloc = self._alloc_Oloc_cpx_pmapd(samples)
+                else:
+                    Oloc = self._alloc_Oloc_real_pmapd(samples)
 
             Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, b * batchSize)
         
