@@ -16,17 +16,18 @@
     parallelism
 
 .. toctree::
-   :hidden:
-   :glob:
-   :maxdepth: 2
-   :caption: API documentation
+    :hidden:
+    :glob:
+    :maxdepth: 2
+    :caption: API documentation
 
-   vqs
-   operator
-   sampler
-   nets
-   mpi
-   util
+    vqs
+    operator
+    sampler
+    nets
+    mpi
+    stats
+    util
 
 .. toctree::
     :hidden:

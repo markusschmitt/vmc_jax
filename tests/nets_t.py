@@ -70,6 +70,26 @@ class TestSymNet(unittest.TestCase):
 
         self.assertTrue(jnp.max(jnp.abs(psiS)) < 1e-12)
 
+    def test_sym_net_generative(self):
+        L=5
+        rbm = nets.RNN1DGeneral(L=5)
+        symms = {"translation": {"use": True, "factor": 1},
+                 "reflection": {"use": False, "factor": 1},
+                 "z2sym": {"use": False, "factor": 1},
+                 }
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
+        rbm_sym = nets.SymNet(net=rbm, orbit=orbit)
+        params = rbm_sym.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
+
+        S0 = jnp.pad(jnp.array([1, 0, 1, 1, 0]), (0, 4), 'wrap')
+        S = jnp.array(
+            [S0[i:i + 5]for i in range(5)]
+        )
+        psiS = jax.vmap(lambda s: rbm_sym.apply(params, s))(S)
+        psiS = psiS - psiS[0]
+
+        self.assertTrue(jnp.max(jnp.abs(psiS)) < 1e-12)
+
 
 if __name__ == "__main__":
     unittest.main()

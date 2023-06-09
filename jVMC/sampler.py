@@ -5,6 +5,7 @@ import numpy as np
 from jax import vmap, jit
 
 import jVMC.mpi_wrapper as mpi
+from jVMC.nets.sym_wrapper import SymNet
 
 from functools import partial
 
@@ -69,8 +70,13 @@ class MCSampler:
     """A sampler class.
 
     This class provides functionality to sample computational basis states from \
-    the probability distribution induced by the variational wave function, \
-    :math:`|\\psi(s)|^2`.
+    the distribution 
+
+        :math:`p_{\\mu}(s)=\\frac{|\\psi(s)|^{\\mu}}{\\sum_s|\\psi(s)|^{\\mu}}`.
+
+    For :math:`\\mu=2` this corresponds to sampling from the Born distribution. \
+    :math:`0\leq\\mu<2` can be used to perform importance sampling \
+    (see `[arXiv:2108.08631] <https://arxiv.org/abs/2108.08631>`_).
 
     Sampling is automatically distributed accross MPI processes and locally available \
     devices.
@@ -90,8 +96,7 @@ class MCSampler:
         * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
         * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
         * ``sweepSteps``: Number of proposed updates per sweep.
-        * ``mu``: exponent, giving the probability of a configuration. \
-        The usual choice is :math: `|\psi(s)|^2`, i.e. mu=2.
+        * ``mu``: Parameter for the distribution :math:`p_{\\mu}(s)`, see above.
     """
 
     def __init__(self, net, sampleShape, key, updateProposer=None, numChains=1, updateProposerArg=None,
@@ -105,6 +110,9 @@ class MCSampler:
         self.net = net
         if (not net.is_generator) and (updateProposer is None):
             raise RuntimeError("Instantiation of MCSampler: `updateProposer` is `None` and cannot be used for MCMC sampling.")
+        self.orbit = None
+        if isinstance(self.net.net, SymNet):
+            self.orbit = self.net.net.orbit.orbit
 
         stateShape = (global_defs.device_count(), numChains) + sampleShape
         if initState is None:
@@ -120,7 +128,7 @@ class MCSampler:
         self.updateProposer = updateProposer
         self.updateProposerArg = updateProposerArg
 
-        if isinstance(key, jax.lib.xla_extension.DeviceArray):
+        if isinstance(key,jax.Array):
             self.key = key
         else:
             self.key = jax.random.PRNGKey(key)
@@ -176,7 +184,7 @@ class MCSampler:
         If supported by ``net``, direct sampling is peformed. Otherwise, MCMC is run \
         to generate the desired number of samples. For direct sampling the real part \
         of ``net`` needs to provide a ``sample()`` member function that generates \
-        samples from :math:`|\\psi(s)|^2`.
+        samples from :math:`p_{\\mu}(s)`.
 
         Sampling is automatically distributed accross MPI processes and available \
         devices. In that case the number of samples returned might exceed ``numSamples``.
@@ -193,7 +201,7 @@ class MCSampler:
             a way that the number of samples per processor is identical for each processor.
 
         Returns:
-            A sample of computational basis configurations drawn from :math:`|\\psi(s)|^2`.
+            A sample of computational basis configurations drawn from :math:`p_{\\mu}(s)`.
         """
 
         if numSamples is None:
@@ -228,7 +236,10 @@ class MCSampler:
         if not str(numSamples) in self._randomize_samples_jitd:
             self._randomize_samples_jitd[str(numSamples)] = global_defs.pmap_for_my_devices(self._randomize_samples, static_broadcasted_argnums=(), in_axes=(0, 0, None))
 
-        return self._randomize_samples_jitd[str(numSamples)](samples, tmpKey2, self.net.net.orbit.orbit)
+        if not self.orbit is None:
+            return self._randomize_samples_jitd[str(numSamples)](samples, tmpKey2, self.orbit)
+        
+        return samples
 
     def _get_samples_mcmc(self, params, numSamples, multipleOf=1):
 
@@ -249,9 +260,9 @@ class MCSampler:
                                                                                     static_broadcasted_argnums=(1, 2, 3, 9, 11),
                                                                                     in_axes=(None, None, None, None, 0, 0, 0, 0, 0, None, None, None))
 
-        (self.states, self.log_accProb, self.key, self.numProposed, self.numAccepted), configs =\
+        (self.states, self.logAccProb, self.key, self.numProposed, self.numAccepted), configs =\
             self._get_samples_jitd[numSamplesStr](params, numSamples, self.thermalizationSweeps, self.sweepSteps,
-                                                  self.states, self.log_accProb, self.key, self.numProposed, self.numAccepted,
+                                                  self.states, self.logAccProb, self.key, self.numProposed, self.numAccepted,
                                                   self.updateProposer, self.updateProposerArg, self.sampleShape)
 
         # return configs, None
@@ -259,29 +270,29 @@ class MCSampler:
 
     def _get_samples(self, params, numSamples,
                      thermSweeps, sweepSteps,
-                     states, log_accProb, key,
+                     states, logAccProb, key,
                      numProposed, numAccepted,
                      updateProposer, updateProposerArg,
                      sampleShape, sweepFunction=None):
 
         # Thermalize
-        states, log_accProb, key, numProposed, numAccepted =\
-            sweepFunction(states, log_accProb, key, numProposed, numAccepted, params, thermSweeps * sweepSteps, updateProposer, updateProposerArg)
+        states, logAccProb, key, numProposed, numAccepted =\
+            sweepFunction(states, logAccProb, key, numProposed, numAccepted, params, thermSweeps * sweepSteps, updateProposer, updateProposerArg)
 
         # Collect samples
         def scan_fun(c, x):
 
-            states, log_accProb, key, numProposed, numAccepted =\
+            states, logAccProb, key, numProposed, numAccepted =\
                 sweepFunction(c[0], c[1], c[2], c[3], c[4], params, sweepSteps, updateProposer, updateProposerArg)
 
-            return (states, log_accProb, key, numProposed, numAccepted), states
+            return (states, logAccProb, key, numProposed, numAccepted), states
 
-        meta, configs = jax.lax.scan(scan_fun, (states, log_accProb, key, numProposed, numAccepted), None, length=numSamples)
+        meta, configs = jax.lax.scan(scan_fun, (states, logAccProb, key, numProposed, numAccepted), None, length=numSamples)
 
         # return meta, configs.reshape((configs.shape[0]*configs.shape[1], -1))
         return meta, configs.reshape((configs.shape[0] * configs.shape[1],) + sampleShape)
 
-    def _sweep(self, states, log_accProb, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
+    def _sweep(self, states, logAccProb, key, numProposed, numAccepted, params, numSteps, updateProposer, updateProposerArg, net=None):
 
         def perform_mc_update(i, carry):
 
@@ -291,8 +302,8 @@ class MCSampler:
             newStates = vmap(updateProposer, in_axes=(0, 0, None))(newKeys[:len(carry[0])], carry[0], updateProposerArg)
 
             # Compute acceptance probabilities
-            new_log_accProb = jax.vmap(lambda y: self.mu * jnp.real(net(params, y)), in_axes=(0,))(newStates)
-            P = jnp.exp(new_log_accProb - carry[1])
+            newLogAccProb = jax.vmap(lambda y: self.mu * jnp.real(net(params, y)), in_axes=(0,))(newStates)
+            P = jnp.exp(newLogAccProb - carry[1])
 
             # Roll dice
             newKey, carryKey = random.split(carryKey,)
@@ -307,20 +318,20 @@ class MCSampler:
                 return jax.lax.cond(acc, lambda x: x[1], lambda x: x[0], (old, new))
             carryStates = vmap(update, in_axes=(0, 0, 0))(accepted, carry[0], newStates)
 
-            carryLog_accProb = jnp.where(accepted == True, new_log_accProb, carry[1])
+            carryLogAccProb = jnp.where(accepted == True, newLogAccProb, carry[1])
 
-            return (carryStates, carryLog_accProb, carryKey, numProposed, numAccepted)
+            return (carryStates, carryLogAccProb, carryKey, numProposed, numAccepted)
 
-        (states, log_accProb, key, numProposed, numAccepted) =\
-            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, log_accProb, key, numProposed, numAccepted))
+        (states, logAccProb, key, numProposed, numAccepted) =\
+            jax.lax.fori_loop(0, numSteps, perform_mc_update, (states, logAccProb, key, numProposed, numAccepted))
 
-        return states, log_accProb, key, numProposed, numAccepted
+        return states, logAccProb, key, numProposed, numAccepted
 
     def _mc_init(self, netParams):
 
-        # Initialize log_accProb
+        # Initialize logAccProb
         net, _ = self.net.get_sampler_net()
-        self.log_accProb = global_defs.pmap_for_my_devices(
+        self.logAccProb = global_defs.pmap_for_my_devices(
             lambda x: jax.vmap(lambda y: self.mu * jnp.real(net(netParams, y)), in_axes=(0,))(x)
         )(self.states)
 

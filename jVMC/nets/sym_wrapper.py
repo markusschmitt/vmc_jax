@@ -39,7 +39,14 @@ class SymNet(nn.Module):
     net: callable
     avgFun: callable = avgFun_Coefficients_Exp
 
-    @nn.compact
+    def __post_init__(self):
+
+        if "sample" in dir(self.net):
+            self.sample = self._sample_fun
+
+        super().__post_init__()
+
+
     def __call__(self, x):
 
         inShape = x.shape
@@ -52,8 +59,10 @@ class SymNet(nn.Module):
 
         res = jax.vmap(evaluate)(x)
         return self.avgFun(res, self.orbit.factor)
+    
+    
+    def _sample_fun(self, *args):
 
-    def sample(self, *args):
         return self.net.sample(*args)
 
 # ** end class SymNet

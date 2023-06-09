@@ -79,6 +79,7 @@ def dict_gradient_real(fun, params, arg):
 
 class NQS:
     """Wrapper class providing basic functionality of variational states.
+    
     This class can operate in two modi:
         #. Single-network ansatz
             Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
@@ -91,6 +92,7 @@ class NQS:
             with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
             :math:`\\varphi_{\\theta_\phi}` \
             parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
+
     Initializer arguments:
         * ``net``: Variational network.
             A network has to be registered as pytree node and provide \
@@ -105,8 +107,13 @@ class NQS:
         * ``seed``: Seed for the PRNG to initialize the network parameters.
     """
 
-    def __init__(self, net, batchSize=1000, seed=1234):
+    def __init__(self, net, 
+                        batchSize=1000, 
+                        seed=1234, 
+                        orbit=None, 
+                        avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Exp):
         """Initializes NQS class.
+        
         This class can operate in two modi:
             #. Single-network ansatz
                 Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
@@ -120,17 +127,19 @@ class NQS:
                 :math:`\\varphi_{\\theta_\phi}` \
                 parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
         Args:       
-            * ``net``: Variational network.
+            * ``net``: Variational network or tuple of networks.
                 A network has to be registered as pytree node and provide \
-                a ``__call__`` function for evaluation.
-                It is expected that the network is of type ``jVMC.nets.sym_wrapper.SymNet``.
-                If the network is composed of two networks, the correct wrapping structure is
-                ``jVMC.nets.sym_wrapper.SymNet(jVMC.nets.two_nets_wrapper.TwoNets)``.
+                a ``__call__`` function for evaluation. \
+                If a tuple of two networks is given, the first is used for the logarithmic \
+                amplitude and the second for the phase of the wave function coefficient.
             * ``batchSize``: Batch size for batched network evaluation. Choice \
                 of this parameter impacts performance: with too small values performance \
                 is limited by memory access overheads, too large values can lead \
                 to "out of memory" issues.
             * ``seed``: Seed for the PRNG to initialize the network parameters.
+            * ``orbit``: Orbit which defining the symmetry operations (instance of ``util.symmetries.LatticeSymmetry``). \
+                If this argument is given, the wave function is symmetrized to be invariant under symmetry operations.
+            * ``avgFun``: Reduction operation for the symmetrization.
         """
 
         # The net arguments have to be instances of flax.nn.Model
@@ -144,14 +153,13 @@ class NQS:
         self.parameters = None
 
         self._isGenerator = False
-        if isinstance(net.net, jVMC.nets.two_nets_wrapper.TwoNets):
-            if "sample" in dir(net.net.net1):
-                if callable(net.net.net1.sample):
-                    self._isGenerator = True
-        else:
-            if "sample" in dir(net.net):
-                if callable(net.net.sample):
-                    self._isGenerator = True
+        if isinstance(net, collections.abc.Iterable):
+            net = jVMC.nets.two_nets_wrapper.TwoNets(net)
+        if not orbit is None:
+            net = jVMC.nets.sym_wrapper.SymNet(net=net, orbit=orbit, avgFun=avgFun)
+        if "sample" in dir(net):
+            if callable(net.sample):
+                self._isGenerator = True
         self.net = net
 
         self.batchSize = batchSize
@@ -196,12 +204,15 @@ class NQS:
 
     def __call__(self, s):
         """Evaluate variational wave function.
+        
         Compute the logarithmic wave function coefficients :math:`\ln\psi(s)` for \
         computational configurations :math:`s`.
+        
         Args:
             * ``s``: Array of computational basis states.
         Returns:
             Logarithmic wave function coefficients :math:`\ln\psi(s)`.
+        
         :meta public:
         """
 
@@ -241,8 +252,10 @@ class NQS:
 
     def gradients(self, s):
         """Compute gradients of logarithmic wave function.
+        
         Compute gradient of the logarithmic wave function coefficients, \
         :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+        
         Args:
             * ``s``: Array of computational basis states.
         Returns:
@@ -260,8 +273,10 @@ class NQS:
 
     def gradients_dict(self, s):
         """Compute gradients of logarithmic wave function and return them as dictionary.
+        
         Compute gradient of the logarithmic wave function coefficients, \
         :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+        
         Args:
             * ``s``: Array of computational basis states.
         Returns:
@@ -348,8 +363,10 @@ class NQS:
 
     def update_parameters(self, deltaP):
         """Update variational parameters.
+        
         Sets new values of all variational parameters by adding given values.
         If parameters are not initialized, parameters are set to ``deltaP``.
+        
         Args:
             * ``deltaP``: Values to be added to variational parameters.
         """
@@ -371,7 +388,9 @@ class NQS:
 
     def set_parameters(self, P):
         """Set variational parameters.
+        
         Sets new values of all variational parameters.
+        
         Args:
             * ``P``: New values of variational parameters.
         """
@@ -406,6 +425,7 @@ class NQS:
 
     def get_parameters(self):
         """Get variational parameters.
+        
         Returns:
             Array holding current values of all variational parameters.
         """

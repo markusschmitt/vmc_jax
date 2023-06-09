@@ -87,14 +87,7 @@ class TestGradients(unittest.TestCase):
             L = 3
             rbmModel1 = nets.RBM(numHidden=2, bias=True)
             rbmModel2 = nets.RBM(numHidden=3, bias=True)
-            model = nets.two_nets_wrapper.TwoNets(net1=rbmModel1, net2=rbmModel2)
-            symms = {"translation": {"use": False, "factor": 1},
-                     "reflection": {"use": False, "factor": 1},
-                     "z2sym": {"use": False, "factor": 1},
-                     }
-            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
-            net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
-            psi = NQS(net)
+            psi = NQS((rbmModel1, rbmModel2))
 
             s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
             s = s.at[..., 0, 1].set(1)
@@ -131,8 +124,7 @@ class TestGradients(unittest.TestCase):
                      "z2sym": {"use": False, "factor": 1},
                      }
             orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
-            net = nets.sym_wrapper.SymNet(net=model, orbit=orbit)
-            psi = NQS(net)
+            psi = NQS(model, orbit=orbit)
 
             s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
             s = s.at[..., 0, 1].set(1)
