@@ -367,6 +367,8 @@ class ExactSampler:
         * ``net``: Network defining the probability distribution.
         * ``sampleShape``: Shape of computational basis states.
         * ``lDim``: Local Hilbert space dimension.
+        * ``logProbFactor``: Factor for the log-probabilities, aquivalent to the exponent for the probability \
+        distribution. For pure wave functions this should be 0.5, and 1.0 for POVMs.
     """
 
     def __init__(self, net, sampleShape, lDim=2, logProbFactor=0.5):
