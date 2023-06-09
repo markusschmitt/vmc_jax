@@ -11,4 +11,4 @@ jobs:
         uses: actions/checkout@main
         
       - name: Do something
-        runs: echo "hi!"
+        run: echo "hi!"
