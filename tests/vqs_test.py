@@ -31,6 +31,7 @@ class TestGradients(unittest.TestCase):
             psiC(s)
 
             self.assertTrue(psiC.holomorphic)
+            self.assertTrue(False)
 
     def test_gradients_cpx(self):
 
