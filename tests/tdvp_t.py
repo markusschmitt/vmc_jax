@@ -33,13 +33,7 @@ class TestGsSearch(unittest.TestCase):
         for hx, exE in zip(hxs, exEs):
             # Set up variational wave function
             rbm = nets.CpxRBM(numHidden=6, bias=False)
-            symms = {"translation": {"use": False, "factor": 1},
-                     "reflection": {"use": False, "factor": 1},
-                     "z2sym": {"use": False, "factor": 1},
-                     }
-            orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
-            net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-            psi = NQS(net)
+            psi = NQS(rbm)
 
             # Set up hamiltonian for ground state search
             hamiltonianGS = op.BranchFreeOperator()
@@ -75,13 +69,7 @@ class TestTimeEvolution(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        symms = {"translation": {"use": False, "factor": 1},
-                 "reflection": {"use": False, "factor": 1},
-                 "z2sym": {"use": False, "factor": 1},
-                 }
-        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
-        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-        psi = NQS(net)
+        psi = NQS(rbm)
         psi(jnp.array([[[1, 1, 1, 1]]]))
         psi.set_parameters(weights)
 
@@ -151,13 +139,7 @@ class TestTimeEvolutionMCSampler(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        symms = {"translation": {"use": False, "factor": 1},
-                 "reflection": {"use": False, "factor": 1},
-                 "z2sym": {"use": False, "factor": 1},
-                 }
-        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
-        net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-        psi = NQS(net, batchSize=5000)
+        psi = NQS(rbm, batchSize=5000)
         psi(jnp.array([[[1, 1, 1, 1]]]))
         psi.set_parameters(weights)
 
@@ -227,11 +209,7 @@ class TestSNRConsistency(unittest.TestCase):
 
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
-        symms = {"translation": {"use": True, "factor": 1},
-                 "reflection": {"use": False, "factor": 1},
-                 "z2sym": {"use": False, "factor": 1},
-                 }
-        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, "translation")
         net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
         psi = NQS(net, batchSize=5000)
         psi(jnp.array([[[1, 1, 1, 1]]]))

@@ -41,7 +41,7 @@ class CpxRBM(nn.Module):
 # ** end class CpxRBM
 
 
-class CpxRBM_NoZ2Sym(nn.Module):
+class CpxRBM_Nospinflip(nn.Module):
     """Restricted Boltzmann machine with complex parameters.
 
     Initialization arguments:

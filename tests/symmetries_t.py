@@ -3,7 +3,6 @@ import unittest
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
-import jax.random as random
 import jax.numpy as jnp
 
 import numpy as np
@@ -12,46 +11,37 @@ import jVMC
 import jVMC.util.symmetries as symmetries
 import jVMC.nets as nets
 from jVMC.vqs import NQS
-import jVMC.global_defs as global_defs
-
-import time
 
 
 class TestSymmetries(unittest.TestCase):
 
     def test_symmetries2D(self):
         L = 3
-        rotation_f = 4
-        reflection_f = 2
-        translation_f = L**2
-        z2sym_f = 2
         for rotation in [True, False]:
             for reflection in [True, False]:
                 for translation in [True, False]:
-                    for z2sym in [True, False]:
-                        kwargs = {"rotation": {"use": rotation, "factor": 1},
-                                  "reflection": {"use": reflection, "factor": 1},
-                                  "translation": {"use": translation, "factor": 1},
-                                  "z2sym": {"use": z2sym, "factor": 1},
-                                  }
-                        orbit = symmetries.get_orbit_2D_square(L, **kwargs)
-                        # self.assertTrue(orbit.shape[0] == (rotation_f if rotation else 1) * (reflection_f if reflection else 1) * (translation_f if translation else 1) * (z2sym_f if z2sym else 1))
+                    for spinflip in [True, False]:
+                        symms = ("rotation" if rotation else None, 
+                                 "reflection" if reflection else None,
+                                 "translation" if translation else None,
+                                 "spinflip" if spinflip else None)
+                        
+                        orbit = symmetries.get_orbit_2D_square(L, *symms)
                         self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
 
     def test_symmetries1D(self):
         L = 3
         reflection_f = 2
         translation_f = L
-        z2sym_f = 2
+        spinflip_f = 2
         for translation in [True, False]:
             for reflection in [True, False]:
-                for z2sym in [True, False]:
-                    kwargs = {"reflection": {"use": reflection, "factor": 1},
-                              "translation": {"use": translation, "factor": 1},
-                              "z2sym": {"use": z2sym, "factor": 1},
-                              }
-                    orbit = symmetries.get_orbit_1D(L, **kwargs)
-                    self.assertTrue(orbit.shape[0] == (reflection_f if reflection else 1) * (translation_f if translation else 1) * (z2sym_f if z2sym else 1))
+                for spinflip in [True, False]:
+                    symms = ("reflection" if reflection else None,
+                             "translation" if translation else None,
+                             "spinflip" if spinflip else None)
+                    orbit = symmetries.get_orbit_1D(L, *symms)
+                    self.assertTrue(orbit.shape[0] == (reflection_f if reflection else 1) * (translation_f if translation else 1) * (spinflip_f if spinflip else 1))
                     self.assertTrue(np.issubdtype(orbit.dtype, np.integer))
 
 
@@ -59,15 +49,21 @@ class TestSymmetrySector(unittest.TestCase):
 
     def test_symmetry_sector_1D(self):
 
-        for reflection, translation, z2sym in [[True, False, False], [False, True, False], [False, False, True]]:
+        for reflection, translation, spinflip in [[True, False, False], [False, True, False], [False, False, True]]:
             L = 10
             symms = {"reflection": {"use": reflection, "factor": -1},
                      "translation": {"use": translation, "factor": jnp.exp(1j * 2 * jnp.pi * L / 2 / L)},
-                     "z2sym": {"use": z2sym, "factor": -1},
+                     "spinflip": {"use": spinflip, "factor": -1},
                      }
-            orbit = symmetries.get_orbit_1D(L, **symms)
+            symms = ("reflection" if reflection else None,
+                     "translation" if translation else None,
+                     "spinflip" if spinflip else None)
+            orbit = symmetries.get_orbit_1D(L, *symms,
+                                              reflection_factor=-1.,
+                                              translation_factor=jnp.exp(1j * 2 * jnp.pi * L / 2 / L),
+                                              spinflip_factor=-1.)
 
-            rbm = nets.CpxRBM_NoZ2Sym(numHidden=2, bias=False)
+            rbm = nets.CpxRBM_Nospinflip(numHidden=2, bias=False)
             net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
 
             psi = NQS(net)
@@ -80,7 +76,7 @@ class TestSymmetrySector(unittest.TestCase):
             if translation:
                 config_2 = jnp.roll(config_1, 1, axis=0)
 
-            if z2sym:
+            if spinflip:
                 config_2 = 1 - config_1
 
             coeff_1 = psi(config_1[None, None, ...])
@@ -90,16 +86,20 @@ class TestSymmetrySector(unittest.TestCase):
 
     def test_symmetry_sector_2D(self):
 
-        for rotation, reflection, translation, z2sym in [[True, False, False, False], [False, True, False, False], [False, False, True, False], [False, False, False, True]]:
-            L = 4
-            symms = {"rotation": {"use": rotation, "factor": -1},
-                     "reflection": {"use": reflection, "factor": -1},
-                     "translation": {"use": translation, "factor": jnp.exp(1j * 2 * jnp.pi * L / 2 / L)},
-                     "z2sym": {"use": z2sym, "factor": -1},
-                     }
-            orbit = symmetries.get_orbit_2D_square(L, **symms)
+        for rotation, reflection, translation, spinflip in [[True, False, False, False], [False, True, False, False], [False, False, True, False], [False, False, False, True]]:
 
-            rbm = nets.CpxRBM_NoZ2Sym(numHidden=2, bias=False)
+            L = 4
+            symms = ("rotation" if rotation else None, 
+                     "reflection" if reflection else None,
+                     "translation" if translation else None,
+                     "spinflip" if spinflip else None)
+            orbit = symmetries.get_orbit_2D_square(L, *symms,
+                                                      rotation_factor=-1.,
+                                                      reflection_factor=-1.,
+                                                      translation_factor=jnp.exp(1j * 2 * jnp.pi * L / 2 / L),
+                                                      spinflip_factor=-1.)
+
+            rbm = nets.CpxRBM_Nospinflip(numHidden=2, bias=False)
             net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
 
             psi = NQS(net)
@@ -115,7 +115,7 @@ class TestSymmetrySector(unittest.TestCase):
             if translation:
                 config_2 = jnp.roll(config_1, 1, axis=0)
 
-            if z2sym:
+            if spinflip:
                 config_2 = 1 - config_1
 
             coeff_1 = psi(config_1[None, None, ...])

@@ -3,6 +3,8 @@ import jax.numpy as jnp
 import jax
 from dataclasses import dataclass
 
+import warnings
+
 
 class LatticeSymmetry:
     '''A wrapper class for lattice symmetries.
@@ -13,6 +15,8 @@ class LatticeSymmetry:
     Initializer arguments:
         * ``orbit``: A ``jax.numpy.array`` of rank three, which contains the permutation matrix \
                      of lattice indices for each symmetry operation.
+        * ``factor``: A ``jax.numpy.array`` of rank one, which contains the phase factor associated with \
+                    each element in the ``orbit`` due to the chosen quantum number.
     '''
 
     def __init__(self, orbit, factor):
@@ -107,26 +111,32 @@ def get_maps_2D(L, **kwargs):
     return translation, reflection, rotation
 
 
-def get_orbit_2D_square(L, **kwargs):
+def get_orbit_2D_square(L, *args, translation_factor=1., reflection_factor=1., rotation_factor=1., spinflip_factor=1.):
     ''' This function generates the group of lattice symmetries in a two-dimensional square lattice.
 
     Arguments:
         * ``L``: Linear dimension of the lattice.
-        * ``kwargs``: Dictionary that contains the entries `rotation`, `reflection`,
-        `translation` and `z2sym`, that each hold the boolean `use` and `factor`,
-        indicating which symmetries to use and in what symmetry sector one is operating.
-        Herein `factor`, is the factor to apply after a single symmetry operation.
+        * ``*args``: Any choice of "reflection", "rotation", "translation", or "spinflip".
+        * ``*_factor``: Prefactor for the symmetrization corresponding to the quantum number. \
+                        Replace ``*`` by the name of the symmetry ("reflection", "rotation", "translation", or "spinflip").
 
     Returns:
         An object of type ``LatticeSymmetry``.
     '''
+    
+    kwargs = {"reflection": {"use": ("reflection" in args), "factor": reflection_factor},
+              "translation": {"use": ("translation" in args), "factor": translation_factor},
+              "rotation": {"use": ("rotation" in args), "factor": rotation_factor},
+              "spinflip": {"use": ("spinflip" in args), "factor": spinflip_factor},
+             }
 
     translation, reflection, rotation = get_maps_2D(L, **kwargs)
     orbits, factors = get_orbits_from_maps_2D(L, translation, reflection, rotation)
 
-    if kwargs["z2sym"]["use"]:
+    if kwargs["spinflip"]["use"]:
+        warnings.warn("Symmetry 'spinflip' assumes that spin up/down is encoded with numerical values +1/-1.")
         orbits = jnp.concatenate([orbits, - orbits], axis=0)
-        factors = jnp.concatenate([factors, kwargs["z2sym"]["factor"] * factors])
+        factors = jnp.concatenate([factors, kwargs["spinflip"]["factor"] * factors])
 
     uniqueOrbit, indices = np.unique(orbits.reshape((-1, L**4)), return_index=True, axis=0)
     factors = factors[indices]
@@ -178,26 +188,31 @@ def get_maps_1D(L, **kwargs):
     return translation, reflection
 
 
-def get_orbit_1D(L, **kwargs):
+def get_orbit_1D(L, *args, translation_factor=1., reflection_factor=1., spinflip_factor=1.):
     ''' This function generates the group of lattice symmetries in a one-dimensional lattice.
 
     Arguments:
         * ``L``: Linear dimension of the lattice.
-        * ``kwargs``: Dictionary that contains the entries `reflection`,
-        `translation` and `z2sym`, that each hold the boolean `use` and `factor`,
-        indicating which symmetries to use and in what symmetry sector one is operating.
-        Herein `factor`, is the factor to apply after a single symmetry operation.
+        * ``*args``: Any choice of "reflection", "rotation", "translation", or "spinflip".
+        * ``*_factor``: Prefactor for the symmetrization corresponding to the quantum number. \
+                        Replace ``*`` by the name of the symmetry ("reflection", "rotation", "translation", or "spinflip").
 
     Returns:
         An object of type ``LatticeSymmetry``.
     '''
 
+    kwargs = {"reflection": {"use": ("reflection" in args), "factor": reflection_factor},
+              "translation": {"use": ("translation" in args), "factor": translation_factor},
+              "spinflip": {"use": ("spinflip" in args), "factor": spinflip_factor},
+             }
+
     translation, reflection = get_maps_1D(L, **kwargs)
     orbits, factors = get_orbits_from_maps_1D(L, translation, reflection)
 
-    if kwargs["z2sym"]["use"]:
+    if kwargs["spinflip"]["use"]:
+        warnings.warn("Symmetry 'spinflip' assumes that spin up/down is encoded with numerical values +1/-1.")
         orbits = jnp.concatenate([orbits, - orbits], axis=0)
-        factors = jnp.concatenate([factors, kwargs["z2sym"]["factor"] * factors])
+        factors = jnp.concatenate([factors, kwargs["spinflip"]["factor"] * factors])
 
     uniqueOrbit, indices = np.unique(orbits.reshape((-1, L**2)), return_index=True, axis=0)
     factors = factors[indices]
@@ -209,7 +224,7 @@ if __name__ == "__main__":
     syms = {"rotation": {"use": True, "factor": 1},
             "reflection": {"use": False, "factor": 1},
             "translation": {"use": False, "factor": 1},
-            "z2sym": {"use": False, "factor": 1}}
+            "spinflip": {"use": False, "factor": 1}}
 
     latsym = get_orbit_2D_square(L, **syms)
     print(latsym.orbit.shape)

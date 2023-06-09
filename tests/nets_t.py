@@ -53,11 +53,7 @@ class TestSymNet(unittest.TestCase):
     def test_sym_net(self):
         L = 5
         rbm = nets.RBM(numHidden=5)
-        symms = {"translation": {"use": True, "factor": 1},
-                 "reflection": {"use": False, "factor": 1},
-                 "z2sym": {"use": False, "factor": 1},
-                 }
-        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, "translation")
         rbm_sym = nets.SymNet(net=rbm, orbit=orbit)
         params = rbm_sym.init(random.PRNGKey(0), jnp.zeros((L,), dtype=np.int32))
 
@@ -73,11 +69,7 @@ class TestSymNet(unittest.TestCase):
     def test_sym_net_generative(self):
         L=5
         rbm = nets.RNN1DGeneral(L=5)
-        symms = {"translation": {"use": True, "factor": 1},
-                 "reflection": {"use": False, "factor": 1},
-                 "z2sym": {"use": False, "factor": 1},
-                 }
-        orbit = jVMC.util.symmetries.get_orbit_1D(L, **symms)
+        orbit = jVMC.util.symmetries.get_orbit_1D(L, "translation")
         rbm_sym = nets.SymNet(net=rbm, orbit=orbit)
         params = rbm_sym.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
 
