@@ -241,8 +241,7 @@ class TestSNRConsistency(unittest.TestCase):
         sampleGradients_old = psi.gradients(sampleConfigs)
         sampleGradients = jVMC.stats.SampledObs( sampleGradients_old, p)
 
-        self.F0 = (-1.j) * sampleGradients.covar(Eloc).ravel() #* EOdata.mean()
-        F = jVMC.util.imagFun( (-1.j) * sampleGradients.covar(Eloc).ravel() )
+        self.F0 = (-1.j) * sampleGradients.covar(Eloc).ravel() 
         S = jVMC.util.imagFun( sampleGradients.covar() )
 
         ev, V = jnp.linalg.eigh(S)

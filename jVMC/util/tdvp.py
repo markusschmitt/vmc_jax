@@ -25,7 +25,7 @@ class TDVP:
 
     and the quantum Fisher matrix
 
-        :math:`S_{k,k'} = \langle \mathcal O_{\\theta_k} (\mathcal O_{\\theta_{k'}})^*\\rangle_c`
+        :math:`S_{k,k'} = \langle (\mathcal O_{\\theta_k})^* \mathcal O_{\\theta_{k'}}\\rangle_c`
 
     and for real parameters :math:`\\theta\in\mathbb R`, the TDVP equation reads
 
@@ -162,15 +162,18 @@ class TDVP:
     def _get_snr(self, Eloc, gradients):
 
         EO = gradients.covar_data(Eloc).transform(
-                        fun=lambda x: jnp.matmul(jnp.transpose(jnp.conj(self.V)), jVMC.util.imagFun(x))
+                        fun=lambda x: jnp.matmul(
+                                        jnp.transpose(jnp.conj(self.V)), 
+                                        jVMC.util.imagFun((-self.rhsPrefactor) * x)
+                                        )
                     )
         self.rhoVar = EO.var().ravel()
 
         self.snr = jnp.sqrt(jnp.abs(mpi.globNumSamples * (jnp.conj(self.VtF) * self.VtF) / self.rhoVar)).ravel()
 
-    def solve(self, Eloc, gradients, p):
+    def solve(self, Eloc, gradients):
         # Get TDVP equation from MC data
-        self.S, F = self.get_tdvp_equation(Eloc, gradients) #, Fdata = self.get_tdvp_equation(Eloc, gradients, p)
+        self.S, F = self.get_tdvp_equation(Eloc, gradients)
         F.block_until_ready()
 
         # Transform TDVP equation to eigenbasis and compute SNR
@@ -260,7 +263,7 @@ class TDVP:
         sampleGradients = SampledObs( sampleGradients, p)
 
         start_timing(outp, "solve TDVP eqn.")
-        update, solverResidual = self.solve(Eloc, sampleGradients, p)
+        update, solverResidual = self.solve(Eloc, sampleGradients)
         stop_timing(outp, "solve TDVP eqn.")
 
         if outp is not None:
