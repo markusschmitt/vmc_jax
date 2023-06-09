@@ -70,8 +70,13 @@ class MCSampler:
     """A sampler class.
 
     This class provides functionality to sample computational basis states from \
-    the probability distribution induced by the variational wave function, \
-    :math:`|\\psi(s)|^2`.
+    the distribution 
+
+        :math:`p_{\\mu}(s)=\\frac{|\\psi(s)|^{\\mu}}{\\sum_s|\\psi(s)|^{\\mu}}`.
+
+    For :math:`\\mu=2` this corresponds to sampling from the Born distribution. \
+    :math:`0\leq\\mu<2` can be used to perform importance sampling \
+    (see `[arXiv:2108.08631] <https://arxiv.org/abs/2108.08631>`_).
 
     Sampling is automatically distributed accross MPI processes and locally available \
     devices.
@@ -91,8 +96,7 @@ class MCSampler:
         * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
         * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
         * ``sweepSteps``: Number of proposed updates per sweep.
-        * ``mu``: exponent, giving the probability of a configuration. \
-        The usual choice is :math: `|\psi(s)|^2`, i.e. mu=2.
+        * ``mu``: Parameter for the distribution :math:`p_{\\mu}(s)`, see above.
     """
 
     def __init__(self, net, sampleShape, key, updateProposer=None, numChains=1, updateProposerArg=None,
@@ -180,7 +184,7 @@ class MCSampler:
         If supported by ``net``, direct sampling is peformed. Otherwise, MCMC is run \
         to generate the desired number of samples. For direct sampling the real part \
         of ``net`` needs to provide a ``sample()`` member function that generates \
-        samples from :math:`|\\psi(s)|^2`.
+        samples from :math:`p_{\\mu}(s)`.
 
         Sampling is automatically distributed accross MPI processes and available \
         devices. In that case the number of samples returned might exceed ``numSamples``.
@@ -197,7 +201,7 @@ class MCSampler:
             a way that the number of samples per processor is identical for each processor.
 
         Returns:
-            A sample of computational basis configurations drawn from :math:`|\\psi(s)|^2`.
+            A sample of computational basis configurations drawn from :math:`p_{\\mu}(s)`.
         """
 
         if numSamples is None:
