@@ -7,8 +7,6 @@ from jVMC.vqs import NQS
 import jVMC.global_defs as global_defs
 
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
 import jax.random as random
 import jax.numpy as jnp
 import numpy as np
