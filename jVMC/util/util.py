@@ -39,8 +39,6 @@ def init_net(descr, dims, seed=0):
         "CNN": jVMC.nets.CNN,
         "RNN": jVMC.nets.RNN1DGeneral,
         "RNN2D": jVMC.nets.RNN2DGeneral,
-        "RNNsym": jVMC.nets.RNN1DGeneralSym,
-        "RNN2Dsym": jVMC.nets.RNN2DGeneralSym,
         "CpxRBM": jVMC.nets.CpxRBM,
         "CpxCNN": jVMC.nets.CpxCNN
     }
@@ -52,40 +50,24 @@ def init_net(descr, dims, seed=0):
     if "actFun" in descr["net1"]["parameters"]:
         descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
 
-    if descr["net1"]["type"][-3:] == "sym":
-        L = dims[0]
+    symms = tuple()
+    for key in ["translation", "rotation", "reflection", "spinflip"]:
+        if key in descr:
+            symms = symms + (key,)
+    symm_factors = {}
+    for key in symms:
+        fac_key = key + "_factor"
+        symm_factors[fac_key] = descr[fac_key] if fac_key in descr else 1
 
-        # set symmetries ON - turn each one off manually
-        kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
-        for key in kwargs_sym.keys():
-            if key in descr["net1"]:
-                kwargs_sym[key] = descr["net1"][key]
-
-        if descr["net1"]["type"][-5:-3] == "2D":
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, **kwargs_sym)
-        else:
-            descr["net1"]["parameters"]["orbit"] = sym.get_orbit_1d(L, **kwargs_sym)
-
-    if "net2" in descr:
-        if descr["net2"]["type"][-3:] == "sym":
-
-            # set symmetries ON - turn each one off manually
-            kwargs_sym = {"translation": True, "reflection": True, "rotation": True}
-            for key in kwargs_sym.keys():
-                if key in descr["net2"]:
-                    kwargs_sym[key] = descr["net2"][key]
-
-            L = dims[0]
-            if descr["net2"]["type"][-5:-3] == "2D":
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_2d_square(L, **kwargs_sym)
-            else:
-                descr["net2"]["parameters"]["orbit"] = sym.get_orbit_1d(L, **kwargs_sym)
+    if len(dims) == 2:
+        orbit = sym.get_orbit_2D_square(dims[0], *symms, **symm_factors)
+    if len(dims) == 1:
+        orbit = sym.get_orbit_1D(dims[0], *symms, **symm_factors)
 
     if not "net2" in descr:
 
         model = get_net(descr["net1"], dims)
-
-        psi = jVMC.vqs.NQS(model, batchSize=descr["batch_size"], seed=seed)
+        isGenerator = "sample" in dir(model)
 
     else:
 
@@ -95,8 +77,12 @@ def init_net(descr, dims, seed=0):
 
         model1 = get_net(descr["net1"], dims)
         model2 = get_net(descr["net2"], dims)
+        model = jVMC.nets.two_nets_wrapper.TwoNets(net1=model1, net2=model2)
+        isGenerator = "sample" in dir(model1)
 
-        psi = jVMC.vqs.NQS((model1, model2), batchSize=descr["batch_size"], seed=seed)
+    avgFun = jVMC.nets.sym_wrapper.avgFun_Coefficients_Sep if isGenerator else jVMC.nets.sym_wrapper.avgFun_Coefficients_Exp
+    model = jVMC.nets.sym_wrapper.SymNet(orbit=orbit, net=model, avgFun=avgFun)
+    psi = jVMC.vqs.NQS(model, batchSize=descr["batch_size"], seed=seed)
 
     psi(jnp.zeros((jVMC.global_defs.device_count(), 1) + dims, dtype=np.int32))
 
@@ -153,21 +139,16 @@ def measure(observables, psi, sampler, numSamples=None):
 
         for op in get_iterable(ops):
 
-            args=()
+            args = ()
             if isinstance(op, collections.abc.Iterable):
                 args = tuple(op[1:])
                 op = op[0]
 
             Oloc = op.get_O_loc(sampleConfigs, psi, sampleLogPsi, *args)
 
-            if p is not None:
-                tmpMeans.append(mpi.global_mean(Oloc, p))
-                tmpVariances.append(mpi.global_variance(Oloc, p))
-                tmpErrors.append(0.)
-            else:
-                tmpMeans.append(mpi.global_mean(Oloc))
-                tmpVariances.append(mpi.global_variance(Oloc))
-                tmpErrors.append(jnp.sqrt(tmpVariances[-1]) / jnp.sqrt(sampler.get_last_number_of_samples()))
+            tmpMeans.append(mpi.global_mean(Oloc[..., None], p)[0])
+            tmpVariances.append(mpi.global_variance(Oloc[..., None], p)[0])
+            tmpErrors.append(jnp.sqrt(tmpVariances[-1]) / jnp.sqrt(sampler.get_last_number_of_samples()))
 
         result[name] = {}
         result[name]["mean"] = jnp.real(jnp.array(tmpMeans))
