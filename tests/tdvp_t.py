@@ -67,6 +67,8 @@ class TestTimeEvolution(unittest.TestCase):
              -0.09963073, 0.17610707, 0.13386381, -0.14836467]
         )
 
+        global_defs.set_pmap_devices(jax.devices()[0])
+
         # Set up variational wave function
         rbm = nets.CpxRBM(numHidden=2, bias=False)
         psi = NQS(rbm)

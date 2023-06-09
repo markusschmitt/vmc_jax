@@ -134,19 +134,23 @@ class TestGradients(unittest.TestCase):
                     self.assertTrue(jnp.max(jnp.abs(Gfd - G[..., j])) < 1e-2)
 
     def test_gradient_dict(self):
+        
+        dlist=[[jax.devices()[0],], jax.devices()]
 
-        L = 4
-        model = jVMC.nets.CpxRBM(numHidden=8, bias=False)
-        psi = NQS(model)
+        for ds in dlist:
 
-        s = jnp.zeros((1, 3, L))
-        psi(s)
+            global_defs.set_pmap_devices(ds)
 
-        g1 = psi.gradients(s)
-        g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]
+            net = jVMC.nets.CpxRBM(numHidden=8, bias=False)
+            psi = jVMC.vqs.NQS(net, seed=1234)  # Variational wave function
 
-        self.assertTrue(isclose(jnp.linalg.norm(g1 - g2), 0.0, abs_tol=1e-12))
+            s = jnp.zeros((len(ds),3,4))
+            psi(s)
 
+            g1 = psi.gradients(s)
+            g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]
+
+            self.assertTrue(isclose(jnp.linalg.norm(g1-g2),0.0))
 
 class TestEvaluation(unittest.TestCase):
 
