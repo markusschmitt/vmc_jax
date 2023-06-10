@@ -21,7 +21,8 @@ class MinSR:
     Initializer arguments:
         * ``sampler``: A sampler object.
         * ``svdTol``: Regularization parameter :math:`\epsilon_{SVD}`, see above.
-        * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` or `'imag'` for :math:`q=\\text{Im}`.
+        * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` \
+            or `'imag'` for :math:`q=\\text{Im}`.
         * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.
     """
 
@@ -59,25 +60,9 @@ class MinSR:
     def solve(self, eloc, gradients):
         """
         Uses the techique proposed in arXiv:2302.01941 to compute the updates.
-        Efficient only if number of samples << number of parameters.
+        Efficient only if number of samples :math:`\\ll` number of parameters.
         """
 
-        # Collect all gradients & local energies
-        # eloc = mpi.gather(eloc).reshape((-1,))
-        # gradients = mpi.gather(gradients).reshape((-1, gradients.shape[-1]))
-        # n_samples = eloc.shape[0]
-
-        # eloc_bar = (eloc - jnp.mean(eloc)) / jnp.sqrt(n_samples)
-        # gradients_bar = (gradients - jnp.mean(gradients, axis=0)) / jnp.sqrt(n_samples)
-
-        # def hard_cutoff(eigvals):
-        #     return jnp.where(eigvals / jnp.max(eigvals) > self.pinvTol, 1 / eigvals, 0)
-
-        # T = gradients_bar @ gradients_bar.conj().T
-        # eigvals, eigvecs = jnp.linalg.eigh(T)
-        # inv_eigvals = hard_cutoff(eigvals)
-        # T_inv = eigvecs @ jnp.diag(inv_eigvals) @ eigvecs.conj().T
-        # self.update = - self.rhsPrefactor * gradients_bar.conj().T @ T_inv @ eloc_bar
         T = gradients.tangent_kernel()
         T_inv = jnp.linalg.pinv(T, rcond=self.pinvTol, hermitian=True)
 
@@ -88,11 +73,13 @@ class MinSR:
         return update
 
     def __call__(self, netParameters, t, *, psi, hamiltonian, **rhsArgs):
-        """ For given network parameters this function solves the TDVP equation.
+        """ For given network parameters computes an update step using the MinSR method.
 
-        This function returns :math:`\\dot\\theta=S^{-1}F`. Thereby an instance of the ``TDVP`` class is a suited
-        callable for the right hand side of an ODE to be used in combination with the integration schemes 
-        implemented in ``jVMC.stepper``. Alternatively, the interface matches the scipy ODE solvers as well.
+        This function returns :math:`\\dot\\theta=\\bar O^\\dagger (\\bar O\\bar O^\\dagger)^{-1}\\bar E_{loc}`
+        (see `[arXiv:2302.01941] <https://arxiv.org/abs/2302.01941>`_ for details). 
+        Thereby an instance of the ``MinSR`` class is a suited callable for the right hand side of an ODE to be 
+        used in combination with the integration schemes implemented in ``jVMC.stepper``. 
+        Alternatively, the interface matches the scipy ODE solvers as well.
 
         Arguments:
             * ``netParameters``: Parameters of the NQS.
@@ -109,7 +96,7 @@ class MinSR:
                 quantities like energy or residuals at the initial integration step.
 
         Returns:
-            The solution of the MinSR equation, :math:`\\dot\\theta=S^{-1}F`.
+            The solution of the MinSR equation, :math:`\\dot\\theta=\\bar O^\\dagger (\\bar O\\bar O^\\dagger)^{-1}\\bar E_{loc}`.
         """
 
         tmpParameters = psi.get_parameters()
