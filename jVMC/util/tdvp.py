@@ -57,7 +57,7 @@ class TDVP:
     Initializer arguments:
         * ``sampler``: A sampler object.
         * ``snrTol``: Regularization parameter :math:`\epsilon_{SNR}`, see above.
-        * ``svdTol``: Regularization parameter :math:`\epsilon_{SVD}`, see above.
+        * ``pinvTol``: Regularization parameter :math:`\epsilon_{SVD}`, see above.
         * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` or `'imag'` for :math:`q=\\text{Im}`.
         * ``rhsPrefactor``: Prefactor :math:`x` of the right hand side, see above.
         * ``diagonalShift``: Regularization parameter :math:`\\rho` for ground state search, see above.
@@ -65,10 +65,15 @@ class TDVP:
         * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.
     """
 
-    def __init__(self, sampler, snrTol=2, svdTol=1e-14, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
+    def __init__(self, sampler, snrTol=2, pinvTol=1e-14, svdTol=None, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
+        
+        if svdTol is not None:
+            warnings.warn("Parameter `svdTol` is deprecated. Use `pinvTol` instead.", DeprecationWarning)
+            pinvTol = svdTol
+            
         self.sampler = sampler
         self.snrTol = snrTol
-        self.svdTol = svdTol
+        self.pinvTol = pinvTol
         self.diagonalShift = diagonalShift
         self.rhsPrefactor = rhsPrefactor
         self.crossValidation = crossValidation
@@ -186,7 +191,7 @@ class TDVP:
         self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1. / self.ev, 0.)
 
         # Set regularizer for singular value cutoff
-        regularizer = 1. / (1. + (self.svdTol / jnp.abs(self.ev / self.ev[-1]))**6)
+        regularizer = 1. / (1. + (self.pinvTol / jnp.abs(self.ev / self.ev[-1]))**6)
 
         if not isinstance(self.sampler, jVMC.sampler.ExactSampler):
             # Construct a soft cutoff based on the SNR
