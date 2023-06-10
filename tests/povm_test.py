@@ -47,7 +47,8 @@ class TestPOVM(unittest.TestCase):
         self.tdvpEquation = jVMC.util.tdvp.TDVP(self.sampler, rhsPrefactor=-1.,
                                                 svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
 
-        self.stepper = jVMC.util.stepper.Euler(timeStep=dt)  # ODE integrator
+        #self.stepper = jVMC.util.stepper.Euler(timeStep=dt)  # ODE integrator
+        self.stepper = jVMC.util.stepper.Heun(timeStep=dt)  # ODE integrator
 
     def test_matrix_to_povm(self):
         unity = jnp.eye(2)
@@ -104,8 +105,8 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 0.2
-        dt = 1E-3
+        Tmax = 0.5
+        dt = 2E-3
 
         self.prepare_net(L, dt, hiddenSize=1, depth=1)
 
@@ -116,15 +117,25 @@ class TestPOVM(unittest.TestCase):
 
         res = {"X": [], "Y": [], "Z": []}
 
-        times = jnp.linspace(0, Tmax, int(Tmax / dt))
-        for i in range(int(Tmax / dt)):
+        times = []
+        t=0.
+        while t<Tmax:
+
             result = jVMC.operator.povm.measure_povm(Lindbladian.povm, self.sampler)
             for dim in ["X", "Y", "Z"]:
                 res[dim].append(result[dim]["mean"])
+            times.append(t)
+            if t>0.005:
+                self.stepper.set_dt(3e-2)
 
-            dp, _ = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
+            dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
                                       psi=self.psi)
+            
+            t += stepSize
+
             self.psi.set_parameters(dp)
+
+        times = jnp.array(times)
 
         # Analytical solution
         w = jnp.sqrt(35)
@@ -132,6 +143,7 @@ class TestPOVM(unittest.TestCase):
         Sy_avg = (w * jnp.cos(w * times) - jnp.sin(w * times)) / w * jnp.exp(-times)
         Sz_avg = 6 / w * jnp.sin(w * times) * jnp.exp(-times)
 
+        print(Sz_avg-jnp.asarray(res["Z"]))
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))
@@ -140,8 +152,8 @@ class TestPOVM(unittest.TestCase):
         # This tests the time evolution of a sample system and compares it with the analytical solution
 
         L = 3
-        Tmax = 0.2
-        dt = 1E-3
+        Tmax = 0.25
+        dt = 2E-3
 
         self.prepare_net(L, dt, hiddenSize=3, depth=1)
 
@@ -161,15 +173,25 @@ class TestPOVM(unittest.TestCase):
 
         res = {"X": [], "Y": [], "Z": []}
 
-        times = jnp.linspace(0, Tmax, int(Tmax / dt))
-        for i in range(int(Tmax / dt)):
+        times = []
+        t=0.
+        while t<Tmax:
+
             result = jVMC.operator.povm.measure_povm(Lindbladian.povm, self.sampler)
             for dim in ["X", "Y", "Z"]:
                 res[dim].append(result[dim]["mean"])
+            times.append(t)
+            if t>0.005:
+                self.stepper.set_dt(2.5e-2)
 
-            dp, _ = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
+            dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
                                       psi=self.psi)
+            
+            t += stepSize
+
             self.psi.set_parameters(dp)
+
+        times = jnp.array(times)
 
         # Analytical solution
         w = jnp.sqrt(35)
@@ -207,15 +229,25 @@ class TestPOVM(unittest.TestCase):
 
         res = {"X": [], "Y": [], "Z": []}
 
-        times = jnp.linspace(0, Tmax, int(Tmax / dt))
-        for i in range(int(Tmax / dt)):
+        times = []
+        t=0.
+        while t<Tmax:
+
             result = jVMC.operator.povm.measure_povm(Lindbladian.povm, self.sampler)
             for dim in ["X", "Y", "Z"]:
                 res[dim].append(result[dim]["mean"])
+            times.append(t)
+            if t>0.003:
+                self.stepper.set_dt(1e-2)
 
-            dp, _ = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
+            dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
                                       psi=self.psi)
+            
+            t += stepSize
+
             self.psi.set_parameters(dp)
+
+        times = jnp.array(times)
 
         # Analytical solution
         w = jnp.sqrt(35)
@@ -223,6 +255,7 @@ class TestPOVM(unittest.TestCase):
         Sy_avg = jnp.cos(w * times) * jnp.exp(-times) - jnp.sin(w * times) * jnp.exp(-times) / w
         Sz_avg = jnp.zeros_like(times)
 
+        print(Sx_avg - jnp.asarray(res["X"]))
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))

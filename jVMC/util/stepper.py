@@ -42,6 +42,59 @@ class Euler:
 # end class Euler
 
 
+class Heun:
+    """ This class implements an adaptive second order consistent integration scheme.
+
+    Initializer arguments:
+        * ``timeStep``: Initial time step (will be adapted automatically)
+    """
+
+    def __init__(self, timeStep=1e-3):
+
+        self.dt = timeStep
+
+    
+    def set_dt(self, timeStep):
+
+        self.dt = timeStep
+
+
+    def step(self, t, f, yInitial, **rhsArgs):
+        """ This function performs an integration time step.
+
+        For a first order ordinary differential equation (ODE) of the form
+
+        :math:`\\frac{dy}{dt} = f(y, t, p)`
+
+        where :math:`t` denotes the time and :math:`p` denotes further external parameters
+        this function computes a second-order consistent integration step for :math:`y`.
+
+        Arguments:
+            * ``t``: Initial time.
+            * ``f``: Right hand side of the ODE. This callable will be called as ``f(y, t, **rhsArgs, intStep=k)``, \
+                    where k is an integer indicating the step number of the underlying Runge-Kutta integration scheme.
+            * ``yInitial``: Initial value of :math:`y`.
+            * ``**rhsArgs``: Further static arguments :math:`p` that will be passed to the right hand side function \
+                    ``f(y, t, **rhsArgs, intStep=k)``.
+
+        Returns:
+            New value of :math:`y` and time step used :math:`\\Delta t`.
+        """
+
+        dt = self.dt
+        if "dt" in rhsArgs:
+            dt = rhsArgs["dt"]
+        k0 = f(yInitial, t, **rhsArgs, intStep=0)
+        y = yInitial + dt * k0
+        k1 = f(y, t + dt, **rhsArgs, intStep=1)
+        dy0 = 0.5 * dt * (k0 + k1)
+
+        return yInitial + dy0, dt
+        return y, self.dt
+
+# end class Heun
+
+
 class AdaptiveHeun:
     """ This class implements an adaptive second order consistent integration scheme.
 

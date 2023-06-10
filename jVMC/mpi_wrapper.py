@@ -29,17 +29,6 @@ _sum_sq_pmapd = None
 mean_helper = None
 cov_helper = None
 
-#pmapDevices = None
-
-
-import collections
-
-
-# def pmap_devices_updated():
-#     if collections.Counter(pmapDevices) == collections.Counter(global_defs.myPmapDevices):
-#         return False
-#     return True
-
 
 def jit_my_stuff():
     # This is a helper function to make sure that pmap'd functions work with the actual choice of devices
@@ -284,6 +273,23 @@ def bcast_unknown_size(data, root=0):
     comm.Bcast([buf, dim, MPI.DOUBLE], root=root)
 
     return buf
+
+
+def gather(data):
+    """ Gathers and distributes data all-to-all.
+    The returned data is therefore of shape ``(commSize * data.shape[0],) + data.shape[1:]``.
+
+    Arguments:
+        * ``data``: Array of input data.
+
+    Returns:
+        Concatenated data from all devices.
+    """
+
+    res = comm.allgather(data.reshape((-1,*data.shape[2:])))
+    res = np.concatenate(res)
+    
+    return res
 
 
 def get_communication_time():

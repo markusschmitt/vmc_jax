@@ -10,7 +10,7 @@ with open("README.md", "r") as fh:
 
 DEFAULT_DEPENDENCIES = ["setuptools", "wheel", "numpy", "jax>=0.4.1,<=0.4.11", "jaxlib>=0.4.1,<=0.4.11", "flax>=0.6.4", "mpi4py", "h5py", "PyYAML"]
 #CUDA_DEPENDENCIES = ["setuptools", "wheel", "numpy", "jax[cuda]>=0.2.11,<=0.2.25", "flax>=0.3.6,<=0.3.6", "mpi4py", "h5py"]
-DEV_DEPENDENCIES = DEFAULT_DEPENDENCIES + ["sphinx", "mock", "sphinx_rtd_theme", "pytest"]
+DEV_DEPENDENCIES = DEFAULT_DEPENDENCIES + ["sphinx", "mock", "sphinx_rtd_theme", "pytest", "pytest-mpi"]
 
 setuptools.setup(
     name='jVMC',
