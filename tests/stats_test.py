@@ -30,3 +30,6 @@ class TestStats(unittest.TestCase):
 
         self.assertTrue(jnp.allclose(obs1.covar_var(obs2), obs1.covar_data(obs2).var()))
 
+        O = obs2._data.reshape((-1,2))
+        self.assertTrue(jnp.allclose(obs2.tangent_kernel(), jnp.matmul(O, jnp.conj(jnp.transpose(O)))))
+

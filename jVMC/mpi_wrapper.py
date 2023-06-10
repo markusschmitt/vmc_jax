@@ -29,17 +29,6 @@ _sum_sq_pmapd = None
 mean_helper = None
 cov_helper = None
 
-#pmapDevices = None
-
-
-import collections
-
-
-# def pmap_devices_updated():
-#     if collections.Counter(pmapDevices) == collections.Counter(global_defs.myPmapDevices):
-#         return False
-#     return True
-
 
 def jit_my_stuff():
     # This is a helper function to make sure that pmap'd functions work with the actual choice of devices
@@ -297,9 +286,9 @@ def gather(data):
         Concatenated data from all devices.
     """
 
-    res = comm.gather(data, root=0)
-    res = comm.bcast(res, root=0)
+    res = comm.allgather(data.reshape((-1,*data.shape[2:])))
     res = np.concatenate(res)
+    
     return res
 
 

@@ -173,7 +173,8 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
 
     '''
 
-    delta = tdvpEquation.diagonalShift
+    if "diagonalShift" in dir(tdvpEquation):
+        delta = tdvpEquation.diagonalShift
 
     stepper = jVMCstepper.Euler(timeStep=stepSize)
 
@@ -200,8 +201,9 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
                 obs = measure(observables, psi, sampler)
                 outp.write_observables(n, **obs)
 
-        delta = 0.95 * delta
-        tdvpEquation.set_diagonal_shift(delta)
+        if "set_diagonal_shift" in dir(tdvpEquation):
+            delta = 0.95 * delta
+            tdvpEquation.set_diagonal_shift(delta)
 
         if outp is not None:
             outp.print(" STEP %d" % (n))
