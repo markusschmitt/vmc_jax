@@ -129,10 +129,10 @@ class TDVP:
 
     def get_tdvp_equation(self, Eloc, gradients):
 
-        self.ElocMean = Eloc.mean()
-        self.ElocVar = Eloc.var()
+        self.ElocMean = Eloc.mean()[0]
+        self.ElocVar = Eloc.var()[0]
 
-        self.F0 = (-self.rhsPrefactor) * gradients.covar(Eloc).ravel() #* EOdata.mean()
+        self.F0 = (-self.rhsPrefactor) * gradients.covar(Eloc).ravel()
         F = self.makeReal(self.F0)
 
         self.S0 = gradients.covar()

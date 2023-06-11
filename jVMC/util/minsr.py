@@ -150,8 +150,8 @@ class MinSR:
         if "intStep" in rhsArgs:
             if rhsArgs["intStep"] == 0:
 
-                self.ElocMean0 = Eloc.mean()
-                self.ElocVar0 = Eloc.var()
+                self.ElocMean0 = Eloc.mean()[0]
+                self.ElocVar0 = Eloc.var()[0]
 
                 self.metaData = {}
 
