@@ -71,4 +71,4 @@ Memory requirements grow with increasing network sizes. To avoid out-of-memory i
 
 ## Citing jVMC
 
-If you use the jVMC package for your research, please cite our reference paper [arXiv:2108.03409](https://arxiv.org/abs/2108.03409).
+If you use the jVMC package for your research, please cite our reference paper [SciPost Phys. Codebases 2 (2022)](https://scipost.org/10.21468/SciPostPhysCodeb.2).

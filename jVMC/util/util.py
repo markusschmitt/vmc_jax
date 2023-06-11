@@ -164,7 +164,7 @@ def ground_state_search(psi, ham, tdvpEquation, sampler, numSteps=200, varianceT
     Arguments:
         * ``psi``: Variational wave function (``jVMC.vqs.NQS``)
         * ``ham``: Hamiltonian operator
-        * ``tdvpEquation``: An instance of ``jVMC.util.TDVP``
+        * ``tdvpEquation``: An instance of ``jVMC.util.TDVP`` or ``jVMC.util.MinSR``
         * ``numSteps``: Maximal number of steps
         * ``varianceTol``: Stopping criterion
         * ``stepSize``: Update step size (learning rate)
