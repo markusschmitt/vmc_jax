@@ -15,7 +15,7 @@ class SampledObs():
         * ``weights``: Weights :math:`w_n` associated with observation :math:`O_n`.
     """
 
-    def __init__(self, observations, weights):
+    def __init__(self, observations=None, weights=None):
         """Initializes SampledObs class.
 
         Args:
@@ -26,13 +26,17 @@ class SampledObs():
 
         self.jit_my_stuff()
 
-        if len(observations.shape) == 2:
-            observations = observations[...,None]
+        if (observations is not None) and (weights is not None):
+            if len(observations.shape) == 2:
+                observations = observations[...,None]
 
-        self._weights = weights
-        self._mean = mpi.global_sum( self._mean_helper(observations,self._weights)[None,...] )
-        #self._data = self._data_prep(observations, self._mean)
-        self._data = self._data_prep(observations, self._weights, self._mean)
+            self._weights = weights
+            self._mean = mpi.global_sum( self._mean_helper(observations,self._weights)[None,...] )
+            self._data = self._data_prep(observations, self._weights, self._mean)
+        else:
+            self._weights = weights
+            self._data = observations
+            self._mean = None
 
 
     def mean(self):
@@ -107,6 +111,21 @@ class SampledObs():
 
         #return SampledObs( self._trafo_helper(self._data, self._mean, fun), self._weights )
         return SampledObs( self._trafo_helper(self._data, self._weights, self._mean, fun), self._weights )
+
+
+    def select(self, ixs):
+        """Returns a `SampledObs` for the data selection indicated by the given indices.
+
+        Args:
+            * ``ixs``: Indices of selected data.
+        """
+
+        newObs = SampledObs()
+        newObs._data = self._select_helper(ixs, self._data)
+        newObs._mean = self._mean[ixs]
+        newObs._weights = self._weights
+
+        return newObs
     
 
     def tangent_kernel(self):
@@ -122,17 +141,7 @@ class SampledObs():
 
         if jVMC.global_defs.pmap_devices_updated():
             self._mean_helper = pmap_for_my_devices(lambda data, w: jnp.tensordot(w, data, axes=(0,0)), in_axes=(0, 0))
-            #self._data_prep = pmap_for_my_devices(lambda data, mean: data - mean, in_axes=(0, None))
             self._data_prep = pmap_for_my_devices(lambda data, w, mean: jax.vmap(lambda d, w, m: jnp.sqrt(w) * (d - m), in_axes=(0,0,None))(data, w, mean), in_axes=(0, 0, None))
-            # self._covar_helper = pmap_for_my_devices(
-            #                         lambda data1, data2, w:
-            #                             jnp.tensordot(
-            #                                 jnp.conj(
-            #                                     jax.vmap(lambda a,b: a*b, in_axes=(0,0))(w, data1)
-            #                                     ),
-            #                                 data2, axes=(0,0)), 
-            #                         in_axes=(0, 0, 0)
-            #                         )
             self._covar_helper = pmap_for_my_devices(
                                     lambda data1, data2:
                                         jnp.tensordot(
@@ -140,16 +149,6 @@ class SampledObs():
                                             data2, axes=(0,0)), 
                                     in_axes=(0, 0)
                                     )
-            # self._covar_var_helper = pmap_for_my_devices(
-            #                             lambda data1, data2, w: 
-            #                                 jnp.sum(
-            #                                     w[...,None,None] * 
-            #                                     jnp.abs( 
-            #                                         jax.vmap(lambda a,b: jnp.outer(a,b))(jnp.conj(data1), data2),
-            #                                     )**2,
-            #                                     axis=0),
-            #                             in_axes=(0, 0, 0)
-            #                             )
             self._covar_var_helper = pmap_for_my_devices(
                                         lambda data1, data2, w: 
                                             jnp.sum(
@@ -160,15 +159,11 @@ class SampledObs():
                                         in_axes=(0, 0, 0)
                                         )
             self._covar_data_helper = pmap_for_my_devices(lambda data1, data2, w: jax.vmap(lambda a,b,w: jnp.outer(a,b) / w)(jnp.conj(data1), data2, w), in_axes=(0, 0, 0))
-            #self._trafo_helper = pmap_for_my_devices(lambda data, mean, f: f(data + mean), in_axes=(0, None), static_broadcasted_argnums=(2,))
             self._trafo_helper = pmap_for_my_devices(
                                     lambda data, w, mean, f: f(
                                         jax.vmap(lambda x,y: x/jnp.sqrt(y), in_axes=(0,0))(data, w) 
                                         + mean
                                         ), 
                                     in_axes=(0, 0, None), static_broadcasted_argnums=(3,))
+            self._select_helper = pmap_for_my_devices( lambda ix,g: jax.vmap(lambda ix,g: g[ix], in_axes=(None, 0))(ix,g), in_axes=(None, 0) )
 
-
-        
-
-        

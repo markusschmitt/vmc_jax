@@ -171,7 +171,7 @@ class TDVP:
         EO = gradients.covar_data(Eloc).transform(
                         fun=lambda x: jnp.matmul(
                                         jnp.transpose(jnp.conj(self.V)), 
-                                        jVMC.util.imagFun((-self.rhsPrefactor) * x)
+                                        self.makeReal((-self.rhsPrefactor) * x)
                                         )
                     )
         self.rhoVar = EO.var().ravel()
