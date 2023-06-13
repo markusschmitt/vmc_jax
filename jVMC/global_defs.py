@@ -22,8 +22,7 @@ myPmapDevices = jax.devices()  # [myDevice]
 myDeviceCount = len(myPmapDevices)
 pmap_for_my_devices = partial(jax.pmap, devices=myPmapDevices)
 
-pmapDevices = None
-def pmap_devices_updated():
+def pmap_devices_updated(pmapDevices):
     if collections.Counter(pmapDevices) == collections.Counter(myPmapDevices):
         return False
     return True

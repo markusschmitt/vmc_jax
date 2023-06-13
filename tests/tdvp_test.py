@@ -21,6 +21,8 @@ import jVMC.mpi_wrapper as mpi
 
 from jVMC.util import measure, ground_state_search
 
+from functools import partial
+
 
 class TestGsSearch(unittest.TestCase):
     def test_gs_search_cpx(self):
@@ -255,7 +257,12 @@ class TestSNRConsistency(unittest.TestCase):
         EOdata.block_until_ready()
         rhoVar_old = mpi.global_variance(EOdata, jnp.ones(EOdata.shape[:2]) / mpi.globNumSamples)
 
-        EO = sampleGradients.covar_data(Eloc).transform(fun=lambda x: jnp.matmul(jnp.transpose(jnp.conj(V)), jVMC.util.imagFun(x)))
+        # EO = sampleGradients.covar_data(Eloc).transform(
+        #                 linearFun = jnp.transpose(jnp.conj(V)),
+        #                 nonLinearFun=partial(jVMC.util.tdvp.trafo_helper, makeReal=jVMC.util.imagFun)
+        #             )
+        EO = sampleGradients.covar_data(Eloc).transform(linearFun = jnp.transpose(jnp.conj(V)),
+                                                        nonLinearFun=lambda x: jVMC.util.imagFun(x))
         rhoVar_new = EO.var().ravel()
 
         self.assertTrue( jnp.allclose(rhoVar_old, rhoVar_new) )

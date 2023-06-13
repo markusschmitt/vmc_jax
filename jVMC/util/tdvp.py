@@ -8,6 +8,7 @@ import jVMC.global_defs as global_defs
 from jVMC.stats import SampledObs
 
 import warnings
+from functools import partial
 
 
 def realFun(x):
@@ -16,6 +17,10 @@ def realFun(x):
 
 def imagFun(x):
     return 0.5 * (x - jnp.conj(x))
+                        
+
+def transform_helper(x, rhsPrefactor, makeReal):
+    return makeReal((-rhsPrefactor) * x)
 
 
 class TDVP:
@@ -85,6 +90,7 @@ class TDVP:
         self.makeReal = realFun
         if makeReal == 'imag':
             self.makeReal = imagFun
+        self.trafo_helper = partial(transform_helper, rhsPrefactor=rhsPrefactor, makeReal=self.makeReal)
 
         # pmap'd member functions
         self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
@@ -169,10 +175,8 @@ class TDVP:
     def _get_snr(self, Eloc, gradients):
 
         EO = gradients.covar_data(Eloc).transform(
-                        fun=lambda x: jnp.matmul(
-                                        jnp.transpose(jnp.conj(self.V)), 
-                                        self.makeReal((-self.rhsPrefactor) * x)
-                                        )
+                        linearFun = jnp.transpose(jnp.conj(self.V)),
+                        nonLinearFun=self.trafo_helper
                     )
         self.rhoVar = EO.var().ravel()
 

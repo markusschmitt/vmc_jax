@@ -29,7 +29,7 @@ _sum_sq_pmapd = None
 mean_helper = None
 cov_helper = None
 
-
+mpiPmapDevices = None
 def jit_my_stuff():
     # This is a helper function to make sure that pmap'd functions work with the actual choice of devices
     # at all times.
@@ -38,16 +38,16 @@ def jit_my_stuff():
     global _sum_sq_pmapd
     global mean_helper
     global cov_helper
-    global pmapDevices
+    global mpiPmapDevices
 
-    if global_defs.pmap_devices_updated():
+    if global_defs.pmap_devices_updated(mpiPmapDevices):
         _sum_up_pmapd = global_defs.pmap_for_my_devices(lambda x: jax.lax.psum(jnp.sum(x, axis=0), 'i'), axis_name='i')
         # _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jax.lax.psum(jnp.conj(data - mean).dot(p[..., None] * (data - mean)), 'i'), axis_name='i', in_axes=(0, None, 0))
         _sum_sq_pmapd = global_defs.pmap_for_my_devices(lambda data, mean, p: jnp.einsum('ij, ij, i -> j', jnp.conj(data - mean[None, ...]), (data - mean[None, ...]), p), in_axes=(0, None, 0))
         mean_helper = global_defs.pmap_for_my_devices(lambda data, p: jnp.expand_dims(jnp.dot(p, data), axis=0), in_axes=(0, 0))
         cov_helper = global_defs.pmap_for_my_devices(_cov_helper, in_axes=(0, 0))
 
-        pmapDevices = global_defs.myPmapDevices
+        mpiPmapDevices = global_defs.myPmapDevices
 
 
 def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1) -> int:
