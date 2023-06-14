@@ -14,6 +14,9 @@ _covar_data_helper = None
 _trafo_helper_1 = None
 _trafo_helper_2 = None
 _select_helper = None
+_get_subset_helper = None
+_subset_mean_helper = None
+_subset_data_prep = None
 
 statsPmapDevices = None
 
@@ -29,6 +32,9 @@ def jit_my_stuff():
     global _trafo_helper_2
     global _select_helper
     global _data_prep
+    global _get_subset_helper
+    global _subset_mean_helper
+    global _subset_data_prep
 
     global statsPmapDevices
 
@@ -71,7 +77,9 @@ def jit_my_stuff():
                                     ), 
                                 in_axes=(0, 0, None, None), static_broadcasted_argnums=(4,))
         _select_helper = pmap_for_my_devices( lambda ix,g: jax.vmap(lambda ix,g: g[ix], in_axes=(None, 0))(ix,g), in_axes=(None, 0) )
-
+        _get_subset_helper = pmap_for_my_devices(lambda x, ixs: x[slice(*ixs)], in_axes=(0,), static_broadcasted_argnums=(1,))
+        _subset_mean_helper = pmap_for_my_devices(lambda d, w, m: jnp.tensordot(jnp.sqrt(w), d, axes=(0,0)) + m, in_axes=(0,0,None))
+        _subset_data_prep = pmap_for_my_devices(jax.vmap(lambda d, w, m1, m2: d+jnp.sqrt(w)*(m1-m2), in_axes=(0,0,None,None)), in_axes=(0,0,None,None))
 
 
 class SampledObs():
@@ -188,6 +196,27 @@ class SampledObs():
 
         return newObs
     
+    
+    def subset(self, start=None, end=None, step=None):
+        """Returns a `SampledObs` for a subset of the data.
+
+        Args:
+            * ``start``: Start sample index for subset selection
+            * ``end``: End sample index for subset selection
+            * ``step``: Sample index step for subset selection
+        """ 
+
+        newObs = SampledObs()
+        newObs._weights = _get_subset_helper(self._weights, (start, end, step))
+        normalization = mpi.global_sum(newObs._weights)
+        newObs._data = _get_subset_helper(self._data, (start, end, step))
+        newObs._weights = newObs._weights / normalization
+        newObs._data = newObs._data / jnp.sqrt(normalization)
+        newObs._mean = mpi.global_sum( _subset_mean_helper(newObs._data, newObs._weights, self._mean)[None,...] ) 
+        newObs._data = _subset_data_prep(newObs._data, newObs._weights, self._mean, newObs._mean)
+
+        return newObs
+
 
     def tangent_kernel(self):
 
