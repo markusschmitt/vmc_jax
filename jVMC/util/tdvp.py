@@ -8,6 +8,7 @@ import jVMC.global_defs as global_defs
 from jVMC.stats import SampledObs
 
 import warnings
+from functools import partial
 
 
 def realFun(x):
@@ -16,6 +17,10 @@ def realFun(x):
 
 def imagFun(x):
     return 0.5 * (x - jnp.conj(x))
+                        
+
+def transform_helper(x, rhsPrefactor, makeReal):
+    return makeReal((-rhsPrefactor) * x)
 
 
 class TDVP:
@@ -85,6 +90,7 @@ class TDVP:
         self.makeReal = realFun
         if makeReal == 'imag':
             self.makeReal = imagFun
+        self.trafo_helper = partial(transform_helper, rhsPrefactor=rhsPrefactor, makeReal=self.makeReal)
 
         # pmap'd member functions
         self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
@@ -169,10 +175,8 @@ class TDVP:
     def _get_snr(self, Eloc, gradients):
 
         EO = gradients.covar_data(Eloc).transform(
-                        fun=lambda x: jnp.matmul(
-                                        jnp.transpose(jnp.conj(self.V)), 
-                                        jVMC.util.imagFun((-self.rhsPrefactor) * x)
-                                        )
+                        linearFun = jnp.transpose(jnp.conj(self.V)),
+                        nonLinearFun=self.trafo_helper
                     )
         self.rhoVar = EO.var().ravel()
 
@@ -200,34 +204,6 @@ class TDVP:
         update = jnp.real(jnp.dot(self.V, (self.invEv * regularizer * self.VtF)))
 
         return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F)
-
-    def solve_minSR(self, eloc, gradients, p=None, r_pinv=1e-8):
-        """
-        Uses the techique proposed in arXiv:2302.01941 to compute the updates.
-        Efficient only if number of samples << number of parameters.
-        """
-
-        # Collect all gradients & local energies
-        def soft_cutoff(eigvals):
-            return 1 / (eigvals * (1 + (r_pinv * jnp.max(eigvals) / eigvals)**6))
-
-        def hard_cutoff(eigvals):
-            return jnp.where(eigvals / jnp.max(eigvals) > r_pinv, 1 / eigvals, 0)
-
-        eloc = mpi.gather(eloc).reshape((-1,))
-        gradients = mpi.gather(gradients).reshape((-1, gradients.shape[-1]))
-        n_samples = eloc.shape[0]
-
-        eloc_bar = (eloc - jnp.mean(eloc)) / jnp.sqrt(n_samples)
-        gradients_bar = (gradients - jnp.mean(gradients, axis=0)) / jnp.sqrt(n_samples)
-
-        T = gradients_bar @ gradients_bar.conj().T
-        eigvals, eigvecs = jnp.linalg.eigh(T)
-        inv_eigvals = hard_cutoff(eigvals)
-        T_inv = eigvecs @ jnp.diag(inv_eigvals) @ eigvecs.conj().T
-        self.update = - self.rhsPrefactor * gradients_bar.conj().T @ T_inv @ eloc_bar
-
-        return self.update, None
 
     def S_dot(self, v):
 
@@ -321,20 +297,22 @@ class TDVP:
 
                 if self.crossValidation:
 
-                    if isinstance(self.sampler, jVMC.sampler.ExactSampler):
-                        update_1, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2], p[:, 0::2])
-                        S2, F2, _ = self.get_tdvp_equation(Eloc[:, 1::2], sampleGradients[:, 1::2], p[:, 1::2])
-                    else:
-                        update_1, _ = self.solve(Eloc[:, 0::2], sampleGradients[:, 0::2])
-                        S2, F2, _ = self.get_tdvp_equation(Eloc[:, 1::2], sampleGradients[:, 1::2])
+                    Eloc1 = Eloc.subset(start=0, step=2)
+                    sampleGradients1 = sampleGradients.subset(start=0, step=2)
+                    Eloc2 = Eloc.subset(start=1, step=2)
+                    sampleGradients2 = sampleGradients.subset(start=1, step=2)
+                    update_1, _ = self.solve(Eloc1, sampleGradients1)
+                    S2, F2 = self.get_tdvp_equation(Eloc2, sampleGradients2)
 
                     validation_tdvpErr = self._get_tdvp_error(update_1)
-                    update, solverResidual = self.solve(Eloc, sampleGradients, p)
+                    update, solverResidual = self.solve(Eloc, sampleGradients)
                     validation_residual = (jnp.linalg.norm(S2.dot(update_1) - F2) / jnp.linalg.norm(F2)) / solverResidual
 
                     self.crossValidationFactor_residual = validation_residual
                     self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.metaData["tdvp_error"]
+                    self.metaData["tdvp_residual_cross_validation_ratio"] = self.crossValidationFactor_residual
+                    self.metaData["tdvp_error_cross_validation_ratio"] = self.crossValidationFactor_tdvpErr
 
-                    self.S, _, _ = self.get_tdvp_equation(Eloc, sampleGradients, p)
+                    self.S, _ = self.get_tdvp_equation(Eloc, sampleGradients)
 
         return update
