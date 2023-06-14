@@ -310,8 +310,8 @@ class TDVP:
 
                     self.crossValidationFactor_residual = validation_residual
                     self.crossValidationFactor_tdvpErr = validation_tdvpErr / self.metaData["tdvp_error"]
-                    self.metaData["tdvp_residual_cross_validation"] = self.crossValidationFactor_residual
-                    self.metaData["tdvp_error_cross_validation"] = validation_tdvpErr
+                    self.metaData["tdvp_residual_cross_validation_ratio"] = self.crossValidationFactor_residual
+                    self.metaData["tdvp_error_cross_validation_ratio"] = self.crossValidationFactor_tdvpErr
 
                     self.S, _ = self.get_tdvp_equation(Eloc, sampleGradients)
 
