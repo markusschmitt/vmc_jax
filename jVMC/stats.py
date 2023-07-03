@@ -42,16 +42,16 @@ def jit_my_stuff():
 
         statsPmapDevices = global_defs.myPmapDevices
 
-        _mean_helper = pmap_for_my_devices(lambda data, w: jnp.tensordot(w, data, axes=(0,0)), in_axes=(0, 0))
-        _data_prep = pmap_for_my_devices(lambda data, w, mean: jax.vmap(lambda d, w, m: jnp.sqrt(w) * (d - m), in_axes=(0,0,None))(data, w, mean), in_axes=(0, 0, None))
-        _covar_helper = pmap_for_my_devices(
+        _mean_helper = jVMC.global_defs.pmap_for_my_devices(lambda data, w: jnp.tensordot(w, data, axes=(0,0)), in_axes=(0, 0))
+        _data_prep = jVMC.global_defs.pmap_for_my_devices(lambda data, w, mean: jax.vmap(lambda d, w, m: jnp.sqrt(w) * (d - m), in_axes=(0,0,None))(data, w, mean), in_axes=(0, 0, None))
+        _covar_helper = jVMC.global_defs.pmap_for_my_devices(
                                 lambda data1, data2:
                                     jnp.tensordot(
                                         jnp.conj(data1),
                                         data2, axes=(0,0)), 
                                 in_axes=(0, 0)
                                 )
-        _covar_var_helper = pmap_for_my_devices(
+        _covar_var_helper = jVMC.global_defs.pmap_for_my_devices(
                                     lambda data1, data2, w: 
                                         jnp.sum(
                                             jnp.abs( 
@@ -60,14 +60,14 @@ def jit_my_stuff():
                                             axis=0),
                                     in_axes=(0, 0, 0)
                                     )
-        _covar_data_helper = pmap_for_my_devices(lambda data1, data2, w: jax.vmap(lambda a,b,w: jnp.outer(a,b) / w)(jnp.conj(data1), data2, w), in_axes=(0, 0, 0))
-        _trafo_helper_1 = pmap_for_my_devices(
+        _covar_data_helper = jVMC.global_defs.pmap_for_my_devices(lambda data1, data2, w: jax.vmap(lambda a,b,w: jnp.outer(a,b) / w)(jnp.conj(data1), data2, w), in_axes=(0, 0, 0))
+        _trafo_helper_1 = jVMC.global_defs.pmap_for_my_devices(
                                 lambda data, w, mean, f: f(
                                     jax.vmap(lambda x,y: x/jnp.sqrt(y), in_axes=(0,0))(data, w) 
                                     + mean
                                     ), 
                                 in_axes=(0, 0, None), static_broadcasted_argnums=(3,))
-        _trafo_helper_2 = pmap_for_my_devices(
+        _trafo_helper_2 = jVMC.global_defs.pmap_for_my_devices(
                                 lambda data, w, mean, v, f: 
                                     jnp.matmul(v, 
                                                 f(
@@ -76,10 +76,10 @@ def jit_my_stuff():
                                                 )
                                     ), 
                                 in_axes=(0, 0, None, None), static_broadcasted_argnums=(4,))
-        _select_helper = pmap_for_my_devices( lambda ix,g: jax.vmap(lambda ix,g: g[ix], in_axes=(None, 0))(ix,g), in_axes=(None, 0) )
-        _get_subset_helper = pmap_for_my_devices(lambda x, ixs: x[slice(*ixs)], in_axes=(0,), static_broadcasted_argnums=(1,))
-        _subset_mean_helper = pmap_for_my_devices(lambda d, w, m: jnp.tensordot(jnp.sqrt(w), d, axes=(0,0)) + m, in_axes=(0,0,None))
-        _subset_data_prep = pmap_for_my_devices(jax.vmap(lambda d, w, m1, m2: d+jnp.sqrt(w)*(m1-m2), in_axes=(0,0,None,None)), in_axes=(0,0,None,None))
+        _select_helper = jVMC.global_defs.pmap_for_my_devices( lambda ix,g: jax.vmap(lambda ix,g: g[ix], in_axes=(None, 0))(ix,g), in_axes=(None, 0) )
+        _get_subset_helper = jVMC.global_defs.pmap_for_my_devices(lambda x, ixs: x[slice(*ixs)], in_axes=(0,), static_broadcasted_argnums=(1,))
+        _subset_mean_helper = jVMC.global_defs.pmap_for_my_devices(lambda d, w, m: jnp.tensordot(jnp.sqrt(w), d, axes=(0,0)) + m, in_axes=(0,0,None))
+        _subset_data_prep = jVMC.global_defs.pmap_for_my_devices(jax.vmap(lambda d, w, m1, m2: d+jnp.sqrt(w)*(m1-m2), in_axes=(0,0,None,None)), in_axes=(0,0,None,None))
 
 
 class SampledObs():
