@@ -55,6 +55,7 @@ class TestMC(unittest.TestCase):
         # Set up MCMC sampler
         mcSampler = sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
 
+        p0 = psi.get_parameters()
         psi.set_parameters(weights)
 
         # Compute exact probabilities
@@ -74,6 +75,14 @@ class TestMC(unittest.TestCase):
 
         # Compare histogram to exact probabilities
         self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
+
+        
+        s, psi_s, _ = mcSampler.sample(parameters=p0, numSamples=100)
+        psi.set_parameters(p0)
+        psi_s1 = psi(s)
+        
+        self.assertTrue(jnp.max(jnp.abs((psi_s - psi_s1) / psi_s)) < 1e-14)
+
 
     def test_MCMC_sampling_with_mu(self):
         mu = 1
@@ -291,6 +300,15 @@ class TestMC(unittest.TestCase):
         pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
         self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1.1e-3)
+        
+        
+        psi1 = NQS(net, seed=98475)
+        # Set up another MCMC sampler
+        mcSampler = sampler.MCSampler(psi1, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=777)
+        s, psi_s, _ = mcSampler.sample(parameters=psi.get_parameters(), numSamples=100)
+        psi_s1 = psi(s)
+        
+        self.assertTrue(jnp.max(jnp.abs((psi_s - psi_s1) / psi_s)) < 1e-14)
 
     def test_autoregressive_sampling_with_symmetries(self):
 
@@ -509,6 +527,40 @@ class TestMC(unittest.TestCase):
         pmc, _ = np.histogram(smcInt, bins=np.arange(0, 17), weights=p[0])
 
         self.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1e-3)
+
+
+class TestExactSampler(unittest.TestCase):
+
+    def test_exact_sampler(self):
+        L = 4
+
+        weights = jnp.array(
+            [0.23898957, 0.12614753, 0.19479055, 0.17325271, 0.14619853, 0.21392751,
+             0.19648707, 0.17103704, -0.15457255, 0.10954413, 0.13228065, -0.14935214,
+             -0.09963073, 0.17610707, 0.13386381, -0.14836467]
+        )
+
+        # Set up variational wave function
+        rbm = nets.CpxRBM(numHidden=2, bias=False)
+        psi = NQS(rbm)
+
+        # Set up exact sampler
+        exactSampler = sampler.ExactSampler(psi, L)
+
+        p0 = psi.get_parameters()
+        psi.set_parameters(weights)
+
+        # Compute exact probabilities
+        s, psi_s, pex = exactSampler.sample()
+
+        import flax
+        print(isinstance(psi.parameters, flax.core.frozen_dict.FrozenDict))
+        self.assertTrue(jnp.max((psi(s) - psi_s) / psi_s) < 1e-14)
+        
+        s, psi_s, pex = exactSampler.sample(parameters=p0)
+
+        psi.set_parameters(p0)
+        self.assertTrue(jnp.max((psi(s) - psi_s) / psi_s) < 1e-14)
 
 
 if __name__ == "__main__":

@@ -417,7 +417,10 @@ class NQS:
             raise RuntimeError("Error in NQS.set_parameters(): Network not initialized. Evaluate net on example input for initialization.")
 
         # Update model parameters
-        self.params = self._param_unflatten(P)
+        if isinstance(P, flax.core.frozen_dict.FrozenDict):
+            self.params = P
+        else:
+            self.params = self._param_unflatten(P)
 
     # **  end def set_parameters
 
