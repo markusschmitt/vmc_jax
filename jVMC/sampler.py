@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax.random as random
 import numpy as np
 from jax import vmap, jit
+import flax
 
 import jVMC.mpi_wrapper as mpi
 from jVMC.nets.sym_wrapper import SymNet
@@ -212,8 +213,14 @@ class MCSampler:
             numSamples = self.numSamples
 
         if self.net.is_generator:
-            configs = self._get_samples_gen(parameters, numSamples, multipleOf)
-            return configs, self.net(configs), jnp.ones(configs.shape[:2]) / jnp.prod(jnp.asarray(configs.shape[:2]))
+            if parameters is not None:
+                tmpP = self.net.params
+                self.net.set_parameters(parameters)
+            configs = self._get_samples_gen(self.net.parameters, numSamples, multipleOf)
+            coeffs = self.net(configs)
+            if parameters is not None:
+                self.net.params = tmpP
+            return configs, coeffs, jnp.ones(configs.shape[:2]) / jnp.prod(jnp.asarray(configs.shape[:2]))
 
         configs, logPsi = self._get_samples_mcmc(parameters, numSamples, multipleOf)
         p = jnp.exp((1.0 / self.logProbFactor - self.mu) * jnp.real(logPsi))
@@ -247,13 +254,18 @@ class MCSampler:
 
     def _get_samples_mcmc(self, params, numSamples, multipleOf=1):
 
-        net, netParams = self.net.get_sampler_net()
+        tmpP = None
+        if params is not None:
+            tmpP = self.net.params
+            self.net.set_parameters(params)
 
-        if params is None:
-            params = netParams
+        net, params = self.net.get_sampler_net()
+
+        if tmpP is not None:
+            self.net.params = tmpP        
 
         # Initialize sampling stuff
-        self._mc_init(netParams)
+        self._mc_init(params)
 
         numSamples = mpi.distribute_sampling(numSamples, localDevices=global_defs.device_count(), numChainsPerDevice=np.lcm(self.numChains, multipleOf))
         numSamplesStr = str(numSamples)
@@ -269,8 +281,13 @@ class MCSampler:
                                                   self.states, self.logAccProb, self.key, self.numProposed, self.numAccepted,
                                                   self.updateProposer, self.updateProposerArg, self.sampleShape)
 
+        tmpP = self.net.params
+        self.net.params = params["params"]
+        coeffs = self.net(configs)
+        self.net.params = tmpP
+
         # return configs, None
-        return configs, self.net(configs)
+        return configs, coeffs
 
     def _get_samples(self, params, numSamples,
                      thermSweeps, sweepSteps,
@@ -487,7 +504,12 @@ class ExactSampler:
             :math:`|\psi(s)|^2` (normalized).
         """
 
+        if parameters is not None:
+            tmpP = self.psi.get_parameters()
+            self.psi.set_parameters(parameters)
         logPsi = self.psi(self.basis)
+        if parameters is not None:
+            self.psi.set_parameters(tmpP)
 
         p = self._compute_probabilities_pmapd(logPsi, self.lastNorm, self.numStatesPerDevice)
 
