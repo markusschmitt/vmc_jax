@@ -1,10 +1,15 @@
 import jax
 import jax.numpy as jnp
+from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 
 import jVMC
 import jVMC.mpi_wrapper as mpi
 import jVMC.global_defs as global_defs
 from jVMC.global_defs import pmap_for_my_devices
+
+import numpy as np
+
+from functools import partial
 
 _mean_helper = None
 _data_prep = None
@@ -82,6 +87,52 @@ def jit_my_stuff():
         _subset_data_prep = jVMC.global_defs.pmap_for_my_devices(jax.vmap(lambda d, w, m1, m2: d+jnp.sqrt(w)*(m1-m2), in_axes=(0,0,None,None)), in_axes=(0,0,None,None))
 
 
+# def get_op_estimator(psi, operator, *args):
+
+#     op_fun = operator.compile()
+#     if type(op_fun) is tuple:
+#         op_fun_args = op_fun[1](*args)
+#         op_fun = op_fun[0]
+#     net_fun = psi.net.apply
+
+#     def op_estimator(params, config):
+
+#         sp, matEls = op_fun(config, *op_fun_args)
+
+#         log_psi_s = net_fun(params, config)
+#         log_psi_sp = jax.vmap(lambda s: net_fun(params,s))(sp)
+
+#         return jnp.dot(matEls, jnp.exp(log_psi_sp - log_psi_s))
+
+#     return op_estimator
+
+
+def flat_grad(fun):
+
+    def grad_fun(*args):
+        grad_tree = jax.grad(fun)(*args)
+
+        dtypes = [a.dtype for a in tree_flatten(args[0])[0]]
+        if dtypes[0] == np.single or dtypes[0] == np.double:
+            grad_vec = tree_flatten(
+                        tree_map(
+                            lambda x: x.ravel(), 
+                            grad_tree
+                            )
+                        )[0]
+        else:
+            grad_vec = tree_flatten(
+                    tree_map(
+                        lambda x: [jnp.real(x.ravel()), -jnp.imag(x.ravel())], 
+                        grad_tree
+                        )
+                    )[0]
+            
+        return jnp.concatenate(grad_vec)
+    
+    return grad_fun
+
+
 class SampledObs():
     """This class implements the computation of statistics from Monte Carlo or exact samples.
 
@@ -91,36 +142,93 @@ class SampledObs():
         * ``weights``: Weights :math:`w_n` associated with observation :math:`O_n`.
     """
 
-    def __init__(self, observations=None, weights=None):
+    def __init__(
+            self,
+            observations=None, 
+            weights=None,
+            estimator=None,
+            params=None
+            ):
         """Initializes SampledObs class.
 
         Args:
-            * ``observations``: Observations :math:`O_n` in the sample. The array must have a leading device \
-                dimension plus a batch dimension.
+            * ``observations``: Observations :math:`O_n` in the sample. This can be the value of an observable `O(s_n)` or the \
+                plain configuration `s_n`. The array must have a leading device dimension plus a batch dimension.
             * ``weights``: Weights :math:`w_n` associated with observation :math:`O_n`.
+            * ``estimator``: [optional] Function :math:`O(\\theta, s)` that computes an estimator parametrized by :math:`\\theta`
+            * ``params``: [optional] A set of parameters for the estimator function.
         """
 
         jit_my_stuff()
 
-        if (observations is not None) and (weights is not None):
+        self._weights = weights
+        self._data = observations
+        self._mean = None
+        self._configs = None
+        def estimator_not_implemented(p,s):
+            raise Exception("No estimator function given.")
+
+        self._estimator = estimator_not_implemented
+        self._estimator_grad = estimator_not_implemented
+
+        if estimator is not None:
+
+            self._configs = observations
+
+            self._estimator = jVMC.global_defs.pmap_for_my_devices(
+                jax.vmap(lambda p, s: estimator(p,s), in_axes=(None, 0)), 
+                in_axes=(None, 0)
+                )
+            
+            self._estimator_grad = jVMC.global_defs.pmap_for_my_devices(
+                                    jax.vmap(lambda p, s: flat_grad(lambda a, b: jnp.real(estimator(a,b)))(p,s) + 1.j*flat_grad(lambda a, b: jnp.imag(estimator(a,b)))(p,s), in_axes=(None, 0)), 
+                                    #jax.vmap(lambda p, s: flat_grad(lambda a, b: jnp.real(estimator(a,b)))(p,s), in_axes=(None, 0)), 
+                                    in_axes=(None, 0)
+                                    )
+            
+            if params is not None:
+
+                observations = self._estimator(params, self._configs)
+
+        self._compute_data_and_mean(observations)
+        
+
+    def _compute_data_and_mean(self, observations):
+
+        if (observations is not None) and (self._weights is not None):
             if len(observations.shape) == 2:
                 observations = observations[...,None]
 
-            self._weights = weights
             self._mean = mpi.global_sum( _mean_helper(observations,self._weights)[None,...] )
             self._data = _data_prep(observations, self._weights, self._mean)
-        else:
-            self._weights = weights
-            self._data = observations
-            self._mean = None
 
 
-    def mean(self):
+    def mean(self, params=None):
         """Returns the mean.
         """
 
+        if params is not None:
+            observations = self._estimator(params, self._configs)
+            self._compute_data_and_mean(observations)
+
         return self._mean
     
+
+    def mean_and_grad(self, psi, params):
+        """Returns the mean and gradient of the given estimator.
+        """
+
+        obs = self._estimator(params, self._configs)
+        self._compute_data_and_mean(obs)
+
+        obsGrad = self._estimator_grad(params, self._configs)
+        obsGradMean = mpi.global_sum( _mean_helper(obsGrad,self._weights)[None,...] )
+
+        psiGrad = SampledObs( 2.0*jnp.real( psi.gradients(self._configs) ), self._weights )
+
+        return self._mean, psiGrad.covar(self).ravel() + obsGradMean
+
+
 
     def covar(self, other=None):
         """Returns the covariance.
