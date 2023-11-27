@@ -112,7 +112,7 @@ class RNN1DGeneral(nn.Module):
             self.initFunction = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_avg", distribution="uniform")
         else:
             self.dtype = global_defs.tCpx
-            self.initFunction = partial(jVMC.nets.initializers.cplx_variance_scaling, scale=self.initScale)
+            self.initFunction = jVMC.nets.initializers.cplx_variance_scaling
 
         if isinstance(self.cell, str):
             self.zero_carry = jnp.zeros((self.depth, 1, self.hiddenSize), dtype=self.dtype)
@@ -129,7 +129,7 @@ class RNN1DGeneral(nn.Module):
             self.cells = self.cell[0]
             self.zero_carry = self.cell[1]
 
-        self.rnnCell = RNNCellStack(self.cells, actFun=self.actFun)
+        self.rnnCell = RNNCellStack(self.cells, actFun=self.actFun, dtype=self.dtype)
         init_args = init_fn_args(dtype=self.dtype, bias_init=jax.nn.initializers.zeros, kernel_init=self.initFunction)
         self.outputDense = nn.Dense(features=(self.inputDim-1) * (2 - self.realValuedOutput),
                                     use_bias=True, **init_args)
