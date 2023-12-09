@@ -44,7 +44,6 @@ def eval_batched(batchSize, fun, s):
 
     return res[:s.shape[0]]
 
-
 def flat_gradient(fun, params, arg):
     gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
     gr = tree_flatten(tree_map(lambda x: x.ravel(), gr))[0]
