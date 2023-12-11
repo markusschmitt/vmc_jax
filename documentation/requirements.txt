@@ -1,6 +1,6 @@
 numpy
-jax<=0.3.24
-jaxlib<=0.3.24
-flax<=0.6.1
+jax<=0.4.20
+jaxlib<=0.4.20
+flax<=0.6.11
 h5py
 pyyaml
