@@ -5,15 +5,16 @@ import jax.numpy as jnp
 
 from jVMC.stats import SampledObs
 import jVMC.mpi_wrapper as mpi
+from jVMC.global_defs import device_count
 
 
 class TestStats(unittest.TestCase):
 
     def test_sampled_obs(self):
         
-        Obs1Loc = jnp.array([[1,2,3]])
-        Obs2Loc = jnp.array([[[1,4],[2,5],[3,7]]])
-        p = (1./3) * jnp.ones(3)[None,...]
+        Obs1Loc = jnp.array([[1, 2, 3]] * device_count())
+        Obs2Loc = jnp.array([[[1, 4], [2, 5], [3, 7]]] * device_count())
+        p = (1. / (3 * device_count())) * jnp.ones((device_count(), 3))
 
         obs1 = SampledObs(Obs1Loc, p)
         obs2 = SampledObs(Obs2Loc, p)

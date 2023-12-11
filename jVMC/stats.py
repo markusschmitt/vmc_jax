@@ -107,7 +107,7 @@ class SampledObs():
                 observations = observations[...,None]
 
             self._weights = weights
-            self._mean = mpi.global_sum( _mean_helper(observations,self._weights)[None,...] )
+            self._mean = mpi.global_sum( _mean_helper(observations,self._weights)[:, None,...]  )
             self._data = _data_prep(observations, self._weights, self._mean)
         else:
             self._weights = weights
@@ -132,7 +132,7 @@ class SampledObs():
         if other is None:
             other = self
         
-        return mpi.global_sum( _covar_helper(self._data, other._data)[None,...] )
+        return mpi.global_sum( _covar_helper(self._data, other._data)[:, None,...]  )
     
 
     def var(self):
@@ -165,7 +165,7 @@ class SampledObs():
         if other is None:
             other = self
         
-        return mpi.global_sum( _covar_var_helper(self._data, other._data, self._weights)[None,...] ) \
+        return mpi.global_sum( _covar_var_helper(self._data, other._data, self._weights)[:, None,...]  ) \
                     - jnp.abs(self.covar(other))**2
 
 
