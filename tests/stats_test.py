@@ -34,3 +34,21 @@ class TestStats(unittest.TestCase):
         O = obs2._data.reshape((-1,2))
         self.assertTrue(jnp.allclose(obs2.tangent_kernel(), jnp.matmul(O, jnp.conj(jnp.transpose(O)))))
 
+    def test_subset_function(self):
+
+        N = 10
+        Obs1 = jnp.reshape(jnp.arange(jax.device_count()*N), (jax.device_count(), N, 1))
+        p = jax.random.uniform(jax.random.PRNGKey(123), (jax.device_count(),N))
+        p = p / jnp.sum(p)
+
+        obs1 = SampledObs(Obs1, p)
+        obs2 = obs1.subset(0,N//2)
+
+        self.assertTrue( jnp.allclose(obs1.mean(), jnp.sum(jnp.reshape(Obs1, (jax.device_count(), N)) * p)) )
+
+        self.assertTrue(obs2.mean() - jnp.sum(jnp.reshape(Obs1, (jax.device_count(), N))[:,0:N//2] * p[:,0:N//2]) / jnp.sum(p[:,0:N//2]))
+
+
+        obs3 = SampledObs(Obs1[:,0:N//2,:], p[:,0:N//2] / jnp.sum(p[:,0:N//2]))
+
+        self.assertTrue( jnp.allclose(obs3.covar(), obs2.covar()))

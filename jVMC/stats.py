@@ -212,7 +212,8 @@ class SampledObs():
         newObs._data = _get_subset_helper(self._data, (start, end, step))
         newObs._weights = newObs._weights / normalization
         newObs._data = newObs._data / jnp.sqrt(normalization)
-        newObs._mean = mpi.global_sum( _subset_mean_helper(newObs._data, newObs._weights, self._mean)[None,...] ) 
+
+        newObs._mean = mpi.global_sum( _subset_mean_helper(newObs._data, newObs._weights, 0.0)[:,None,...] )  + self._mean
         newObs._data = _subset_data_prep(newObs._data, newObs._weights, self._mean, newObs._mean)
 
         return newObs
