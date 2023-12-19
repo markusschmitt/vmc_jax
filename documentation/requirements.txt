@@ -4,3 +4,4 @@ jaxlib<=0.4.20
 flax<=0.6.11
 h5py
 pyyaml
+mock
