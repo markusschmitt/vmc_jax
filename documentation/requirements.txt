@@ -5,3 +5,4 @@ flax<=0.6.11
 h5py
 pyyaml
 mock
+sphinx_rtd_theme
