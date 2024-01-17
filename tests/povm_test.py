@@ -45,7 +45,7 @@ class TestPOVM(unittest.TestCase):
         self.sampler = jVMC.sampler.ExactSampler(self.psi, (L,), lDim=4, logProbFactor=1)
 
         self.tdvpEquation = jVMC.util.tdvp.TDVP(self.sampler, rhsPrefactor=-1.,
-                                                svdTol=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
+                                                pinvTol=0.0, pinvCutoff=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
 
         #self.stepper = jVMC.util.stepper.Euler(timeStep=dt)  # ODE integrator
         self.stepper = jVMC.util.stepper.Heun(timeStep=dt)  # ODE integrator
