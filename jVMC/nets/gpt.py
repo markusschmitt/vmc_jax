@@ -16,9 +16,9 @@ from flax.linen import (
     make_causal_mask,
     scan,
 )
-from jax import Array, vmap
+from jax import Array, vmap, debug
 from jax.config import config  # type: ignore
-from jax.numpy import arange, expand_dims, full, int64, take_along_axis, zeros
+from jax.numpy import arange, expand_dims, full, int64, take_along_axis, zeros, roll, log, ones
 from jax.random import KeyArray, categorical, split
 from jVMC.global_defs import tReal
 
@@ -83,6 +83,8 @@ class GPT(Module):
     logProbFactor: float = 0.5
     paramDType: type = tReal
     spinDType: type = int64
+    # jbr
+    localHilDim: int = 2
 
     @compact
     def __call__(self, s: Array, returnLogAmp: bool = True) -> Array:
@@ -96,6 +98,9 @@ class GPT(Module):
         Returns:
             The log amplitude of the wave function.
         """
+
+        # debug.print("{x}",x=s)
+
         if not self.embeddingDim % self.nHeads == 0:
             raise AttributeError(
                 "The embedding dimension should be divisible by the number of"
@@ -105,16 +110,17 @@ class GPT(Module):
             raise ValueError(
                 "Input length should be equal to context length, L."
             )
-
-        y = Embed(2, self.embeddingDim, param_dtype=self.paramDType)(s)
+        # debug.print("{x}",x=s.shape)
+        y = Embed(self.localHilDim, self.embeddingDim, param_dtype=self.paramDType)(s[:-1])
         p = self.variable(
             "params",
             "positional_embeddings",
-            zeros,
-            (self.L, self.embeddingDim),
+            zeros, # jbr: this is the positional embedding, but it is all zeros
+            (self.L-1, self.embeddingDim),
             self.paramDType,
         ).value
-        y = y + p
+        # jbr: adding the positional encoding
+        y = y + p # jbr: this makes no sense, p is all zeoros
         y = Sequential(
             [
                 _TransformerBlock(
@@ -125,10 +131,11 @@ class GPT(Module):
         )(y)
         y = Dense(2, param_dtype=self.paramDType)(y)
         if returnLogAmp:
+            # debug.print("{x}",x=y.shape)
             return (
-                take_along_axis(log_softmax(y), expand_dims(s, -1), axis=-1)
+                (take_along_axis(log_softmax(y), expand_dims(roll(s,-1)[:-1], -1), axis=-1)
                 .sum(axis=-2)
-                .squeeze(-1)
+                .squeeze(-1)-log(self.localHilDim))
                 * self.logProbFactor
             )
         return y
@@ -145,18 +152,25 @@ class GPT(Module):
         """
 
         def generate_sample(key):
+            # we only need 
             keys = split(key, self.L)
+            # jax.numpy.full(shape, fill_value, dtype=None, *, device=None)[source]
             s = full((self.L,), -1, self.spinDType)
-            s, _ = self._scanning_fn(s, (keys, arange(self.L)))
+            # flip 50/50 coin for first spin
+            choice = categorical(keys[0], 0.5*ones(2))
+            # setting the zero choice
+            s = s.at[0].set(choice)
+            # had to modify because of Jax version?
+            s, _ = self._scanning_fn(s, (keys[1:], arange(1,self.L)))
             return s
 
         keys = split(key, numSamples)
         return vmap(generate_sample)(keys)
 
-    @partial(scan, variable_broadcast="params", split_rngs={"params": False})
-    def _scanning_fn(
-        self, s: Array, x: Tuple[KeyArray, Array]
-    ) -> Tuple[Array, None]:
+    @partial(scan,
+             variable_broadcast='params',
+             split_rngs={'params': False})
+    def _scanning_fn(self, s: Array, x: Tuple[KeyArray, Array]) -> Tuple[Array, None]:
         logits = self(s, False)
         choice = categorical(x[0], logits[x[1]])
         return s.at[x[1]].set(choice), None
