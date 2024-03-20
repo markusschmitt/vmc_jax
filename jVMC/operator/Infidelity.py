@@ -73,7 +73,7 @@ class Infidelity(op.Operator):
         * ``chiSampler``: Sampler initialized with ``chi``
     """
     
-    def __init__(self,chi,chiSampler):
+    def __init__(self,chi,chiSampler,getCV=False):
 
         #########################################################
 
@@ -81,6 +81,10 @@ class Infidelity(op.Operator):
         self.chi = chi
         # save the target sampler internally
         self.chiSampler = chiSampler
+        # control variates constant
+        self.CVc = -0.5
+        # control variates flag
+        self.getCV = getCV
 
         ######## get samples ########
         self.chi_s, self.chi_logChi, self.chi_p = self.chiSampler.sample()
@@ -111,6 +115,9 @@ class Infidelity(op.Operator):
         chi_logPsi = psi(self.chi_s)
         # compute F^\chi_loc
         self.chi_Floc = self._InfidelityP.get_O_loc_unbatched(self.chi_logChi,chi_logPsi)
+        # control variates stabilization of the local infidelity
+        self.chi_FlocCV = self._InfidelityP.get_O_loc_unbatched(2.*self.chi_logChi.real,2.*chi_logPsi.real)
+        self.Exp_chi_FlocCV = mpi.global_mean(self.chi_FlocCV,self.chi_p)
         # compute F^chi
         self.Exp_chi_Floc = mpi.global_mean(self.chi_Floc,self.chi_p)
         return self.chi_Floc, self.Exp_chi_Floc
@@ -124,6 +131,7 @@ class Infidelity(op.Operator):
             :mat:`2\\mathbb{E}_\\Psi\\big[ \\Re~ O_k(s)F^\\psi_{\\rm loc}(s)\\big] \\, F^\\chi-2\\mathbb{E}_\\Psi\\big[ \\Re~ O_k(\\sigma)\\big] \\, F^\\psi \\, F^\\chi`        
 
         where :math:`O_k(s)` is the log derivative of the trial wave function.
+        Note that the control variate contribution is not included in the gradient.
 
         Arguments:
             * ``psi``: Neural quantum state.
@@ -205,7 +213,7 @@ class Infidelity(op.Operator):
             return self.get_O_loc_unbatched(logPsiS)
 
 
-    def get_O_loc_unbatched(self, logPsiS,logPsiSP=None):
+    def get_O_loc_unbatched(self, logPsiS,batched=False,logPsiSP=None):
         """Compute :math:`F^\\psi_{\\rm loc}(s)`.
 
         This member function assumes that ``get_s_primes(s)`` has been called before, as \
@@ -221,9 +229,17 @@ class Infidelity(op.Operator):
         Returns:
             :math:`1 - F^\\psi_{\\rm loc}(s)F^\\chi` for each configuration :math:`s`.
         """
-
+        # get the second part of the infideltiy
         self.psi_Floc = self._get_O_loc_pmapd(self.matEl, logPsiS, self.chi(self._flatten_pmapd(self.sp)))
-        return 1. - self.psi_Floc * self.Exp_chi_Floc
+        # control variates stabilization of the local infidelity
+        if batched:
+            return self.psi_Floc
+        elif self.getCV:
+            self.psi_FlocCV = self._get_O_loc_pmapd(self.matEl, 2.*logPsiS.real, 2.*self.chi(self._flatten_pmapd(self.sp)).real)
+            return 1. - self.psi_Floc * self.Exp_chi_Floc - self.CVc * (self.psi_FlocCV*self.Exp_chi_FlocCV - 1.)
+        else:    
+            # return the infidelity
+            return 1. - self.psi_Floc * self.Exp_chi_Floc
 
 
     def get_O_loc_batched(self, samples, psi, logPsiS, batchSize, *args):
@@ -244,6 +260,7 @@ class Infidelity(op.Operator):
         """
 
         Oloc = None
+        OlocCV = None
 
         numSamples = samples.shape[1]
         numBatches = numSamples // batchSize
@@ -264,7 +281,7 @@ class Infidelity(op.Operator):
             sp, _ = self.get_s_primes(batch, *args)
 
             # modified the get_O_loc_unbatched function
-            OlocBatch = self.get_O_loc_unbatched(logPsiSbatch)
+            OlocBatch = self.get_O_loc_unbatched(logPsiSbatch,batched=True)
 
             if Oloc is None:
                 if OlocBatch.dtype == global_defs.tCpx:
@@ -272,7 +289,23 @@ class Infidelity(op.Operator):
                 else:
                     Oloc = self._alloc_Oloc_real_pmapd(samples)
 
+            ##############
+            # regular infideltiy
             Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, b * batchSize)
+
+            ##############
+            # control variates stabilization of the local infidelity
+            if self.getCV:
+                # modified the get_O_loc_unbatched function
+                OlocBatchCV = self.get_O_loc_unbatched(2.*logPsiSbatch.real,batched=True)
+
+                if OlocCV is None:
+                    if OlocBatchCV.dtype == global_defs.tCpx:
+                        OlocCV = self._alloc_Oloc_cpx_pmapd(samples)
+                    else:
+                        OlocCV = self._alloc_Oloc_real_pmapd(samples)
+
+                OlocCV = self._insert_Oloc_batch_pmapd(OlocCV, OlocBatchCV, b * batchSize)
         
         if remainder > 0:
 
@@ -284,16 +317,33 @@ class Infidelity(op.Operator):
             # internalize the new batch
             sp, _ = self.get_s_primes(batch, *args)
 
+            ##############
+            # regular infideltiy
             # modified the get_O_loc_unbatched function
-            OlocBatch = self.get_O_loc_unbatched(logPsiSbatch)
+            OlocBatch = self.get_O_loc_unbatched(logPsiSbatch,batched=True)
         
             OlocBatch = self._get_Oloc_slice_pmapd(OlocBatch, 0, remainder)
-
+            # get the second part of the infideltiy
             Oloc = self._insert_Oloc_batch_pmapd(Oloc, OlocBatch, numBatches * batchSize)
-
-        # saving F^\psi internalli
+            
+            ##############
+            # control variates stabilization of the local infidelity
+            if self.getCV:
+                # modified the get_O_loc_unbatched function
+                OlocBatchCV = self.get_O_loc_unbatched(2.*logPsiSbatch.real,batched=True)
+            
+                OlocBatchCV = self._get_Oloc_slice_pmapd(OlocBatchCV, 0, remainder)
+                # get the second part of the infideltiy
+                OlocCV = self._insert_Oloc_batch_pmapd(OlocCV, OlocBatchCV, numBatches * batchSize)
+                
+        # store the infidelity internally  
         self.psi_Floc = Oloc
-        return 1. - self.psi_Floc * self.Exp_chi_Floc
+
+        if self.getCV:
+            return 1. - self.psi_Floc * self.Exp_chi_Floc - self.CVc * (OlocCV*self.Exp_chi_FlocCV - 1.)
+        else:
+            # saving F^\psi internalli
+            return 1. - self.psi_Floc * self.Exp_chi_Floc
 
 # auxillary function
 def expand_batch(batch, batchSize):

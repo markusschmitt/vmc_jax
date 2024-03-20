@@ -80,6 +80,7 @@ class GPT(Module):
     embeddingDim: int
     depth: int
     nHeads: int
+    OutputScale: float = 1.
     logProbFactor: float = 0.5
     paramDType: type = tReal
     spinDType: type = int64
@@ -132,7 +133,7 @@ class GPT(Module):
         y = Dense(2, param_dtype=self.paramDType)(y)
         if returnLogAmp:
             # debug.print("{x}",x=y.shape)
-            return (
+            return self.OutputScale * (
                 (take_along_axis(log_softmax(y), expand_dims(roll(s,-1)[:-1], -1), axis=-1)
                 .sum(axis=-2)
                 .squeeze(-1)-log(self.localHilDim))
