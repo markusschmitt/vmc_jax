@@ -116,8 +116,9 @@ class Infidelity(op.Operator):
         # compute F^\chi_loc
         self.chi_Floc = self._InfidelityP.get_O_loc_unbatched(self.chi_logChi,chi_logPsi)
         # control variates stabilization of the local infidelity
-        self.chi_FlocCV = self._InfidelityP.get_O_loc_unbatched(2.*self.chi_logChi.real,2.*chi_logPsi.real)
-        self.Exp_chi_FlocCV = mpi.global_mean(self.chi_FlocCV,self.chi_p)
+        if self.getCV:
+            self.chi_FlocCV = self._InfidelityP.get_O_loc_unbatched(2.*self.chi_logChi.real,2.*chi_logPsi.real)
+            self.Exp_chi_FlocCV = mpi.global_mean(self.chi_FlocCV,self.chi_p)
         # compute F^chi
         self.Exp_chi_Floc = mpi.global_mean(self.chi_Floc,self.chi_p)
         return self.chi_Floc, self.Exp_chi_Floc
@@ -149,7 +150,8 @@ class Infidelity(op.Operator):
         Floc = SampledObs(self.psi_Floc, psi_p)
         grad = 2.*grads.covar(Floc)*self.Exp_chi_Floc
 
-        # correction
+        # correction without CV
+        # Leave off for best results
         if corrections:
             chi_Fgrads = SampledObs(psi.gradients(self.chi_s).real * self.chi_Floc.reshape(*self.chi_Floc.shape,1).real, self.chi_p) 
             corr_grad_minus = chi_Fgrads.mean().real * mpi.global_mean(self.psi_Floc.real,psi_p)
@@ -157,7 +159,21 @@ class Infidelity(op.Operator):
             psi_Fgrads = SampledObs(Opsi.real * self.psi_Floc.reshape(*self.psi_Floc.shape,1), psi_p)
             corr_grad_plus = psi_Fgrads.mean().real * self.Exp_chi_Floc.real
 
-            grad -= (- corr_grad_minus.reshape(grad.shape) + corr_grad_plus.reshape(grad.shape))
+            grad -= (corr_grad_minus.reshape(grad.shape) - corr_grad_plus.reshape(grad.shape))
+
+            # gradient with CV
+            # Leave off for best results
+            if self.getCV:
+                chi_FgradsCV = SampledObs(psi.gradients(self.chi_s).real * self.chi_FlocCV.reshape(*self.chi_FlocCV.shape,1).real, self.chi_p) 
+                corr_grad_minus = chi_FgradsCV.mean().real * mpi.global_mean(self.psi_FlocCV.real,psi_p)
+
+                psi_Fgrads = SampledObs(Opsi.real * self.psi_FlocCV.reshape(*self.psi_FlocCV.shape,1), psi_p)
+                corr_grad_plus = psi_Fgrads.mean().real * self.Exp_chi_FlocCV.real
+
+                grad += self.CVc * 2. * (corr_grad_minus.reshape(grad.shape) - corr_grad_plus.reshape(grad.shape))
+                
+                FlocCV = SampledObs(self.psi_FlocCV, psi_p)
+                grad -= self.CVc * 2. * grads.covar(FlocCV)*self.Exp_chi_FlocCV
 
         return -1. * grad.real
 
@@ -340,6 +356,7 @@ class Infidelity(op.Operator):
         self.psi_Floc = Oloc
 
         if self.getCV:
+            self.psi_FlocCV = OlocCV
             return 1. - self.psi_Floc * self.Exp_chi_Floc - self.CVc * (OlocCV*self.Exp_chi_FlocCV - 1.)
         else:
             # saving F^\psi internalli
