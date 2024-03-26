@@ -173,5 +173,5 @@ class GPT(Module):
              split_rngs={'params': False})
     def _scanning_fn(self, s: Array, x: Tuple[KeyArray, Array]) -> Tuple[Array, None]:
         logits = self(s, False)
-        choice = categorical(x[0], logits[x[1]])
+        choice = categorical(x[0], logits[x[1]].real)
         return s.at[x[1]].set(choice), None
