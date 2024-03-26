@@ -38,4 +38,5 @@ class Target(nn.Module):
                         nn.initializers.constant(1),
                         (int(self.d**self.L)))
     # return amplitude for state s
-    return jnp.log(kernel[((self.d**jnp.arange(self.L)).dot(s)).astype(int)])
+    idx = ((self.d**jnp.arange(self.L)).dot(s)).astype(int)
+    return jnp.log(abs(kernel[idx])) + 1.j*jnp.angle(kernel[idx]) 
