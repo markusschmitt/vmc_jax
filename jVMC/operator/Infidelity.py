@@ -159,7 +159,7 @@ class Infidelity(op.Operator):
             psi_Fgrads = SampledObs(Opsi.real * self.psi_Floc.reshape(*self.psi_Floc.shape,1), psi_p)
             corr_grad_plus = psi_Fgrads.mean().real * self.Exp_chi_Floc.real
 
-            grad -= (corr_grad_minus.reshape(grad.shape) - corr_grad_plus.reshape(grad.shape))
+            grad -= (-corr_grad_minus.reshape(grad.shape) + corr_grad_plus.reshape(grad.shape))
 
             # gradient with CV
             # Leave off for best results

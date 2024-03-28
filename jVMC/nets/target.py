@@ -27,10 +27,12 @@ class Target(nn.Module):
     Initialization arguments:
         * ``L``: System size
         * ``d``: local Hilbert space dimension
+        * ``delta``: small number to avoid log(0)
 
     """
   L: int
   d: float = 2.00
+  delta: float = 1e-15
 
   @nn.compact
   def __call__(self, s):
@@ -39,4 +41,4 @@ class Target(nn.Module):
                         (int(self.d**self.L)))
     # return amplitude for state s
     idx = ((self.d**jnp.arange(self.L)).dot(s)).astype(int)
-    return jnp.log(abs(kernel[idx])) + 1.j*jnp.angle(kernel[idx]) 
+    return jnp.log(abs(kernel[idx]+self.delta)) + 1.j*jnp.angle(kernel[idx]) 
