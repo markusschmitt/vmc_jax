@@ -199,7 +199,7 @@ class SampledObs():
             if len(observations.shape) == 2:
                 observations = observations[...,None]
 
-            self._weights = weights
+            #self._weights = weights
             self._mean = mpi.global_sum( _mean_helper(observations,self._weights)[:, None,...]  )
             self._data = _data_prep(observations, self._weights, self._mean)
 
