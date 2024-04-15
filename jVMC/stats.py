@@ -199,7 +199,8 @@ class SampledObs():
             if len(observations.shape) == 2:
                 observations = observations[...,None]
 
-            self._mean = mpi.global_sum( _mean_helper(observations,self._weights)[None,...] )
+            self._weights = weights
+            self._mean = mpi.global_sum( _mean_helper(observations,self._weights)[:, None,...]  )
             self._data = _data_prep(observations, self._weights, self._mean)
 
 
@@ -240,7 +241,7 @@ class SampledObs():
         if other is None:
             other = self
         
-        return mpi.global_sum( _covar_helper(self._data, other._data)[None,...] )
+        return mpi.global_sum( _covar_helper(self._data, other._data)[:, None,...]  )
     
 
     def var(self):
@@ -273,7 +274,7 @@ class SampledObs():
         if other is None:
             other = self
         
-        return mpi.global_sum( _covar_var_helper(self._data, other._data, self._weights)[None,...] ) \
+        return mpi.global_sum( _covar_var_helper(self._data, other._data, self._weights)[:, None,...]  ) \
                     - jnp.abs(self.covar(other))**2
 
 
@@ -320,7 +321,8 @@ class SampledObs():
         newObs._data = _get_subset_helper(self._data, (start, end, step))
         newObs._weights = newObs._weights / normalization
         newObs._data = newObs._data / jnp.sqrt(normalization)
-        newObs._mean = mpi.global_sum( _subset_mean_helper(newObs._data, newObs._weights, self._mean)[None,...] ) 
+
+        newObs._mean = mpi.global_sum( _subset_mean_helper(newObs._data, newObs._weights, 0.0)[:,None,...] )  + self._mean
         newObs._data = _subset_data_prep(newObs._data, newObs._weights, self._mean, newObs._mean)
 
         return newObs

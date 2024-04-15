@@ -117,7 +117,7 @@ class RNN2DGeneral(nn.Module):
             self.initFunction = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_avg", distribution="uniform")
         else:
             self.dtype = global_defs.tCpx
-            self.initFunction = partial(jVMC.nets.initializers.cplx_variance_scaling, scale=self.initScale)
+            self.initFunction = jVMC.nets.initializers.cplx_variance_scaling
 
         if isinstance(self.cell, str):
             if self.cell in ["LSTM", "GRU"] and not self.realValuedParams:

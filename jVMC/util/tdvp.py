@@ -36,7 +36,7 @@ class TDVP:
 
     and for real parameters :math:`\\theta\in\mathbb R`, the TDVP equation reads
 
-        :math:`q\\big[S_{k,k'}\\big]\\theta_{k'} = -q\\big[xF_k\\big]`
+        :math:`q\\big[S_{k,k'}\\big]\\dot\\theta_{k'} = -q\\big[xF_k\\big]`
 
     Here, either :math:`q=\\text{Re}` or :math:`q=\\text{Im}` and :math:`x=1` for ground state
     search or :math:`x=i` (the imaginary unit) for real time dynamics.
@@ -62,7 +62,8 @@ class TDVP:
     Initializer arguments:
         * ``sampler``: A sampler object.
         * ``snrTol``: Regularization parameter :math:`\epsilon_{SNR}`, see above.
-        * ``pinvTol``: Regularization parameter :math:`\epsilon_{SVD}`, see above.
+        * ``pinvTol``: Regularization parameter :math:`\epsilon_{SVD}` (see above) is chosen such that :math:`||S\\dot\\theta-F|| / ||F||<pinvTol`.
+        * ``pinvCutoff``: Lower bound for the regularization parameter :math:`\epsilon_{SVD}`, see above.
         * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` or `'imag'` for :math:`q=\\text{Im}`.
         * ``rhsPrefactor``: Prefactor :math:`x` of the right hand side, see above.
         * ``diagonalShift``: Regularization parameter :math:`\\rho` for ground state search, see above.
@@ -70,15 +71,12 @@ class TDVP:
         * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.
     """
 
-    def __init__(self, sampler, snrTol=2, pinvTol=1e-14, svdTol=None, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
+    def __init__(self, sampler, snrTol=2, pinvTol=1e-14, pinvCutoff=1e-8, makeReal='imag', rhsPrefactor=1.j, diagonalShift=0., crossValidation=False, diagonalizeOnDevice=True):
         
-        if svdTol is not None:
-            warnings.warn("Parameter `svdTol` is deprecated. Use `pinvTol` instead.", DeprecationWarning)
-            pinvTol = svdTol
-            
         self.sampler = sampler
         self.snrTol = snrTol
         self.pinvTol = pinvTol
+        self.pinvCutoff = pinvCutoff
         self.diagonalShift = diagonalShift
         self.rhsPrefactor = rhsPrefactor
         self.crossValidation = crossValidation
@@ -194,16 +192,25 @@ class TDVP:
         # Discard eigenvalues below numerical precision
         self.invEv = jnp.where(jnp.abs(self.ev / self.ev[-1]) > 1e-14, 1. / self.ev, 0.)
 
-        # Set regularizer for singular value cutoff
-        regularizer = 1. / (1. + (self.pinvTol / jnp.abs(self.ev / self.ev[-1]))**6)
+        residual = 1.0
+        cutoff = 1e-2
+        F_norm = jnp.linalg.norm(F)
+        while residual > self.pinvTol and cutoff > self.pinvCutoff:
+            cutoff *= 0.8
+            # Set regularizer for singular value cutoff
+            regularizer = 1. / (1. + (max(cutoff, self.pinvCutoff) / jnp.abs(self.ev / self.ev[-1]))**6)
 
-        if not isinstance(self.sampler, jVMC.sampler.ExactSampler):
-            # Construct a soft cutoff based on the SNR
-            regularizer *= 1. / (1. + (self.snrTol / self.snr)**6)
+            if not isinstance(self.sampler, jVMC.sampler.ExactSampler):
+                # Construct a soft cutoff based on the SNR
+                regularizer *= 1. / (1. + (self.snrTol / self.snr)**6)
 
-        update = jnp.real(jnp.dot(self.V, (self.invEv * regularizer * self.VtF)))
+            pinvEv = self.invEv * regularizer
 
-        return update, jnp.linalg.norm(self.S.dot(update) - F) / jnp.linalg.norm(F)
+            residual = jnp.linalg.norm((pinvEv * self.ev - jnp.ones_like(pinvEv)) * self.VtF) / F_norm
+
+        update = jnp.real(jnp.dot(self.V, (pinvEv * self.VtF)))
+
+        return update, residual, max(cutoff, self.pinvCutoff)
 
     def S_dot(self, v):
 
@@ -274,7 +281,7 @@ class TDVP:
         sampleGradients = SampledObs( sampleGradients, p)
 
         start_timing(outp, "solve TDVP eqn.")
-        update, solverResidual = self.solve(Eloc, sampleGradients)
+        update, solverResidual, pinvCutoff = self.solve(Eloc, sampleGradients)
         stop_timing(outp, "solve TDVP eqn.")
 
         if outp is not None:
@@ -291,6 +298,7 @@ class TDVP:
                 self.metaData = {
                     "tdvp_error": self._get_tdvp_error(update),
                     "tdvp_residual": solverResidual,
+                    "pinv_cutoff": pinvCutoff,
                     "SNR": self.snr, 
                     "spectrum": self.ev,
                 }
@@ -301,11 +309,11 @@ class TDVP:
                     sampleGradients1 = sampleGradients.subset(start=0, step=2)
                     Eloc2 = Eloc.subset(start=1, step=2)
                     sampleGradients2 = sampleGradients.subset(start=1, step=2)
-                    update_1, _ = self.solve(Eloc1, sampleGradients1)
+                    update_1, _, _ = self.solve(Eloc1, sampleGradients1)
                     S2, F2 = self.get_tdvp_equation(Eloc2, sampleGradients2)
 
                     validation_tdvpErr = self._get_tdvp_error(update_1)
-                    update, solverResidual = self.solve(Eloc, sampleGradients)
+                    update, solverResidual, _ = self.solve(Eloc, sampleGradients)
                     validation_residual = (jnp.linalg.norm(S2.dot(update_1) - F2) / jnp.linalg.norm(F2)) / solverResidual
 
                     self.crossValidationFactor_residual = validation_residual

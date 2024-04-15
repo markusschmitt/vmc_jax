@@ -47,7 +47,7 @@ class TestGsSearch(unittest.TestCase):
             exactSampler = sampler.ExactSampler(psi, L)
 
             delta = 2
-            tdvpEquation = jVMC.util.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
+            tdvpEquation = jVMC.util.TDVP(exactSampler, snrTol=1, pinvTol=0.0, pinvCutoff=1e-8, rhsPrefactor=1., diagonalShift=delta, makeReal='real')
 
             # Perform ground state search to get initial state
             ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=5e-2)
@@ -94,7 +94,7 @@ class TestTimeEvolution(unittest.TestCase):
         # Set up adaptive time stepper
         stepper = jVMCstepper.AdaptiveHeun(timeStep=1e-3, tol=1e-5)
 
-        tdvpEquation = jVMC.util.TDVP(exactSampler, snrTol=1, svdTol=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
+        tdvpEquation = jVMC.util.TDVP(exactSampler, snrTol=1, pinvTol=0.0, pinvCutoff=1e-8, rhsPrefactor=1.j, diagonalShift=0., makeReal='imag')
 
         t = 0
         obs = []
