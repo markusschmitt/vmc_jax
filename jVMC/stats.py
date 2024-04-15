@@ -137,9 +137,11 @@ class SampledObs():
     """This class implements the computation of statistics from Monte Carlo or exact samples.
 
     Initializer arguments:
-        * ``observations``: Observations :math:`O_n` in the sample. The array must have a leading device \
-            dimension plus a batch dimension.
+        * ``observations``: Observations :math:`O_n` in the sample. This can be the value of an observable `O(s_n)` or the \
+                plain configuration `s_n`. The array must have a leading device dimension plus a batch dimension.
         * ``weights``: Weights :math:`w_n` associated with observation :math:`O_n`.
+        * ``estimator``: [optional] Function :math:`O(\\theta, s)` that computes an estimator parametrized by :math:`\\theta`
+        * ``params``: [optional] A set of parameters for the estimator function.
     """
 
     def __init__(
