@@ -339,7 +339,7 @@ class BranchFreeOperator(Operator):
         sp = jnp.array([s] * numOps)
 
         ######## fermions ########
-        mask = jnp.tril(jnp.ones((s.shape[-1],s.shape[-1])),-1).T
+        mask = jnp.tril(jnp.ones((s.shape[-1],s.shape[-1]),dtype=int),-1).T
         ##########################
 
         def apply_fun(c, x):
@@ -349,7 +349,10 @@ class BranchFreeOperator(Operator):
             configShape = config.shape
             config = config.ravel()
             ######## fermions ########
-            configMatEl = configMatEl * matEls[config[idx]] * (-1.)**(fermi * (sum(mask[idx]*config)))
+            configMatEl = configMatEl * matEls[config[idx]] * jnp.prod((1 - 2 * fermi) * \
+                                                                       (2 * fermi * mask[idx] +\
+                                                                        (1 - 2 * fermi)) * config + \
+                                                                        (1 - abs(config)))
             ##########################
             config = config.at[idx].set(sMap[config[idx]])
 
