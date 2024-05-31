@@ -306,6 +306,7 @@ class Operator(metaclass=abc.ABCMeta):
             log_psi_s = net_fun(params, config)
             log_psi_sp = jax.vmap(lambda s: net_fun(params,s))(sp)
 
-            return jnp.dot(matEls, jnp.exp(log_psi_sp - log_psi_s))
+            #return jnp.dot(matEls, jnp.exp(log_psi_sp - log_psi_s))
+            return jnp.sum(matEls * jnp.exp(log_psi_sp - log_psi_s))
 
         return op_estimator

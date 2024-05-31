@@ -181,10 +181,9 @@ class SampledObs():
                 jax.vmap(lambda p, s: estimator(p,s), in_axes=(None, 0)), 
                 in_axes=(None, 0)
                 )
-            
+
             self._estimator_grad = jVMC.global_defs.pmap_for_my_devices(
                                     jax.vmap(lambda p, s: flat_grad(lambda a, b: jnp.real(estimator(a,b)))(p,s) + 1.j*flat_grad(lambda a, b: jnp.imag(estimator(a,b)))(p,s), in_axes=(None, 0)), 
-                                    #jax.vmap(lambda p, s: flat_grad(lambda a, b: jnp.real(estimator(a,b)))(p,s), in_axes=(None, 0)), 
                                     in_axes=(None, 0)
                                     )
             
