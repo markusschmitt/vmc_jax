@@ -279,3 +279,34 @@ class Operator(metaclass=abc.ABCMeta):
             corresponding matrix elements.
         """
 
+    def get_estimator_function(self, psi, *args):
+        """Get a function that computes :math:`O_{loc}(\\theta, s)`.
+
+        Returns a function that computes :math:`O_{loc}(\\theta, s)=\sum_{s'} O_{s,s'}\\frac{\psi_\\theta(s')}{\psi_\\theta(s)}` 
+        for a given configuration :math:`s` and parameters :math:`\\theta` of a given ansatz :math:`\psi_\\theta(s)`.
+
+        Arguments:
+            * ``psi``: Neural quantum state.
+            * ``*args``: Further positional arguments for the operator.
+
+        Returns:
+            A function :math:`O_{loc}(\\theta, s)`.
+        """
+
+        op_fun = self.compile()
+        if type(op_fun) is tuple:
+            op_fun_args = op_fun[1](*args)
+            op_fun = op_fun[0]
+        net_fun = psi.net.apply
+
+        def op_estimator(params, config):
+
+            sp, matEls = op_fun(config, *op_fun_args)
+
+            log_psi_s = net_fun(params, config)
+            log_psi_sp = jax.vmap(lambda s: net_fun(params,s))(sp)
+
+            #return jnp.dot(matEls, jnp.exp(log_psi_sp - log_psi_s))
+            return jnp.sum(matEls * jnp.exp(log_psi_sp - log_psi_s))
+
+        return op_estimator
