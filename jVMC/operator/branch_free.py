@@ -107,6 +107,73 @@ def Sm(idx):
     return {'idx': idx, 'map': jnp.array([0, 0], dtype=np.int32), 'matEls': jnp.array([0.0, 1.0], dtype=opDtype), 'diag': False}
 
 
+######################
+# fermionic number operator
+def number(idx):
+    """Returns a :math:`c^\dagger c` femrioic number operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`c^\dagger c` femrioic number operator
+
+    """
+
+    return {
+        'idx': idx,
+        'map': jax.numpy.array([0,1],dtype=np.int32),
+        'matEls': jax.numpy.array([0.,1.],dtype=opDtype),
+        'diag': True,
+        'fermionic': False
+    }
+
+######################
+# fermionic creation operator
+def creation(idx): 
+    """Returns a :math:`c^\dagger` femrioic creation operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`c^\dagger` femrioic creation operator
+
+    """
+    
+    return {
+        'idx': idx,
+        'map': jax.numpy.array([1,0],dtype=np.int32),
+        'matEls': jax.numpy.array([1.,0.],dtype=opDtype),
+        'diag': False,
+        "fermionic": True
+    }
+
+######################
+# fermionic annihilation operator
+def annihilation(idx): 
+    """Returns a :math:`c` femrioic creation operator
+
+    Args:
+
+    * ``idx``: Index of the local Hilbert space.
+
+    Returns:
+        Dictionary defining :math:`c` femrioic creation operator
+
+    """ 
+    
+    return {
+        'idx': idx,
+        'map': jax.numpy.array([1,0],dtype=np.int32),
+        'matEls': jax.numpy.array([0.,1.],dtype=opDtype),
+        'diag': False,
+        "fermionic": True
+     }
+
+
 import copy
 
 @jax.jit
@@ -179,6 +246,9 @@ class BranchFreeOperator(Operator):
         self.matEls = []
         self.diag = []
         self.prefactor = []
+        ######## fermions ########
+        self.fermionic = []
+        ##########################
         self.maxOpStrLength = 0
         for op in self.ops:
             tmpLen = len(op)
@@ -192,6 +262,7 @@ class BranchFreeOperator(Operator):
             self.idx.append([])
             self.map.append([])
             self.matEls.append([])
+            self.fermionic.append([])
             # check whether string contains prefactor
             k0=0
             if callable(op[0]):
@@ -207,10 +278,20 @@ class BranchFreeOperator(Operator):
                     self.idx[o].append(op[k]['idx'])
                     self.map[o].append(op[k]['map'])
                     self.matEls[o].append(op[k]['matEls'])
+                    ######## fermions ########
+                    fermi_check = True
+                    if "fermionic" in op[k]:
+                        if op[k]["fermionic"]:  
+                            fermi_check = False
+                            self.fermionic[o].append(1.)
+                    if fermi_check:
+                        self.fermionic[o].append(0.)
+                    ##########################
                 else:
                     self.idx[o].append(IdOp['idx'])
                     self.map[o].append(IdOp['map'])
                     self.matEls[o].append(IdOp['matEls'])
+                    self.fermionic[o].append(0.)
 
             if isDiagonal:
                 self.diag.append(o)
@@ -219,6 +300,9 @@ class BranchFreeOperator(Operator):
         self.idxC = jnp.array(self.idx, dtype=np.int32)
         self.mapC = jnp.array(self.map, dtype=np.int32)
         self.matElsC = jnp.array(self.matEls, dtype=opDtype)
+        ######## fermions ########
+        self.fermionicC = jnp.array(self.fermionic, dtype=np.int32)
+        ##########################
         self.diag = jnp.array(self.diag, dtype=np.int32)
 
         def arg_fun(*args, prefactor, init):
@@ -243,10 +327,10 @@ class BranchFreeOperator(Operator):
                 
             return (jnp.array(res), )
 
-        return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, prefactor=self.prefactor),\
+        return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, fermiC=self.fermionicC, prefactor=self.prefactor),\
                 functools.partial(arg_fun, prefactor=self.prefactor, init=np.ones(self.idxC.shape[0], dtype=self.matElsC.dtype))
 
-    def _get_s_primes(self, s, *args, idxC, mapC, matElsC, diag, prefactor):
+    def _get_s_primes(self, s, *args, idxC, mapC, matElsC, diag, fermiC, prefactor):
 
         numOps = idxC.shape[0]
         #matEl = jnp.ones(numOps, dtype=matElsC.dtype)
@@ -254,28 +338,37 @@ class BranchFreeOperator(Operator):
         
         sp = jnp.array([s] * numOps)
 
+        ######## fermions ########
+        mask = jnp.tril(jnp.ones((s.shape[-1],s.shape[-1]),dtype=int),-1).T
+        ##########################
+
         def apply_fun(c, x):
             config, configMatEl = c
-            idx, sMap, matEls = x
+            idx, sMap, matEls, fermi = x
 
             configShape = config.shape
             config = config.ravel()
-            configMatEl = configMatEl * matEls[config[idx]]
+            ######## fermions ########
+            configMatEl = configMatEl * matEls[config[idx]] * jnp.prod((1 - 2 * fermi) * \
+                                                                       (2 * fermi * mask[idx] +\
+                                                                        (1 - 2 * fermi)) * config + \
+                                                                        (1 - abs(config)))
+            ##########################
             config = config.at[idx].set(sMap[config[idx]])
 
             return (config.reshape(configShape), configMatEl), None
 
         #def apply_multi(config, configMatEl, opIdx, opMap, opMatEls, prefactor):
-        def apply_multi(config, configMatEl, opIdx, opMap, opMatEls):
+        def apply_multi(config, configMatEl, opIdx, opMap, opMatEls, opFermi):
 
-            (config, configMatEl), _ = jax.lax.scan(apply_fun, (config, configMatEl), (opIdx, opMap, opMatEls))
+            (config, configMatEl), _ = jax.lax.scan(apply_fun, (config, configMatEl), (opIdx, opMap, opMatEls, opFermi))
 
             #return config, prefactor*configMatEl
             return config, configMatEl
 
         # vmap over operators
         #sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC, jnp.array([f(*args) for f in prefactor]))
-        sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC)
+        sp, matEl = vmap(apply_multi, in_axes=(0, 0, 0, 0, 0, 0))(sp, matEl, idxC, mapC, matElsC, fermiC)
         if len(diag) > 1:
             matEl = matEl.at[diag[0]].set(jnp.sum(matEl[diag], axis=0))
             matEl = matEl.at[diag[1:]].set(jnp.zeros((diag.shape[0] - 1,), dtype=matElsC.dtype))

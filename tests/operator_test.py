@@ -132,6 +132,44 @@ class TestOperator(unittest.TestCase):
 
         hamiltonian.compile()
 
+    def test_fermionic_operators(self):
+        L = 2
+
+        rbm = nets.CpxRBM(numHidden=2, bias=True)
+        psi = NQS(rbm)
+
+        sampler = jVMC.sampler.ExactSampler(psi, (L,))
+
+        def commutator(i,j):
+            Comm = op.BranchFreeOperator()
+            Comm.add(op.scal_opstr( 1., (op.annihilation(i), op.creation(j), ) ) )
+            Comm.add(op.scal_opstr( 1., (op.creation(j), op.annihilation(i), ) ) )
+            return Comm
+
+        observalbes_dict = {
+                            "same_site": [commutator(0,0),commutator(1,1)], 
+                            "distinct_site": [commutator(0,1),commutator(1,0)]
+                            }
+        out_dict = jVMC.util.util.measure(observalbes_dict, psi, sampler)
+
+        self.assertTrue(
+            jnp.allclose(
+                jnp.concatenate(
+                    (out_dict["same_site"]['mean'],
+                     out_dict["distinct_site"]['mean'])),
+                        jnp.array([1.,1.,0.,0.]),
+                        rtol=1e-15)
+            )
+        
+        self.assertTrue(
+            jnp.allclose(
+                jnp.concatenate(
+                    (out_dict["same_site"]['variance'],
+                     out_dict["distinct_site"]['variance'])),
+                        jnp.array([0.,0.,0.,0.]),
+                        rtol=1e-15)
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
