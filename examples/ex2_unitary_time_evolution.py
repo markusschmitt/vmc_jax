@@ -52,7 +52,7 @@ sampler = None
 sampler = jVMC.sampler.ExactSampler(psi, L)
 
 # Set up TDVP
-tdvpEquation = jVMC.util.tdvp.TDVP(sampler, svdTol=1e-8,
+tdvpEquation = jVMC.util.tdvp.TDVP(sampler, pinvTol=1e-8,
                                    rhsPrefactor=1.j,
                                    makeReal='imag')
 
