@@ -82,7 +82,7 @@ def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1) -> 
 
         globNumSamples = numSamples
 
-        return samplesPerProcess
+        return samplesPerProcess, globNumSamples
 
     numChainsPerProcess = localDevices * numChainsPerDevice
 
@@ -92,7 +92,7 @@ def distribute_sampling(numSamples, localDevices=None, numChainsPerDevice=1) -> 
     a = numSamples % commSize
     globNumSamples = (a * spc(1 + numSamples // commSize) + (commSize - a) * spc(numSamples // commSize)) * numChainsPerProcess
 
-    return spc(samplesPerProcess)
+    return spc(samplesPerProcess), globNumSamples
 
 
 def first_sample_id():

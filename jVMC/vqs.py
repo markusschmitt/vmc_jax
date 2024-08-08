@@ -114,6 +114,7 @@ class NQS:
     """
 
     def __init__(self, net, 
+                        logarithmic=True,
                         batchSize=1000, 
                         seed=1234, 
                         orbit=None, 
@@ -138,6 +139,8 @@ class NQS:
                 a ``__call__`` function for evaluation. \
                 If a tuple of two networks is given, the first is used for the logarithmic \
                 amplitude and the second for the phase of the wave function coefficient.
+            * ``logarithmic``: Boolean variable indicating, whether the ANN returns logarithmic \
+                (:math:`\log\psi_\theta(s)`) or plain (:math:`\psi_\theta(s)`) wave function coefficients.
             * ``batchSize``: Batch size for batched network evaluation. Choice \
                 of this parameter impacts performance: with too small values performance \
                 is limited by memory access overheads, too large values can lead \
@@ -153,6 +156,7 @@ class NQS:
         self.holomorphic = False
         self.flat_gradient_function = flat_gradient_real
         self.dict_gradient_function = dict_gradient_real
+        self.logarithmic = logarithmic
 
         self.initialized = False
         self.seed = seed
