@@ -7,6 +7,7 @@ import jVMC
 from jVMC.stats import SampledObs
 import jVMC.operator as op
 from jVMC.global_defs import device_count
+import jVMC.mpi_wrapper as mpi
 
 
 class TestStats(unittest.TestCase):
@@ -15,7 +16,7 @@ class TestStats(unittest.TestCase):
         
         Obs1Loc = jnp.array([[1, 2, 3]] * device_count())
         Obs2Loc = jnp.array([[[1, 4], [2, 5], [3, 7]]] * device_count())
-        p = (1. / (3 * device_count())) * jnp.ones((device_count(), 3))
+        p = (1. / (3 * device_count() * mpi.commSize)) * jnp.ones((device_count(), 3))
 
         obs1 = SampledObs(Obs1Loc, p)
         obs2 = SampledObs(Obs2Loc, p)
@@ -33,6 +34,7 @@ class TestStats(unittest.TestCase):
         self.assertTrue(jnp.allclose(obs1.covar_var(obs2), obs1.covar_data(obs2).var()))
 
         O = obs2._data.reshape((-1,2))
+        O = jnp.vstack([O,]*mpi.commSize)
         self.assertTrue(jnp.allclose(obs2.tangent_kernel(), jnp.matmul(O, jnp.conj(jnp.transpose(O)))))
 
 
@@ -78,34 +80,23 @@ class TestStats(unittest.TestCase):
             Egrad2 = 2*jnp.real( psiGrads.covar(Eloc) )
 
             self.assertTrue(jnp.allclose( jnp.real(obs1.mean_and_grad(psi, p0)[1]), Egrad2.ravel() ))
-
-
-        # obs1 = SampledObs(weights=pEx, configs=configsEx, estimator=op_estimator)
-        # E0 = obs1.mean(psi.parameters)
-        # p0 = psi.get_parameters()
-        # dp = 1e-6
-        # p0 = p0.at[0].add(dp)
-        # psi.set_parameters(p0)
-        # configsEx, configsLogPsiEx, pEx = exactSampler.sample(parameters=psi.params)
-        # obs1 = SampledObs(weights=pEx, configs=configsEx, estimator=op_estimator)
-        # E1 = obs1.mean(psi.parameters)
-        # print((E1-E0)/dp)
+            
         
     def test_subset_function(self):
 
         N = 10
         Obs1 = jnp.reshape(jnp.arange(jax.device_count()*N), (jax.device_count(), N, 1))
         p = jax.random.uniform(jax.random.PRNGKey(123), (jax.device_count(),N))
-        p = p / jnp.sum(p)
+        p = p / mpi.global_sum(p)
 
         obs1 = SampledObs(Obs1, p)
         obs2 = obs1.subset(0,N//2)
 
-        self.assertTrue( jnp.allclose(obs1.mean(), jnp.sum(jnp.reshape(Obs1, (jax.device_count(), N)) * p)) )
+        self.assertTrue( jnp.allclose(obs1.mean()[0], mpi.global_sum(jnp.reshape(Obs1, (jax.device_count(), N)) * p)) )
 
-        self.assertTrue(obs2.mean() - jnp.sum(jnp.reshape(Obs1, (jax.device_count(), N))[:,0:N//2] * p[:,0:N//2]) / jnp.sum(p[:,0:N//2]))
+        self.assertTrue(obs2.mean() - mpi.global_sum(jnp.reshape(Obs1, (jax.device_count(), N))[:,0:N//2] * p[:,0:N//2]) / jnp.sum(p[:,0:N//2]))
 
 
-        obs3 = SampledObs(Obs1[:,0:N//2,:], p[:,0:N//2] / jnp.sum(p[:,0:N//2]))
+        obs3 = SampledObs(Obs1[:,0:N//2,:], p[:,0:N//2] / mpi.global_sum(p[:,0:N//2]))
 
         self.assertTrue( jnp.allclose(obs3.covar(), obs2.covar()))
