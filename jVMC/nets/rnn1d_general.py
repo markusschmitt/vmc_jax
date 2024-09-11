@@ -1,6 +1,5 @@
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 import flax
 import flax.linen as nn
 import numpy as np
@@ -119,10 +118,10 @@ class RNN1DGeneral(nn.Module):
             if self.cell == "RNN":
                 self.cells = [RNNCell(actFun=self.actFun, initFun=self.initFunction, dtype=self.dtype) for _ in range(self.depth)]
             elif self.cell == "LSTM":
-                self.cells = [LSTMCell() for _ in range(self.depth)]
+                self.cells = [LSTMCell(features=self.hiddenSize) for _ in range(self.depth)]
                 self.zero_carry = jnp.zeros((self.depth, 2, self.hiddenSize), dtype=self.dtype)
             elif self.cell == "GRU":
-                self.cells = [GRUCell() for _ in range(self.depth)]
+                self.cells = [GRUCell(features=self.hiddenSize) for _ in range(self.depth)]
             else:
                 ValueError("Cell name not recognized.")
         else:
@@ -179,16 +178,20 @@ class RNN1DGeneral(nn.Module):
 
 
 class GRUCell(nn.Module):
+    features: int
+
     @nn.compact
     def __call__(self, carry, state):
-        current_carry, newR = nn.GRUCell(**init_fn_args(recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
+        current_carry, newR = nn.GRUCell(features=self.features, **init_fn_args(recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
         return current_carry, newR[0]
 
 
 class LSTMCell(nn.Module):
+    features: int
+
     @nn.compact
     def __call__(self, carry, state):
-        current_carry, newR = nn.OptimizedLSTMCell(**init_fn_args(recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
+        current_carry, newR = nn.OptimizedLSTMCell(features=self.features, **init_fn_args(recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
         return jnp.asarray(current_carry), newR
 
 

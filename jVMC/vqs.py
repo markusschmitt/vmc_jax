@@ -1,6 +1,5 @@
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 from jax import jit, grad, vmap
 from jax import numpy as jnp
 from jax import random
@@ -481,8 +480,13 @@ class NQS:
     @params.setter
     def params(self, val):
         # Replace 'params' in parameters by `val`
-        self.parameters = freeze({
-                                **unfreeze(self.parameters.pop("params")[0]),
-                                "params": unfreeze(val)
-                                })
+        ps = unfreeze(self.parameters)
+        ps["params"] = unfreeze(val)
+        if isinstance(self.parameters, flax.core.frozen_dict.FrozenDict):
+            ps = freeze(ps)
+        self.parameters = ps
+        # self.parameters = freeze({
+        #                        **unfreeze(self.parameters.pop("params")[0]),
+        #                        "params": unfreeze(val)
+        #                        })
 

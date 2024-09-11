@@ -51,8 +51,8 @@ class TestPOVM(unittest.TestCase):
         self.stepper = jVMC.util.stepper.Heun(timeStep=dt)  # ODE integrator
 
     def test_matrix_to_povm(self):
-        unity = jnp.eye(2)
-        zero_matrix = jnp.zeros((2, 2))
+        unity = jnp.eye(2, dtype=jVMC.global_defs.tCpx)
+        zero_matrix = jnp.zeros((2, 2), dtype=jVMC.global_defs.tCpx)
 
         system_data = {"dim": "1D", "L": 2}
         povm = jVMC.operator.POVM(system_data)
@@ -78,8 +78,8 @@ class TestPOVM(unittest.TestCase):
         self.assertRaises(ValueError, op.matrix_to_povm, zero_matrix, povm.M, povm.T_inv, mode='wrong_mode')
 
     def test_adding_operator(self):
-        unity = jnp.eye(2)
-        zero_matrix = jnp.zeros((2, 2))
+        unity = jnp.eye(2, dtype=jVMC.global_defs.tCpx)
+        zero_matrix = jnp.zeros((2, 2), dtype=jVMC.global_defs.tCpx)
 
         system_data = {"dim": "1D", "L": 2}
         povm = jVMC.operator.POVM(system_data)

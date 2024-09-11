@@ -1,6 +1,5 @@
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 # config.update('jax_disable_jit', True)
 import flax
 import flax.linen as nn
@@ -127,7 +126,7 @@ class RNN2DGeneral(nn.Module):
             if self.cell == "RNN":
                 self.cells = [RNNCell(actFun=self.actFun, initFun=self.initFunction, dtype=self.dtype) for _ in range(self.depth)]
             elif self.cell == "LSTM":
-                self.cells = [LSTMCell() for _ in range(self.depth)]
+                self.cells = [LSTMCell(features=self.hiddenSize) for _ in range(self.depth)]
                 self.zero_carry = jnp.zeros((self.L, self.depth, 2, self.hiddenSize), dtype=self.dtype)
             elif self.cell == "GRU":
                 self.cells = [GRUCell() for _ in range(self.depth)]
@@ -241,6 +240,8 @@ class RNN2DGeneral(nn.Module):
 
 
 class GRUCell(nn.Module):
+    features: int
+
     @nn.compact
     def __call__(self, carryH, carryV, state):
         cellCarryH = nn.Dense(features=carryH.shape[-1],
@@ -249,12 +250,14 @@ class GRUCell(nn.Module):
         cellCarryV = nn.Dense(features=carryV.shape[-1],
                               use_bias=False,
                               dtype=global_defs.tReal)
-        current_carry, newR = nn.GRUCell(param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
+        current_carry, newR = nn.GRUCell(features=self.features, param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
 
         return current_carry, newR[0]
 
 
 class LSTMCell(nn.Module):
+    features: int
+
     @nn.compact
     def __call__(self, carryH, carryV, state):
         cellCarryH = nn.Dense(features=carryH.shape[-1],
@@ -263,7 +266,7 @@ class LSTMCell(nn.Module):
         cellCarryV = nn.Dense(features=carryV.shape[-1],
                               use_bias=False,
                               param_dtype=global_defs.tReal)
-        current_carry, newR = nn.OptimizedLSTMCell(param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
+        current_carry, newR = nn.OptimizedLSTMCell(features=self.features, param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
 
         return jnp.asarray(current_carry), newR
 
