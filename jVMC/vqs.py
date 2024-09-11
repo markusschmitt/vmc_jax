@@ -394,8 +394,6 @@ class NQS:
         if not self.initialized:
             self.set_parameters(deltaP)
 
-        print(self.params)
-        print(self._param_unflatten(deltaP))
         # Compute new parameters
         newParams = jax.tree_util.tree_map(
             jax.lax.add, self.params,
@@ -484,6 +482,8 @@ class NQS:
         # Replace 'params' in parameters by `val`
         ps = unfreeze(self.parameters)
         ps["params"] = unfreeze(val)
+        if isinstance(self.parameters, flax.core.frozen_dict.FrozenDict):
+            ps = freeze(ps)
         self.parameters = ps
         # self.parameters = freeze({
         #                        **unfreeze(self.parameters.pop("params")[0]),
