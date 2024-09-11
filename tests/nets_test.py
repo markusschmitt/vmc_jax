@@ -1,12 +1,9 @@
 import unittest
-import sys
-sys.path.append(sys.path[0] + "../..")
 import jVMC
 import jVMC.nets as nets
 
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 import jax.random as random
 import jax.numpy as jnp
 import numpy as np
