@@ -64,7 +64,7 @@ class MinSR:
         """
 
         T = gradients.tangent_kernel()
-        T_inv = jnp.linalg.pinv(T, rcond=self.pinvTol, hermitian=True)
+        T_inv = jnp.linalg.pinv(T, rtol=self.pinvTol, hermitian=True)
 
         eloc_all = mpi.gather(eloc._data).reshape((-1,))
         gradients_all = mpi.gather(gradients._data)

@@ -143,7 +143,7 @@ class TestPOVM(unittest.TestCase):
         Sy_avg = (w * jnp.cos(w * times) - jnp.sin(w * times)) / w * jnp.exp(-times)
         Sz_avg = 6 / w * jnp.sin(w * times) * jnp.exp(-times)
 
-        print(Sz_avg-jnp.asarray(res["Z"]))
+        # print(Sz_avg-jnp.asarray(res["Z"]))
         self.assertTrue(jnp.allclose(Sx_avg, jnp.asarray(res["X"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sy_avg, jnp.asarray(res["Y"]), atol=1e-2))
         self.assertTrue(jnp.allclose(Sz_avg, jnp.asarray(res["Z"]), atol=1e-2))

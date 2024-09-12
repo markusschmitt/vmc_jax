@@ -585,7 +585,6 @@ class TestExactSampler(unittest.TestCase):
         s, psi_s, pex = exactSampler.sample()
 
         import flax
-        print(isinstance(psi.parameters, flax.core.frozen_dict.FrozenDict))
         self.assertTrue(jnp.max((psi(s) - psi_s) / psi_s) < 1e-14)
         
         s, psi_s, pex = exactSampler.sample(parameters=p0)
