@@ -171,6 +171,17 @@ class TestOperator(unittest.TestCase):
                         jnp.array([0.,0.,0.,0.]),
                         rtol=1e-15)
             )
+        
+    def test_opstr(self):
+        op1 = op.Sz(3)
+        op2 = op.Sx(5)
+
+        opstr1 = 13. * op1 * op2
+        opstr2 = 1.j * opstr1 * op1
+
+        self.assertTrue(jnp.allclose(opstr2[0](), 13.j))
+        for o in opstr2[1:]:
+            self.assertTrue(isinstance(o, (op.LocalOp, dict)))
 
 
 if __name__ == "__main__":

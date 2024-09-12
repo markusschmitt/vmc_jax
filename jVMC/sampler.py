@@ -2,15 +2,12 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 import numpy as np
-from jax import vmap, jit
-import flax
+from jax import vmap
 
 import jVMC.mpi_wrapper as mpi
 from jVMC.nets.sym_wrapper import SymNet
 
 from functools import partial
-
-import time
 
 import jVMC.global_defs as global_defs
 
