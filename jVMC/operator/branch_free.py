@@ -425,9 +425,14 @@ class BranchFreeOperator(Operator):
                 nEls = (N + commSize - 1) // commSize
                 myStart = nEls * rank
                 myEnd = min(myStart+nEls, N)
-                res = init[myStart:myEnd]
+
+                firstIdx = [0] + [prefactor[nEls * r][0]-1 for r in range(1,commSize)]
+                lastIdx = [prefactor[min(nEls * (r+1), N-1)][0]-1 for r in range(commSize-1)] + [len(init)]
+
+                res = init[firstIdx[rank]:lastIdx[rank]]
+
                 for i,f in prefactor[myStart:myEnd]:
-                    res[i-myStart] = f(*args)
+                    res[i-firstIdx[rank]] = f(*args)
 
                 res = np.concatenate(comm.allgather(res), axis=0)
                 
