@@ -1,5 +1,5 @@
 import jax
-from jax import jit, vmap, grad
+from jax import vmap
 import jax.numpy as jnp
 import numpy as np
 
@@ -8,7 +8,6 @@ from mpi4py import MPI
 from . import Operator
 
 import functools
-import sys
 
 opDtype = global_defs.tCpx
 
@@ -28,8 +27,10 @@ def Id(idx=0, lDim=2):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([j for j in range(lDim)], dtype=np.int32),
-            'matEls': jnp.array([1. for j in range(lDim)], dtype=opDtype), 'diag': True}
+    return LocalOp(idx = idx,
+                   map = jnp.array([j for j in range(lDim)], dtype=np.int32),
+                   matEls = jnp.array([1. for j in range(lDim)], dtype=opDtype),
+                   diag = True)
 
 
 def Sx(idx):
@@ -44,7 +45,10 @@ def Sx(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([1, 0], dtype=np.int32), 'matEls': jnp.array([1.0, 1.0], dtype=opDtype), 'diag': False}
+    return LocalOp(idx = idx,
+                   map = jnp.array([1, 0], dtype=np.int32),
+                   matEls = jnp.array([1.0, 1.0], dtype=opDtype),
+                   diag = False)
 
 
 def Sy(idx):
@@ -59,7 +63,10 @@ def Sy(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([1, 0], dtype=np.int32), 'matEls': jnp.array([1.j, -1.j], dtype=opDtype), 'diag': False}
+    return LocalOp(idx = idx,
+                   map = jnp.array([1, 0], dtype=np.int32),
+                   matEls = jnp.array([1.j, -1.j], dtype=opDtype), 
+                   diag = False)
 
 
 def Sz(idx):
@@ -74,7 +81,10 @@ def Sz(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([0, 1], dtype=np.int32), 'matEls': jnp.array([-1.0, 1.0], dtype=opDtype), 'diag': True}
+    return LocalOp(idx = idx, 
+                   map = jnp.array([0, 1], dtype=np.int32), 
+                   matEls = jnp.array([-1.0, 1.0], dtype=opDtype),
+                   diag = True)
 
 
 def Sp(idx):
@@ -89,7 +99,10 @@ def Sp(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([1, 0], dtype=np.int32), 'matEls': jnp.array([1.0, 0.0], dtype=opDtype), 'diag': False}
+    return LocalOp(idx = idx, 
+                   map = jnp.array([1, 0], dtype=np.int32), 
+                   matEls = jnp.array([1.0, 0.0], dtype=opDtype),
+                   diag = False)
 
 
 def Sm(idx):
@@ -104,74 +117,77 @@ def Sm(idx):
 
     """
 
-    return {'idx': idx, 'map': jnp.array([0, 0], dtype=np.int32), 'matEls': jnp.array([0.0, 1.0], dtype=opDtype), 'diag': False}
+    return LocalOp(idx = idx, 
+                   map = jnp.array([0, 0], dtype=np.int32),
+                   matEls = jnp.array([0.0, 1.0], dtype=opDtype),
+                   diag = False)
 
 
 ######################
 # fermionic number operator
 def number(idx):
-    """Returns a :math:`c^\dagger c` femrioic number operator
+    """Returns a :math:`c^\dagger c` fermionic number operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`c^\dagger c` femrioic number operator
+        Dictionary defining :math:`c^\dagger c` fermionic number operator
 
     """
 
-    return {
-        'idx': idx,
-        'map': jax.numpy.array([0,1],dtype=np.int32),
-        'matEls': jax.numpy.array([0.,1.],dtype=opDtype),
-        'diag': True,
-        'fermionic': False
-    }
+    return LocalOp(
+        idx = idx,
+        map = jax.numpy.array([0,1],dtype=np.int32),
+        matEls = jax.numpy.array([0.,1.],dtype=opDtype),
+        diag = True,
+        fermionic = False
+    )
 
 ######################
 # fermionic creation operator
 def creation(idx): 
-    """Returns a :math:`c^\dagger` femrioic creation operator
+    """Returns a :math:`c^\dagger` fermionic creation operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`c^\dagger` femrioic creation operator
+        Dictionary defining :math:`c^\dagger` fermionic creation operator
 
     """
     
-    return {
-        'idx': idx,
-        'map': jax.numpy.array([1,0],dtype=np.int32),
-        'matEls': jax.numpy.array([1.,0.],dtype=opDtype),
-        'diag': False,
-        "fermionic": True
-    }
+    return LocalOp(
+        idx = idx,
+        map = jax.numpy.array([1,0],dtype=np.int32),
+        matEls = jax.numpy.array([1.,0.],dtype=opDtype),
+        diag = False,
+        fermionic = True
+    )
 
 ######################
 # fermionic annihilation operator
 def annihilation(idx): 
-    """Returns a :math:`c` femrioic creation operator
+    """Returns a :math:`c` fermionic creation operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`c` femrioic creation operator
+        Dictionary defining :math:`c` fermionic creation operator
 
     """ 
     
-    return {
-        'idx': idx,
-        'map': jax.numpy.array([1,0],dtype=np.int32),
-        'matEls': jax.numpy.array([0.,1.],dtype=opDtype),
-        'diag': False,
-        "fermionic": True
-     }
+    return LocalOp(
+        idx = idx,
+        map = jax.numpy.array([1,0],dtype=np.int32),
+        matEls = jax.numpy.array([0.,1.],dtype=opDtype),
+        diag = False,
+        fermionic = True
+    )
 
 
 import copy
@@ -182,6 +198,62 @@ def _id_prefactor(*args, val=1.0, **kwargs):
 
 def _prod_fun(f1, f2, *args, **kwargs):
     return f1(*args) * f2(*args)
+
+
+class OpStr(tuple):
+    """This class provides the interface for operator strings
+    """
+
+    def __init__(self, *args):
+
+        super(OpStr, self).__init__()
+
+
+    def __new__(cls, *args):
+
+        factors = []
+        ops = []
+        for o in args:
+            if isinstance(o, (LocalOp, dict)):
+                ops.append(o)
+            else:
+                if callable(o):
+                    factors.append(o)
+                else:
+                    factors.append(functools.partial(_id_prefactor, val=o))
+
+        while len(factors)>1:
+            factors[0] = functools.partial(_prod_fun, f1=factors[0], f2=factors.pop())
+
+        return super(OpStr, cls).__new__(cls, tuple(factors + ops))
+
+
+    def __mul__(self, other):
+
+        if not isinstance(other, (tuple, OpStr)):
+            other = OpStr(other)
+
+        if callable(other[0]):
+            return OpStr(*(other[0] * self), *(other[1:]))
+        
+        return OpStr(*self, *other)
+    
+    def __rmul__(self, a):
+
+        if isinstance(a, dict):
+            return OpStr(LocalOp(**a), *self)
+
+        newOp = [copy.deepcopy(o) for o in self]
+        if not callable(a):
+            a = functools.partial(_id_prefactor, val=a)
+
+        if callable(newOp[0]):
+            newOp[0] = functools.partial(_prod_fun, f1=a, f2=newOp[0])
+        else:
+            newOp = [a] + newOp
+
+        return OpStr(*tuple(newOp))
+
 
 def scal_opstr(a, op):
     """Add prefactor to operator string
@@ -195,16 +267,46 @@ def scal_opstr(a, op):
 
     """
 
-    newOp = [copy.deepcopy(o) for o in op]
-    if not callable(a):
-        a = functools.partial(_id_prefactor, val=a)
+    if not isinstance(op, (tuple, OpStr)):
+        raise RuntimeError("Can add prefactors only to OpStr or tuple objects.")
+    
+    if isinstance(op, tuple):
+        op = OpStr(*op)
 
-    if callable(newOp[0]):
-        newOp[0] = functools.partial(_prod_fun, f1=a, f2=newOp[0])
-    else:
-        newOp = [a] + newOp
+    return a * op
 
-    return tuple(newOp)
+
+class LocalOp(dict):
+    """This class provides the interface for operators acting on a local Hilbert space
+
+    Initializer arguments:
+
+        * "idx": Lattice site index,
+        * "map": Indices of non-zero matrix elements,
+        * "matEls": Non-zero matrix elements,
+        * "diag": Boolean indicating, whether the operator is diagonal,
+        * "fermionic": Boolean indicating, whether this is a fermionic operator
+    """
+
+    def __init__(self, **kwargs):
+        for k in kwargs.keys():
+            self[k] = kwargs[k]
+
+
+    def __mul__(self, other):
+
+        if isinstance(other, dict):
+            return OpStr(self, LocalOp(**other))
+        
+        if isinstance(other, OpStr):
+            return OpStr(self, *other)
+        
+        return OpStr(self, other)
+    
+    def __rmul__(self, other):
+
+        return other * OpStr(self)
+    
 
 class BranchFreeOperator(Operator):
     """This class provides functionality to compute operator matrix elements
@@ -235,6 +337,10 @@ class BranchFreeOperator(Operator):
 
         self.ops.append(opDescr)
         self.compiled = False
+
+    def __iadd__(self, opDescr):
+        self.add(opDescr)
+        return self
 
     def compile(self):
         """Compiles a operator mapping function from the given operator strings.

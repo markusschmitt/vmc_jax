@@ -31,9 +31,12 @@ class TestOperator(unittest.TestCase):
 
         h = op.BranchFreeOperator()
 
-        h.add(op.scal_opstr(2., (op.Sp(0),)))
-        h.add(op.scal_opstr(2., (op.Sp(1),)))
-        h.add(op.scal_opstr(2., (op.Sp(2),)))
+        # h.add(op.scal_opstr(2., (op.Sp(0),)))
+        # h.add(op.scal_opstr(2., (op.Sp(1),)))
+        # h.add(op.scal_opstr(2., (op.Sp(2),)))
+        h += 2. * op.Sp(0)
+        h += 2. * op.Sp(1)
+        h += 2. * op.Sp(2)
 
         sp, matEl = h.get_s_primes(s)
 
