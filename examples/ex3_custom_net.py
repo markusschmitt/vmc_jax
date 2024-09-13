@@ -1,7 +1,6 @@
 import jax
 import flax
 import jVMC
-import numpy as np
 
 # This class defines the network structure of a complex RBM
 
