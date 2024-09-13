@@ -1,12 +1,7 @@
 import os
 
 import jax
-from jax.config import config
-config.update("jax_enable_x64", True)
-
-import jax.random as random
-import flax
-import jax.numpy as jnp
+jax.config.update("jax_enable_x64", True)
 
 import numpy as np
 

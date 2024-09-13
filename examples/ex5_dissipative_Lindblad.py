@@ -1,13 +1,9 @@
 import matplotlib.pyplot as plt
-import numpy as np
-import flax
-import jax.random as random
-from jax.config import config
 import jax.numpy as jnp
 import jax
 import jVMC
 from functools import partial
-config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 
 
 def copy_dict(a):

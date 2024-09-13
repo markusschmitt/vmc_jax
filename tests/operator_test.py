@@ -15,6 +15,29 @@ import jVMC.nets as nets
 from jVMC.vqs import NQS
 import jVMC.global_defs as global_defs
 
+import flax.linen as nn
+class Target(nn.Module):
+  """Target wave function, returns a vector with the same dimension as the Hilbert space
+
+    Initialization arguments:
+        * ``L``: System size
+        * ``d``: local Hilbert space dimension
+        * ``delta``: small number to avoid log(0)
+
+    """
+  L: int
+  d: float = 2.00
+  delta: float = 1e-15
+
+  @nn.compact
+  def __call__(self, s):
+    kernel = self.param('kernel',
+                        nn.initializers.constant(1),
+                        (int(self.d**self.L)))
+    # return amplitude for state s
+    idx = ((self.d**jnp.arange(self.L)).dot(s[::-1])).astype(int) # NOTE that the state is reversed to account for different bit conventions used in openfermion
+    return jnp.log(abs(kernel[idx]+self.delta)) + 1.j*jnp.angle(kernel[idx]) 
+
 
 def get_shape(shape):
     return (global_defs.device_count(),) + shape
@@ -31,9 +54,6 @@ class TestOperator(unittest.TestCase):
 
         h = op.BranchFreeOperator()
 
-        # h.add(op.scal_opstr(2., (op.Sp(0),)))
-        # h.add(op.scal_opstr(2., (op.Sp(1),)))
-        # h.add(op.scal_opstr(2., (op.Sp(2),)))
         h += 2. * op.Sp(0)
         h += 2. * op.Sp(1)
         h += 2. * op.Sp(2)
@@ -144,8 +164,10 @@ class TestOperator(unittest.TestCase):
 
         def commutator(i,j):
             Comm = op.BranchFreeOperator()
-            Comm.add(op.scal_opstr( 1., (op.annihilation(i), op.creation(j), ) ) )
-            Comm.add(op.scal_opstr( 1., (op.creation(j), op.annihilation(i), ) ) )
+            # Comm.add(op.scal_opstr( 1., (op.annihilation(i), op.creation(j), ) ) )
+            # Comm.add(op.scal_opstr( 1., (op.creation(j), op.annihilation(i), ) ) )
+            Comm.add(op.scal_opstr( 1., (op.creation(j), op.annihilation(i)) ) )
+            Comm.add(op.scal_opstr( 1., (op.annihilation(i), op.creation(j)) ) )
             return Comm
 
         observalbes_dict = {
@@ -171,6 +193,48 @@ class TestOperator(unittest.TestCase):
                         jnp.array([0.,0.,0.,0.]),
                         rtol=1e-15)
             )
+        
+
+        t = - 1.0 # hopping
+        mu = -2.0 # chemical potential
+        V = 4.0 # interaction
+        L = 4   # number of sites
+        flavour = 2 # number of flavours
+        flavourL = flavour*L # number of spins times sites
+
+        # initalize the Hamitonian
+        hamiltonian = op.BranchFreeOperator()
+        # impurity definitions
+        site1UP = 0
+        site1DO = flavourL-1#//flavour
+        # loop over the 1d lattice
+        for i in range(0,flavourL//flavour):
+            # interaction
+            hamiltonian.add(op.scal_opstr( V, ( op.number(site1UP + i) , op.number(site1DO - i) ) ) )
+            # chemical potential
+            hamiltonian.add(op.scal_opstr(mu , ( op.number(site1UP + i) ,) ) )
+            hamiltonian.add(op.scal_opstr(mu , ( op.number(site1DO - i) ,) ) )
+            if i == flavourL//flavour-1:
+                continue
+            # up chain hopping
+            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1UP + i + 1), op.annihilation(site1UP + i) ,  ) ) )
+            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1UP + i), op.annihilation(site1UP + i + 1) ,  ) ) )
+            # down chain hopping
+            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1DO - i - 1), op.annihilation(site1DO - i) ,  ) ) )
+            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1DO - i), op.annihilation(site1DO - i - 1) ,  ) ) )
+
+        b = np.loadtxt("tests/data_ref/fermion_ref.txt", dtype=np.complex128)
+        chi_model = Target(L=flavourL, d=2)
+        chi = NQS(chi_model)
+        chi(jnp.array(jnp.ones((1, 1, flavourL))))
+        chi.set_parameters(b)
+        chiSampler = jVMC.sampler.ExactSampler(chi, (flavourL,))
+        s, logPsi, p = chiSampler.sample()
+        sPrime, _ = hamiltonian.get_s_primes(s)
+        Oloc = hamiltonian.get_O_loc(s, chi, logPsi)
+        Omean = jVMC.mpi_wrapper.global_mean(Oloc,p)
+
+        self.assertTrue(jnp.allclose(Omean, -9.95314531))
         
     def test_opstr(self):
         op1 = op.Sz(3)

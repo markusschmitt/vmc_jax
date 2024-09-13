@@ -374,20 +374,19 @@ class BranchFreeOperator(Operator):
             if callable(op[0]):
                 self.prefactor.append((o, jax.jit(op[0])))
                 k0=1
-            #else:
-            #    self.prefactor.append(_id_prefactor)
             isDiagonal = True
-            for k in range(k0, k0+self.maxOpStrLength):
-                if k < len(op):
-                    if not op[k]['diag']:
+            for k in range(self.maxOpStrLength):
+                kRev = len(op) - k - 1
+                if kRev >= k0:
+                    if not op[kRev]['diag']:
                         isDiagonal = False
-                    self.idx[o].append(op[k]['idx'])
-                    self.map[o].append(op[k]['map'])
-                    self.matEls[o].append(op[k]['matEls'])
+                    self.idx[o].append(op[kRev]['idx'])
+                    self.map[o].append(op[kRev]['map'])
+                    self.matEls[o].append(op[kRev]['matEls'])
                     ######## fermions ########
                     fermi_check = True
-                    if "fermionic" in op[k]:
-                        if op[k]["fermionic"]:  
+                    if "fermionic" in op[kRev]:
+                        if op[kRev]["fermionic"]:  
                             fermi_check = False
                             self.fermionic[o].append(1.)
                     if fermi_check:
