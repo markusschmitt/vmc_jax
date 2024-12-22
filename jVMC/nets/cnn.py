@@ -61,7 +61,8 @@ class CNN(nn.Module):
         # List of axes that will be summed for symmetrization
         reduceDims = tuple([-i - 1 for i in range(len(self.strides) + 2)])
 
-        init_args = init_fn_args(dtype=global_defs.tReal, kernel_init=initFunction)
+        # init_args = init_fn_args(dtype=global_defs.tReal, kernel_init=initFunction)
+        init_args = dict(dtype=global_defs.tReal, kernel_init=initFunction)
 
         # Add feature dimension
         x = jnp.expand_dims(jnp.expand_dims(2 * x - 1, axis=0), axis=-1)
@@ -126,7 +127,8 @@ class CpxCNN(nn.Module):
         for l in range(len(activationFunctions), len(self.channels)):
             activationFunctions.append(self.actFun[-1])
         
-        init_args = init_fn_args(dtype=global_defs.tCpx, kernel_init=initFunction)
+        # init_args = init_fn_args(dtype=global_defs.tCpx, kernel_init=initFunction)
+        init_args = dict(dtype=global_defs.tCpx, kernel_init=initFunction)
 
         # List of axes that will be summed for symmetrization
         reduceDims = tuple([-i - 1 for i in range(len(self.strides) + 2)])
