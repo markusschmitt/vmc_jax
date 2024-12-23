@@ -113,7 +113,7 @@ class RNN2DGeneral(nn.Module):
     def setup(self):
         if self.realValuedParams:
             self.dtype = global_defs.tReal
-            self.initFunction = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_avg", distribution="uniform")
+            self.initFunction = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_avg", distribution="uniform", dtype=self.dtype)
         else:
             self.dtype = global_defs.tCpx
             self.initFunction = jVMC.nets.initializers.cplx_variance_scaling

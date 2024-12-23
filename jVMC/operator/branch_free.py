@@ -449,7 +449,8 @@ class BranchFreeOperator(Operator):
         sp = jnp.array([s] * numOps)
 
         ######## fermions ########
-        mask = jnp.tril(jnp.ones((s.shape[-1],s.shape[-1]),dtype=int),-1).T
+        dim = s.ravel().shape[0]
+        mask = jnp.tril(jnp.ones((dim,dim),dtype=int),-1).T
         ##########################
 
         def apply_fun(c, x):
