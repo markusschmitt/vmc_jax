@@ -108,10 +108,10 @@ class RNN1DGeneral(nn.Module):
 
         if self.realValuedParams:
             self.dtype = global_defs.tReal
-            self.initFunction = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_avg", distribution="uniform")
+            self.initFunction = jax.nn.initializers.variance_scaling(scale=self.initScale, mode="fan_avg", distribution="uniform", dtype=self.dtype)
         else:
             self.dtype = global_defs.tCpx
-            self.initFunction = jVMC.nets.initializers.cplx_variance_scaling
+            self.initFunction = jVMC.nets.initializers.cplx_variance_scaling 
 
         if isinstance(self.cell, str):
             self.zero_carry = jnp.zeros((self.depth, 1, self.hiddenSize), dtype=self.dtype)
@@ -182,7 +182,7 @@ class GRUCell(nn.Module):
 
     @nn.compact
     def __call__(self, carry, state):
-        current_carry, newR = nn.GRUCell(features=self.features, **init_fn_args(recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
+        current_carry, newR = nn.GRUCell(features=self.features, **init_fn_args(param_dtype=global_defs.tReal, recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
         return current_carry, newR[0]
 
 
@@ -191,7 +191,7 @@ class LSTMCell(nn.Module):
 
     @nn.compact
     def __call__(self, carry, state):
-        current_carry, newR = nn.OptimizedLSTMCell(features=self.features, **init_fn_args(recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
+        current_carry, newR = nn.OptimizedLSTMCell(features=self.features, **init_fn_args(param_dtype=global_defs.tReal, recurrent_kernel_init=jax.nn.initializers.orthogonal(dtype=global_defs.tReal)))(carry, state)
         return jnp.asarray(current_carry), newR
 
 
