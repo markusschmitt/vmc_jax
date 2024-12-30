@@ -215,6 +215,11 @@ class NQS:
             self.netTreeDef = jax.tree_util.tree_structure(self.parameters["params"])
             self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters["params"])[0]]))
 
+            self.variable_name = None
+            for k in self.variables.keys():
+                if k != "params":
+                    self.variable_name = k
+
             self.initialized = True
 
     # ** end init_net
@@ -466,6 +471,14 @@ class NQS:
         return paramOut
 
     # **  end def set_parameters
+
+    def set_variable(self, name, val):
+
+        if self.variable_name is not None:
+            ps = unfreeze(self.parameters)
+            ps[self.variable_name][name] = val
+
+        
 
     @property
     def is_generator(self):
