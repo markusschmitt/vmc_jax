@@ -216,7 +216,7 @@ class NQS:
             self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters["params"])[0]]))
 
             self.variable_name = None
-            for k in self.variables.keys():
+            for k in self.parameters.keys():
                 if k != "params":
                     self.variable_name = k
 
@@ -476,10 +476,12 @@ class NQS:
 
         if self.variable_name is not None:
             ps = unfreeze(self.parameters)
-            ps[self.variable_name][name] = val
+            ps[self.variable_name][name] = jnp.array(val)
+            if isinstance(self.parameters, flax.core.frozen_dict.FrozenDict):
+                ps = freeze(ps)
+            self.parameters = ps
 
         
-
     @property
     def is_generator(self):
         return self._isGenerator
