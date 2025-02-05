@@ -69,9 +69,9 @@ class RNN1DGeneral(nn.Module):
     This model can produce real positive or complex valued output. In either case the output is
     normalized such that
 
-        :math:`\sum_s |RNN(s)|^{1/\kappa}=1`.
+        :math:`\\sum_s |RNN(s)|^{1/\\kappa}=1`.
 
-    Here, :math:`\kappa` corresponds to the initialization parameter ``logProbFactor``. Thereby, the RNN
+    Here, :math:`\\kappa` corresponds to the initialization parameter ``logProbFactor``. Thereby, the RNN
     can represent both probability distributions and wave functions. Real or complex valued output is 
     chosen through the parameter ``realValuedOutput``.
 

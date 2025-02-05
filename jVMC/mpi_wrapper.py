@@ -157,7 +157,7 @@ def global_mean(data, p):
 
     The mean is computed using the given probabilities, i.e.,
 
-        :math:`\\langle X\\rangle=\sum_{j=1}^{N_S} p_jX_j`
+        :math:`\\langle X\\rangle=\\sum_{j=1}^{N_S} p_jX_j`
 
     Arguments:
         * ``data``: Array of input data.
@@ -184,7 +184,7 @@ def global_variance(data, p):
 
     The mean is computed using the given probabilities, i.e.,
 
-        :math:`\\text{Var}(X)=\sum_{j=1}^{N_S} p_j |X_j-\\langle X\\rangle|^2`
+        :math:`\\text{Var}(X)=\\sum_{j=1}^{N_S} p_j |X_j-\\langle X\\rangle|^2`
 
     Arguments:
         * ``data``: Array of input data.
@@ -228,7 +228,7 @@ def global_covariance(data, p):
 
     The mean is computed using the given probabilities, i.e.,
 
-        :math:`\\text{Cov}(X)=\sum_{j=1}^{N_S} p_jX_j\\cdot X_j^\\dagger - \\bigg(\sum_{j=1}^{N_S} p_jX_j\\bigg)\\cdot\\bigg(\sum_{j=1}^{N_S}p_jX_j^\\dagger\\bigg)`
+        :math:`\\text{Cov}(X)=\\sum_{j=1}^{N_S} p_jX_j\\cdot X_j^\\dagger - \\bigg(\\sum_{j=1}^{N_S} p_jX_j\\bigg)\\cdot\\bigg(\\sum_{j=1}^{N_S}p_jX_j^\\dagger\\bigg)`
 
     Arguments:
         * ``data``: Array of input data.
