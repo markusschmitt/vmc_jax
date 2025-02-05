@@ -42,7 +42,7 @@ class Operator(metaclass=abc.ABCMeta):
 
     **Example:**
 
-        Here we define a :math:`\hat\sigma_1^x` operator acting on lattice site :math:`1` of a spin-1/2 chain.
+        Here we define a :math:`\\hat\\sigma_1^x` operator acting on lattice site :math:`1` of a spin-1/2 chain.
 
         .. literalinclude:: ../../examples/ex1_custom_operator.py
                 :linenos:
@@ -117,7 +117,7 @@ class Operator(metaclass=abc.ABCMeta):
         """Compute matrix elements
 
         For a list of computational basis states :math:`s` this member function computes the corresponding \
-        matrix elements :math:`O_{s,s'}=\langle s|\hat O|s'\\rangle` and their respective configurations \
+        matrix elements :math:`O_{s,s'}=\\langle s|\\hat O|s'\\rangle` and their respective configurations \
         :math:`s'`.
 
         Arguments:
@@ -172,7 +172,7 @@ class Operator(metaclass=abc.ABCMeta):
         Arguments:
             * ``samples``: Sample of computational basis configurations :math:`s`.
             * ``psi``: Neural quantum state.
-            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\\psi(s))`
             * ``*args``: Further positional arguments for the operator.
 
         Returns:
@@ -197,13 +197,13 @@ class Operator(metaclass=abc.ABCMeta):
         This member function assumes that ``get_s_primes(s)`` has been called before, as \
         internally stored matrix elements :math:`O_{s,s'}` are used.
 
-        Computes :math:`O_{loc}(s)=\sum_{s'} O_{s,s'}\\frac{\psi(s')}{\psi(s)}`, given the \
-        logarithmic wave function amplitudes of the involved configurations :math:`\\ln(\psi(s))` \
-        and :math:`\\ln\psi(s')`
+        Computes :math:`O_{loc}(s)=\\sum_{s'} O_{s,s'}\\frac{\\psi(s')}{\\psi(s)}`, given the \
+        logarithmic wave function amplitudes of the involved configurations :math:`\\ln(\\psi(s))` \
+        and :math:`\\ln\\psi(s')`
 
         Arguments:
-            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
-            * ``logPsiSP``: Logarithmic amplitudes :math:`\\ln(\psi(s'))`
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\\psi(s))`
+            * ``logPsiSP``: Logarithmic amplitudes :math:`\\ln(\\psi(s'))`
 
         Returns:
             :math:`O_{loc}(s)` for each configuration :math:`s`.
@@ -214,13 +214,13 @@ class Operator(metaclass=abc.ABCMeta):
     def get_O_loc_batched(self, samples, psi, logPsiS, batchSize, *args):
         """Compute :math:`O_{loc}(s)` in batches.
 
-        Computes :math:`O_{loc}(s)=\sum_{s'} O_{s,s'}\\frac{\psi(s')}{\psi(s)}` in a batch-wise manner
+        Computes :math:`O_{loc}(s)=\\sum_{s'} O_{s,s'}\\frac{\\psi(s')}{\\psi(s)}` in a batch-wise manner
         to avoid out-of-memory issues.
 
         Arguments:
             * ``samples``: Sample of computational basis configurations :math:`s`.
             * ``psi``: Neural quantum state.
-            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\psi(s))`
+            * ``logPsiS``: Logarithmic amplitudes :math:`\\ln(\\psi(s))`
             * ``batchSize``: Batch size.
             * ``*args``: Further positional arguments for the operator.
 
@@ -287,8 +287,8 @@ class Operator(metaclass=abc.ABCMeta):
     def get_estimator_function(self, psi, *args):
         """Get a function that computes :math:`O_{loc}(\\theta, s)`.
 
-        Returns a function that computes :math:`O_{loc}(\\theta, s)=\sum_{s'} O_{s,s'}\\frac{\psi_\\theta(s')}{\psi_\\theta(s)}` 
-        for a given configuration :math:`s` and parameters :math:`\\theta` of a given ansatz :math:`\psi_\\theta(s)`.
+        Returns a function that computes :math:`O_{loc}(\\theta, s)=\\sum_{s'} O_{s,s'}\\frac{\\psi_\\theta(s')}{\\psi_\\theta(s)}` 
+        for a given configuration :math:`s` and parameters :math:`\\theta` of a given ansatz :math:`\\psi_\\theta(s)`.
 
         Arguments:
             * ``psi``: Neural quantum state.

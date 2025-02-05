@@ -20,7 +20,7 @@ class MinSR:
 
     Initializer arguments:
         * ``sampler``: A sampler object.
-        * ``svdTol``: Regularization parameter :math:`\epsilon_{SVD}`, see above.
+        * ``svdTol``: Regularization parameter :math:`\\epsilon_{SVD}`, see above.
         * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` \
             or `'imag'` for :math:`q=\\text{Im}`.
         * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.

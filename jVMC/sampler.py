@@ -73,7 +73,7 @@ class MCSampler:
         :math:`p_{\\mu}(s)=\\frac{|\\psi(s)|^{\\mu}}{\\sum_s|\\psi(s)|^{\\mu}}`.
 
     For :math:`\\mu=2` this corresponds to sampling from the Born distribution. \
-    :math:`0\leq\\mu<2` can be used to perform importance sampling \
+    :math:`0\\leq\\mu<2` can be used to perform importance sampling \
     (see `[arXiv:2108.08631] <https://arxiv.org/abs/2108.08631>`_).
 
     Sampling is automatically distributed accross MPI processes and locally available \
@@ -506,7 +506,7 @@ class ExactSampler:
         Returns:
             ``configs, logPsi, p``: All computational basis configurations, \
             corresponding wave function coefficients, and probabilities \
-            :math:`|\psi(s)|^2` (normalized).
+            :math:`|\\psi(s)|^2` (normalized).
         """
 
         if parameters is not None:

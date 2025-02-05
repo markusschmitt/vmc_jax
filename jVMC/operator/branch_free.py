@@ -34,14 +34,14 @@ def Id(idx=0, lDim=2):
 
 
 def Sx(idx):
-    """Returns a :math:`\hat\sigma^x` Pauli operator
+    """Returns a :math:`\\hat\\sigma^x` Pauli operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`\hat\sigma^x` Pauli operator
+        Dictionary defining :math:`\\hat\\sigma^x` Pauli operator
 
     """
 
@@ -52,14 +52,14 @@ def Sx(idx):
 
 
 def Sy(idx):
-    """Returns a :math:`\hat\sigma^x` Pauli operator
+    """Returns a :math:`\\hat\\sigma^x` Pauli operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`\hat\sigma^x` Pauli operator
+        Dictionary defining :math:`\\hat\\sigma^x` Pauli operator
 
     """
 
@@ -70,14 +70,14 @@ def Sy(idx):
 
 
 def Sz(idx):
-    """Returns a :math:`\hat\sigma^z` Pauli operator
+    """Returns a :math:`\\hat\\sigma^z` Pauli operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`\hat\sigma^z` Pauli operator
+        Dictionary defining :math:`\\hat\\sigma^z` Pauli operator
 
     """
 
@@ -126,14 +126,14 @@ def Sm(idx):
 ######################
 # fermionic number operator
 def number(idx):
-    """Returns a :math:`c^\dagger c` fermionic number operator
+    """Returns a :math:`c^\\dagger c` fermionic number operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`c^\dagger c` fermionic number operator
+        Dictionary defining :math:`c^\\dagger c` fermionic number operator
 
     """
 
@@ -148,14 +148,14 @@ def number(idx):
 ######################
 # fermionic creation operator
 def creation(idx): 
-    """Returns a :math:`c^\dagger` fermionic creation operator
+    """Returns a :math:`c^\\dagger` fermionic creation operator
 
     Args:
 
     * ``idx``: Index of the local Hilbert space.
 
     Returns:
-        Dictionary defining :math:`c^\dagger` fermionic creation operator
+        Dictionary defining :math:`c^\\dagger` fermionic creation operator
 
     """
     
