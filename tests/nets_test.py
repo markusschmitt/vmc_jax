@@ -104,6 +104,22 @@ class TestCpxNet(unittest.TestCase):
         psiS0 = rnn.apply(params, S0)
         self.assertTrue(jnp.max(jnp.abs(psiS0 - (-5.549380111605981-0.0316078980423882j))) < 1e-12)
 
+    def test_cpx_cnn_1d(self):
+        cnn = nets.CpxCNN(F=(4,), channels=[3, 2, 5])
+        params = cnn.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
+
+        self.assertTrue(params['params']['Conv_1']['kernel'].dtype == jVMC.global_defs.tCpx)
+        self.assertTrue(params['params']['Conv_1']['bias'].dtype == jVMC.global_defs.tCpx)
+
+        S0 = jnp.pad(jnp.array([1, 0, 1, 1, 0]), (0, 4), 'wrap')
+        S = jnp.array(
+            [S0[i:i + 5]for i in range(5)]
+        )
+        psiS = jax.vmap(lambda s: cnn.apply(params, s))(S)
+        psiS = psiS - psiS[0]
+
+        self.assertTrue(jnp.max(jnp.abs(psiS)) < 1e-12)
+
 
 if __name__ == "__main__":
     unittest.main()
