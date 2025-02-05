@@ -129,7 +129,7 @@ class RNN2DGeneral(nn.Module):
                 self.cells = [LSTMCell(features=self.hiddenSize) for _ in range(self.depth)]
                 self.zero_carry = jnp.zeros((self.L, self.depth, 2, self.hiddenSize), dtype=self.dtype)
             elif self.cell == "GRU":
-                self.cells = [GRUCell() for _ in range(self.depth)]
+                self.cells = [GRUCell(features=self.hiddenSize) for _ in range(self.depth)]
             else:
                 ValueError("Cell name not recognized.")
         else:
@@ -246,10 +246,10 @@ class GRUCell(nn.Module):
     def __call__(self, carryH, carryV, state):
         cellCarryH = nn.Dense(features=carryH.shape[-1],
                               use_bias=True,
-                              dtype=global_defs.tReal)
+                              param_dtype=global_defs.tReal)
         cellCarryV = nn.Dense(features=carryV.shape[-1],
                               use_bias=False,
-                              dtype=global_defs.tReal)
+                              param_dtype=global_defs.tReal)
         current_carry, newR = nn.GRUCell(features=self.features, param_dtype=global_defs.tReal)(cellCarryH(carryH) + cellCarryV(carryV), state)
 
         return current_carry, newR[0]
