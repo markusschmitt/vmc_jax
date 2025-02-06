@@ -20,17 +20,15 @@ class MinSR:
 
     Initializer arguments:
         * ``sampler``: A sampler object.
-        * ``svdTol``: Regularization parameter :math:`\\epsilon_{SVD}`, see above.
-        * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` \
-            or `'imag'` for :math:`q=\\text{Im}`.
+        * ``pinvTol``: Regularization parameter :math:`\\epsilon_{SVD}`, see above.
+        * ``diagonalSchift``: Regularization parameter :math:`\\lambda`, see below.
         * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.
     """
 
-    def __init__(self, sampler, pinvTol=1e-14, diagonalShift=0., paramDtype="real", diagonalizeOnDevice=True):
+    def __init__(self, sampler, pinvTol=1e-14, diagonalShift=0., diagonalizeOnDevice=True):
         self.sampler = sampler
         self.pinvTol = pinvTol
         self.diagonalShift = diagonalShift
-        self.paramDtype = paramDtype
 
         self.diagonalizeOnDevice = diagonalizeOnDevice
 
@@ -52,13 +50,13 @@ class MinSR:
 
         return jnp.real(self.ElocMean0)
 
-    def solve(self, eloc, gradients):
+    def solve(self, eloc, gradients, holomorphic):
         """
         Uses the techique proposed in arXiv:2302.01941 to compute the updates.
         Efficient only if number of samples :math:`\\ll` number of parameters.
         """
 
-        if self.paramDtype == "complex":
+        if holomorphic:
             T = gradients.tangent_kernel()
             T_inv = jnp.linalg.pinv(T, rtol=self.pinvTol, hermitian=True)
 
@@ -66,7 +64,7 @@ class MinSR:
             gradients_all = mpi.gather(gradients._data)
             update = - gradients_all.conj().T @ T_inv @ eloc_all
 
-        elif self.paramDtype == "real":
+        else:
             gradients_all = mpi.gather(gradients._data)
             gradients_all = jnp.concatenate([jnp.real(gradients_all), jnp.imag(gradients_all)], axis=0)
 
@@ -148,7 +146,7 @@ class MinSR:
         sampleGradients = SampledObs( sampleGradients, p)
 
         start_timing(outp, "solve MinSR eqn.")
-        update = self.solve(Eloc, sampleGradients)
+        update = self.solve(Eloc, sampleGradients, holomorphic=psi.holomorphic)
         stop_timing(outp, "solve MinSR eqn.")
 
         if outp is not None:
