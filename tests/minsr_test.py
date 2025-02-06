@@ -33,7 +33,7 @@ class TestGsSearch(unittest.TestCase):
             # Set up exact sampler
             exactSampler = sampler.ExactSampler(psi, L)
 
-            tdvpEquation = jVMC.util.MinSR(exactSampler, pinvTol=1e-8, makeReal='real')
+            tdvpEquation = jVMC.util.MinSR(exactSampler, pinvTol=1e-8, diagonalShift=0.)
 
             # Perform ground state search to get initial state
             ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=5e-2)

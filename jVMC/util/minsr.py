@@ -20,26 +20,19 @@ class MinSR:
 
     Initializer arguments:
         * ``sampler``: A sampler object.
-        * ``svdTol``: Regularization parameter :math:`\\epsilon_{SVD}`, see above.
-        * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` \
-            or `'imag'` for :math:`q=\\text{Im}`.
+        * ``pinvTol``: Regularization parameter :math:`\\epsilon_{SVD}`, see above.
+        * ``diagonalSchift``: Regularization parameter :math:`\\lambda`, see below.
         * ``diagonalizeOnDevice``: Choose whether to diagonalize :math:`S` on GPU or CPU.
     """
 
-    def __init__(self, sampler, pinvTol=1e-14, makeReal='imag', diagonalizeOnDevice=True):
+    def __init__(self, sampler, pinvTol=1e-14, diagonalShift=0., diagonalizeOnDevice=True):
         self.sampler = sampler
         self.pinvTol = pinvTol
+        self.diagonalShift = diagonalShift
 
         self.diagonalizeOnDevice = diagonalizeOnDevice
 
         self.metaData = None
-
-        self.makeReal = realFun
-        if makeReal == 'imag':
-            self.makeReal = imagFun
-
-        # pmap'd member functions
-        self.makeReal_pmapd = global_defs.pmap_for_my_devices(jax.vmap(lambda x: self.makeReal(x)))
 
     def set_pinv_tol(self, tol):
 
@@ -57,25 +50,39 @@ class MinSR:
 
         return jnp.real(self.ElocMean0)
 
-    def solve(self, eloc, gradients):
+    def solve(self, eloc, gradients, holomorphic):
         """
         Uses the techique proposed in arXiv:2302.01941 to compute the updates.
         Efficient only if number of samples :math:`\\ll` number of parameters.
         """
 
-        T = gradients.tangent_kernel()
-        T_inv = jnp.linalg.pinv(T, rtol=self.pinvTol, hermitian=True)
+        if holomorphic:
+            T = gradients.tangent_kernel()
+            T_inv = jnp.linalg.pinv(T, rtol=self.pinvTol, hermitian=True)
 
-        eloc_all = mpi.gather(eloc._data).reshape((-1,))
-        gradients_all = mpi.gather(gradients._data)
-        update = - gradients_all.conj().T @ T_inv @ eloc_all
+            eloc_all = mpi.gather(eloc._data).reshape((-1,))
+            gradients_all = mpi.gather(gradients._data)
+            update = - gradients_all.conj().T @ T_inv @ eloc_all
+
+        else:
+            gradients_all = mpi.gather(gradients._data)
+            gradients_all = jnp.concatenate([jnp.real(gradients_all), jnp.imag(gradients_all)], axis=0)
+
+            T = gradients_all @ gradients_all.T
+            T += self.diagonalShift * jnp.eye(T.shape[-1])
+            T_inv = jnp.linalg.pinv(T, rcond=self.pinvTol, hermitian=True) # in newer versions of jax, rtol is prefered over rcond
+
+            eloc_all = mpi.gather(eloc._data).reshape((-1,))
+            eloc_all = jnp.concatenate([jnp.real(eloc_all), jnp.imag(eloc_all)], axis=0)
+
+            update = - gradients_all.T @ T_inv @ eloc_all
 
         return update
 
     def __call__(self, netParameters, t, *, psi, hamiltonian, **rhsArgs):
         """ For given network parameters computes an update step using the MinSR method.
 
-        This function returns :math:`\\dot\\theta=\\bar O^\\dagger (\\bar O\\bar O^\\dagger)^{-1}\\bar E_{loc}`
+        This function returns :math:`\\dot\\theta=\\bar O^\\dagger (\\bar O\\bar O^\\dagger + \\lambda\\mathbb{I})^{-1}\\bar E_{loc}`
         (see `[arXiv:2302.01941] <https://arxiv.org/abs/2302.01941>`_ for details). 
         Thereby an instance of the ``MinSR`` class is a suited callable for the right hand side of an ODE to be 
         used in combination with the integration schemes implemented in ``jVMC.stepper``. 
@@ -139,7 +146,7 @@ class MinSR:
         sampleGradients = SampledObs( sampleGradients, p)
 
         start_timing(outp, "solve MinSR eqn.")
-        update = self.solve(Eloc, sampleGradients)
+        update = self.solve(Eloc, sampleGradients, holomorphic=psi.holomorphic)
         stop_timing(outp, "solve MinSR eqn.")
 
         if outp is not None:
