@@ -87,15 +87,15 @@ class NQS:
     
     This class can operate in two modi:
         #. Single-network ansatz
-            Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
+            Quantum state of the form :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, \
             where the network :math:`r_\\theta` is
             a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`.
             b) non-holomorphic, i.e., parametrized by real valued parameters :math:`\\theta`.
         #. Two-network ansatz
             Quantum state of the form 
-            :math:`\psi_\\theta(s)\equiv\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
+            :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
             with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
-            :math:`\\varphi_{\\theta_\phi}` \
+            :math:`\\varphi_{\\theta_\\phi}` \
             parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
 
     Initializer arguments:
@@ -122,15 +122,15 @@ class NQS:
         
         This class can operate in two modi:
             #. Single-network ansatz
-                Quantum state of the form :math:`\psi_\\theta(s)\equiv\exp(r_\\theta(s))`, \
+                Quantum state of the form :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, \
                 where the network :math:`r_\\theta` is
                 a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`.
                 b) non-holomorphic, i.e., parametrized by real valued parameters :math:`\\theta`.
             #. Two-network ansatz
                 Quantum state of the form 
-                :math:`\psi_\\theta(s)\equiv\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
+                :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
                 with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
-                :math:`\\varphi_{\\theta_\phi}` \
+                :math:`\\varphi_{\\theta_\\phi}` \
                 parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
         Args:       
             * ``net``: Variational network or tuple of networks.
@@ -139,7 +139,7 @@ class NQS:
                 If a tuple of two networks is given, the first is used for the logarithmic \
                 amplitude and the second for the phase of the wave function coefficient.
             * ``logarithmic``: Boolean variable indicating, whether the ANN returns logarithmic \
-                (:math:`\log\psi_\theta(s)`) or plain (:math:`\psi_\theta(s)`) wave function coefficients.
+                (:math:`\\log\\psi_\\theta(s)`) or plain (:math:`\\psi_\\theta(s)`) wave function coefficients.
             * ``batchSize``: Batch size for batched network evaluation. Choice \
                 of this parameter impacts performance: with too small values performance \
                 is limited by memory access overheads, too large values can lead \
@@ -228,13 +228,13 @@ class NQS:
     def __call__(self, s):
         """Evaluate variational wave function.
         
-        Compute the logarithmic wave function coefficients :math:`\ln\psi(s)` for \
+        Compute the logarithmic wave function coefficients :math:`\\ln\\psi(s)` for \
         computational configurations :math:`s`.
         
         Args:
             * ``s``: Array of computational basis states.
         Returns:
-            Logarithmic wave function coefficients :math:`\ln\psi(s)`.
+            Logarithmic wave function coefficients :math:`\\ln\\psi(s)`.
         
         :meta public:
         """
@@ -277,12 +277,12 @@ class NQS:
         """Compute gradients of logarithmic wave function.
         
         Compute gradient of the logarithmic wave function coefficients, \
-        :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+        :math:`\\nabla\\ln\\psi(s)`, for computational configurations :math:`s`.
         
         Args:
             * ``s``: Array of computational basis states.
         Returns:
-            A vector containing derivatives :math:`\partial_{\\theta_k}\ln\psi(s)` \
+            A vector containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
             with respect to each variational parameter :math:`\\theta_k` for each \
             input configuration :math:`s`.
         """
@@ -298,12 +298,12 @@ class NQS:
         """Compute gradients of logarithmic wave function and return them as dictionary.
         
         Compute gradient of the logarithmic wave function coefficients, \
-        :math:`\\nabla\ln\psi(s)`, for computational configurations :math:`s`.
+        :math:`\\nabla\\ln\\psi(s)`, for computational configurations :math:`s`.
         
         Args:
             * ``s``: Array of computational basis states.
         Returns:
-            A dictionary containing derivatives :math:`\partial_{\\theta_k}\ln\psi(s)` \
+            A dictionary containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
             with respect to each variational parameter :math:`\\theta_k` for each \
             input configuration :math:`s`.
         """
@@ -343,7 +343,7 @@ class NQS:
         """Get real part of NQS and current parameters
 
         This function returns a function that evaluates the real part of the NQS,
-        :math:`\\text{Re}(\log\psi(s))`, and the current parameters.
+        :math:`\\text{Re}(\\log\\psi(s))`, and the current parameters.
 
         Returns:
             Real part of the NQS and current parameters

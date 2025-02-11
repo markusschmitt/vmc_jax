@@ -131,13 +131,13 @@ def matrix_to_povm(A, M, T_inv, mode='unitary', dtype=opDtype):
 
 
     In unitary mode this function implements
-    :math:`\Omega^{ab} = -i T^{-1 bc}  \mathrm{Tr}(A [M^c, M^a])`,
+    :math:`\\Omega^{ab} = -i T^{-1 bc}  \\mathrm{Tr}(A [M^c, M^a])`,
     in dissipative mode
-    :math:`\Omega^{ab} = T^{-1 bc} \mathrm{Tr}(A M^c A^\dagger M^a- 1/2 A^\dagger A \{M^c, M^a\})`,
+    :math:`\\Omega^{ab} = T^{-1 bc} \\mathrm{Tr}(A M^c A^\\dagger M^a- 1/2 A^\\dagger A \\{M^c, M^a\\})`,
     in observable mode
-    :math:`O^a = T^{-1 ab} \mathrm{Tr}(M^b A)`
+    :math:`O^a = T^{-1 ab} \\mathrm{Tr}(M^b A)`
     and in imaginary time mode
-    :math:`\Omega^{ab} = - T^{-1 bc} \mathrm{Tr}(A \{M^c, M^a\})`
+    :math:`\\Omega^{ab} = - T^{-1 bc} \\mathrm{Tr}(A \\{M^c, M^a\\})`
     where the Einstein sum convention is assumed.
 
     Args:

@@ -28,13 +28,13 @@ class TDVP:
 
     With the force vector
 
-        :math:`F_k=\langle \mathcal O_{\\theta_k}^* E_{loc}^{\\theta}\\rangle_c`
+        :math:`F_k=\\langle \\mathcal O_{\\theta_k}^* E_{loc}^{\\theta}\\rangle_c`
 
     and the quantum Fisher matrix
 
-        :math:`S_{k,k'} = \langle (\mathcal O_{\\theta_k})^* \mathcal O_{\\theta_{k'}}\\rangle_c`
+        :math:`S_{k,k'} = \\langle (\\mathcal O_{\\theta_k})^* \\mathcal O_{\\theta_{k'}}\\rangle_c`
 
-    and for real parameters :math:`\\theta\in\mathbb R`, the TDVP equation reads
+    and for real parameters :math:`\\theta\\in\\mathbb R`, the TDVP equation reads
 
         :math:`q\\big[S_{k,k'}\\big]\\dot\\theta_{k'} = -q\\big[xF_k\\big]`
 
@@ -44,26 +44,26 @@ class TDVP:
     For ground state search a regularization controlled by a parameter :math:`\\rho` can be included
     by increasing the diagonal entries and solving
 
-        :math:`q\\big[(1+\\rho\delta_{k,k'})S_{k,k'}\\big]\\theta_{k'} = -q\\big[F_k\\big]`
+        :math:`q\\big[(1+\\rho\\delta_{k,k'})S_{k,k'}\\big]\\theta_{k'} = -q\\big[F_k\\big]`
 
     The `TDVP` class solves the TDVP equation by computing a pseudo-inverse of :math:`S` via
     eigendecomposition yielding
 
-        :math:`S = V\Sigma V^\dagger`
+        :math:`S = V\\Sigma V^\\dagger`
 
-    with a diagonal matrix :math:`\Sigma_{kk}=\sigma_k`
-    Assuming that :math:`\sigma_1` is the smallest eigenvalue, the pseudo-inverse is constructed 
+    with a diagonal matrix :math:`\\Sigma_{kk}=\\sigma_k`
+    Assuming that :math:`\\sigma_1` is the smallest eigenvalue, the pseudo-inverse is constructed 
     from the regularized inverted eigenvalues
 
-        :math:`\\tilde\sigma_k^{-1}=\\frac{1}{\\Big(1+\\big(\\frac{\epsilon_{SVD}}{\sigma_j/\sigma_1}\\big)^6\\Big)\\Big(1+\\big(\\frac{\epsilon_{SNR}}{\\text{SNR}(\\rho_k)}\\big)^6\\Big)}`
+        :math:`\\tilde\\sigma_k^{-1}=\\frac{1}{\\Big(1+\\big(\\frac{\\epsilon_{SVD}}{\\sigma_j/\\sigma_1}\\big)^6\\Big)\\Big(1+\\big(\\frac{\\epsilon_{SNR}}{\\text{SNR}(\\rho_k)}\\big)^6\\Big)}`
 
-    with :math:`\\text{SNR}(\\rho_k)` the signal-to-noise ratio of :math:`\\rho_k=V_{k,k'}^{\dagger}F_{k'}` (see `[arXiv:1912.08828] <https://arxiv.org/pdf/1912.08828.pdf>`_ for details).
+    with :math:`\\text{SNR}(\\rho_k)` the signal-to-noise ratio of :math:`\\rho_k=V_{k,k'}^{\\dagger}F_{k'}` (see `[arXiv:1912.08828] <https://arxiv.org/pdf/1912.08828.pdf>`_ for details).
 
     Initializer arguments:
         * ``sampler``: A sampler object.
-        * ``snrTol``: Regularization parameter :math:`\epsilon_{SNR}`, see above.
-        * ``pinvTol``: Regularization parameter :math:`\epsilon_{SVD}` (see above) is chosen such that :math:`||S\\dot\\theta-F|| / ||F||<pinvTol`.
-        * ``pinvCutoff``: Lower bound for the regularization parameter :math:`\epsilon_{SVD}`, see above.
+        * ``snrTol``: Regularization parameter :math:`\\epsilon_{SNR}`, see above.
+        * ``pinvTol``: Regularization parameter :math:`\\epsilon_{SVD}` (see above) is chosen such that :math:`||S\\dot\\theta-F|| / ||F||<pinvTol`.
+        * ``pinvCutoff``: Lower bound for the regularization parameter :math:`\\epsilon_{SVD}`, see above.
         * ``makeReal``: Specifies the function :math:`q`, either `'real'` for :math:`q=\\text{Re}` or `'imag'` for :math:`q=\\text{Im}`.
         * ``rhsPrefactor``: Prefactor :math:`x` of the right hand side, see above.
         * ``diagonalShift``: Regularization parameter :math:`\\rho` for ground state search, see above.

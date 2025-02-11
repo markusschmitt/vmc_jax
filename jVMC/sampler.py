@@ -73,7 +73,7 @@ class MCSampler:
         :math:`p_{\\mu}(s)=\\frac{|\\psi(s)|^{\\mu}}{\\sum_s|\\psi(s)|^{\\mu}}`.
 
     For :math:`\\mu=2` this corresponds to sampling from the Born distribution. \
-    :math:`0\leq\\mu<2` can be used to perform importance sampling \
+    :math:`0\\leq\\mu<2` can be used to perform importance sampling \
     (see `[arXiv:2108.08631] <https://arxiv.org/abs/2108.08631>`_).
 
     Sampling is automatically distributed accross MPI processes and locally available \
@@ -122,6 +122,7 @@ class MCSampler:
 
         # Make sure that net is initialized
         self.net(self.states)
+        self.sampler_net, _ = self.net.get_sampler_net()
 
         self.logProbFactor = logProbFactor
         self.mu = mu
@@ -149,6 +150,17 @@ class MCSampler:
         # jit'd member functions
         self._get_samples_jitd = {}  # will hold a jit'd function for each number of samples
         self._randomize_samples_jitd = {}  # will hold a jit'd function for each number of samples
+
+
+        # pmap'd helper function
+        self._logAccProb_pmapd = global_defs.pmap_for_my_devices(self._logAccProb,
+                                                                 in_axes=(0, None, None, None),
+                                                                 static_broadcasted_argnums=(2,))
+
+    def _logAccProb(self, x, mu, sampler_net, netParams):
+        # vmap is over parallel MC chains
+        return jax.vmap(lambda y: mu * jnp.real(sampler_net(netParams, y)), in_axes=(0,))(x)
+
 
     def set_number_of_samples(self, N):
         """Set default number of samples.
@@ -347,11 +359,7 @@ class MCSampler:
 
     def _mc_init(self, netParams):
 
-        # Initialize logAccProb
-        net, _ = self.net.get_sampler_net()
-        self.logAccProb = global_defs.pmap_for_my_devices(
-            lambda x: jax.vmap(lambda y: self.mu * jnp.real(net(netParams, y)), in_axes=(0,))(x)
-        )(self.states)
+        self.logAccProb = self._logAccProb_pmapd(self.states, self.mu, self.sampler_net, netParams)
 
         shape = (global_defs.device_count(),) + (1,)
 
@@ -498,7 +506,7 @@ class ExactSampler:
         Returns:
             ``configs, logPsi, p``: All computational basis configurations, \
             corresponding wave function coefficients, and probabilities \
-            :math:`|\psi(s)|^2` (normalized).
+            :math:`|\\psi(s)|^2` (normalized).
         """
 
         if parameters is not None:

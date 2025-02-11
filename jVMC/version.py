@@ -1,2 +1,2 @@
 """Current jVMC version at head on Github."""
-__version__ = "1.5.1"
+__version__ = "1.5.4"
