@@ -94,3 +94,15 @@ is crucial. This applies in particular to wave function evaluations. Therefore,
 any operation implemented in `jVMC` is performed on a batch of input data. This
 means that following the leading `device dimension`, any data arrays passed to or 
 obtained from the `jVMC` API have an additional `batch dimension`.
+
+MPI
+^^^
+If you are running your simulation with multiple MPI processes, `jVMC` automatically
+parallelized the Monte Carlo sampling tasks across these. If your machine has multiple
+GPUs attached to each node and all of them are visible, you may want to assign one GPU 
+per MPI process. This is achieved by the following line:
+
+.. code-block::
+
+    jVMC.global_defs.set_pmap_devices(jax.devices()[jVMC.mpi_wrapper.rank % jax.device_count()])
+
