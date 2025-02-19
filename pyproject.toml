@@ -31,6 +31,7 @@ classifiers=[
 
 [project.optional-dependencies]
 dev = ["sphinx", "mock", "sphinx_rtd_theme", "pytest", "pytest-mpi"]
+gpu = ["jax[cuda12]>=0.4.12,<=0.5.0"]
 
 [project.urls]
 Documentation = "https://jvmc.readthedocs.io/en/latest/#"

@@ -21,42 +21,21 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 
 ### Option 1: ``pip``-install
 
-1. We recommend you create a new conda environment to work with jVMC:
-
-        conda create -n jvmc python=3.8
-        conda activate jvmc
-
-2. ``pip``-install the package
-
         pip install jVMC
 
 
-### Option 2: Clone and ``pip``-install
+### Option 2: Clone and ``pip``-install for development
 
 1. Clone the jVMC repository and check out the development branch:
 
         git clone https://github.com/markusschmitt/vmc_jax.git
         cd vmc_jax
 
-2. We recommend you create a new conda environment to work with jVMC:
+2. ``pip``-install the package  
 
-        conda create -n jvmc python=3.8
-        conda activate jvmc
-
-
-3. ``pip``-install the package  
-
-        pip install .  
-
-    Alternatively, for development:
-
-        pip install -e .[dev]
+        pip install -e ".[dev]"
 
 Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
-
-### Compiling JAX
-
-[How to compile JAX on a supercomputing cluster](documentation/readme/compile_jax_on_cluster.md)
 
 
 ## Online example
@@ -71,4 +50,15 @@ Memory requirements grow with increasing network sizes. To avoid out-of-memory i
 
 ## Citing jVMC
 
-If you use the jVMC package for your research, please cite our reference paper [SciPost Phys. Codebases 2 (2022)](https://scipost.org/10.21468/SciPostPhysCodeb.2).
+If you use the jVMC package for your research, please cite our reference paper [SciPost Phys. Codebases 2 (2022)](https://scipost.org/10.21468/SciPostPhysCodeb.2)
+
+        @Article{jVMC,
+                title={{jVMC: Versatile and performant variational Monte Carlo leveraging automated differentiation and GPU acceleration}},
+                author={Markus Schmitt and Moritz Reh},
+                journal={SciPost Phys. Codebases},
+                pages={2},
+                year={2022},
+                publisher={SciPost},
+                doi={10.21468/SciPostPhysCodeb.2},
+                url={https://scipost.org/10.21468/SciPostPhysCodeb.2},
+        }
