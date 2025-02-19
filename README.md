@@ -23,6 +23,11 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 
         pip install jVMC
 
+To install jVMC with GPU support, use
+
+        pip install jVMC[gpu]
+
+This is assuming, that `jax[cuda12]` will work for you (see the [JAX documentation](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier)).
 
 ### Option 2: Clone and ``pip``-install for development
 
