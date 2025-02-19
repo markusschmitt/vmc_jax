@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jVMC"
+dynamic = ["version"]
+description="jVMC: Versatile and performant variational Monte Carlo"
+readme = "README.md"
+authors = [
+    { name = "Markus Schmitt", email = "markus.schmitt@ur.de" }
+]
+license = { text = "MIT License" }
+keywords = ["Neural quantum states", "Variational Monte Carlo"]
+dependencies = ["numpy>=2", 
+                "openfermion", 
+                "jax>=0.4.12,<=0.4.31", 
+                "jaxlib>=0.4.12,<=0.4.31", 
+                "flax>=0.7.0", 
+                "mpi4py", 
+                "h5py", 
+                "PyYAML", 
+                "matplotlib", 
+                "scipy"]
+requires-python = ">= 3.9"
+
+[project.optional-dependencies]
+dev = ["sphinx", "mock", "sphinx_rtd_theme", "pytest", "pytest-mpi"]
+
+[project.urls]
+Documentation = "https://jvmc.readthedocs.io/en/latest/#"
+Repository = "https://github.com/markusschmitt/vmc_jax"
+Issues = "https://github.com/markusschmitt/vmc_jax/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "jVMC.version.__version__"}
