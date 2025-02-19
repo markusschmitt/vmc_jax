@@ -182,7 +182,7 @@ class TestPOVM(unittest.TestCase):
                 res[dim].append(result[dim]["mean"])
             times.append(t)
             if t>0.005:
-                self.stepper.set_dt(2.5e-2)
+                self.stepper.set_dt(1e-2)
 
             dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
                                       psi=self.psi)
