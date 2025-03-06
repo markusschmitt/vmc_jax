@@ -193,6 +193,15 @@ class SampledObs():
 
         self._compute_data_and_mean(observations)
         
+    
+    def update_configs(self, configs, weights, params):
+
+        self._weights = weights
+        self._configs = configs
+        observations = self._estimator(params, self._configs)
+
+        self._compute_data_and_mean(observations)
+
 
     def _compute_data_and_mean(self, observations):
 
@@ -228,8 +237,7 @@ class SampledObs():
 
         psiGrad = SampledObs( 2.0*jnp.real( psi.gradients(self._configs) ), self._weights )
 
-        return self._mean, psiGrad.covar(self).ravel() + obsGradMean
-
+        return self._mean, jnp.real(obsGradMean) # jnp.real(psiGrad.covar(self).ravel() + obsGradMean) # 
 
 
     def covar(self, other=None):

@@ -201,7 +201,10 @@ class NQS:
                 return jnp.concatenate([p.ravel() for p in tree_flatten(t)[0]])
             grads_r = make_flat( jax.grad(lambda a,b: jnp.real(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
             grads_i = make_flat( jax.grad(lambda a,b: jnp.imag(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
-            if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i)/grads_r.shape[0], 0.0, abs_tol=1e-14):
+            if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i)/grads_r.shape[0], 0.0, abs_tol=1e-14) \
+                and not jnp.allclose(grads_r, 0.0):
+                print(grads_r)
+                print(grads_i)
                 self.holomorphic = True
                 self.flat_gradient_function = flat_gradient_holo
             else:
@@ -476,7 +479,7 @@ class NQS:
 
         if self.variable_name is not None:
             ps = unfreeze(self.parameters)
-            ps[self.variable_name][name] = jnp.array(val)
+            ps[self.variable_name][name] = jnp.array([val], dtype=ps[self.variable_name][name].dtype)
             if isinstance(self.parameters, flax.core.frozen_dict.FrozenDict):
                 ps = freeze(ps)
             self.parameters = ps
