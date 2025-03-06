@@ -21,8 +21,8 @@ class TestGsSearch(unittest.TestCase):
 
         for hx, exE in zip(hxs, exEs):
             # Set up variational wave function
-            rbm = nets.CpxRBM(numHidden=6, bias=False)
-            psi = NQS(rbm)
+            rbm = nets.CpxRBM(numHidden=8, bias=False)
+            psi = NQS(rbm, seed=1234)
 
             # Set up hamiltonian for ground state search
             hamiltonianGS = op.BranchFreeOperator()
@@ -33,10 +33,10 @@ class TestGsSearch(unittest.TestCase):
             # Set up exact sampler
             exactSampler = sampler.ExactSampler(psi, L)
 
-            tdvpEquation = jVMC.util.MinSR(exactSampler, pinvTol=1e-8, diagonalShift=0.)
+            tdvpEquation = jVMC.util.MinSR(exactSampler, pinvTol=1e-6, diagonalShift=0.)
 
             # Perform ground state search to get initial state
-            ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=100, stepSize=5e-2)
+            ground_state_search(psi, hamiltonianGS, tdvpEquation, exactSampler, numSteps=200, stepSize=1e-2)
 
             obs = measure({"energy": hamiltonianGS}, psi, exactSampler)
 

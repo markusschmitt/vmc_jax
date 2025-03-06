@@ -335,6 +335,9 @@ class BranchFreeOperator(Operator):
 
         """
 
+        if not isinstance(opDescr, tuple):
+            opDescr = (opDescr,)
+
         self.ops.append(opDescr)
         self.compiled = False
 
@@ -412,7 +415,7 @@ class BranchFreeOperator(Operator):
 
         def arg_fun(*args, prefactor, init):
             N = len(prefactor)
-            if N<50:
+            if N<250:
                 res = init
                 for i,f in prefactor:
                     res[i] = f(*args)
@@ -425,16 +428,13 @@ class BranchFreeOperator(Operator):
                 myStart = nEls * rank
                 myEnd = min(myStart+nEls, N)
 
-                firstIdx = [0] + [prefactor[nEls * r][0]-1 for r in range(1,commSize)]
-                lastIdx = [prefactor[min(nEls * (r+1), N-1)][0]-1 for r in range(commSize-1)] + [len(init)]
-
-                res = init[firstIdx[rank]:lastIdx[rank]]
+                res = init[myStart:myEnd]
 
                 for i,f in prefactor[myStart:myEnd]:
-                    res[i-firstIdx[rank]] = f(*args)
+                    res[i-myStart] = f(*args)
 
                 res = np.concatenate(comm.allgather(res), axis=0)
-                
+            
             return (jnp.array(res), )
 
         return functools.partial(self._get_s_primes, idxC=self.idxC, mapC=self.mapC, matElsC=self.matElsC, diag=self.diag, fermiC=self.fermionicC, prefactor=self.prefactor),\
