@@ -26,7 +26,7 @@ def propose_POVM_outcome(key, s, info):
     key, subkey = random.split(key)
     idx = random.randint(subkey, (1,), 0, s.size)[0]
     idx = jnp.unravel_index(idx, s.shape)
-    update = (s[idx] + random.randint(key, (1,), 0, 3)) % 4
+    update = (s[idx] + random.randint(key, (1,), 1, 4)) % 4
     return s.at[idx].set(update)
 
 
