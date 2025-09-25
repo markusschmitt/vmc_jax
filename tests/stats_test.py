@@ -97,7 +97,7 @@ class TestStats(unittest.TestCase):
         self.assertTrue( 
             jnp.allclose(
                 obs2.mean(), 
-                mpi.global_sum(jnp.reshape(Obs1, (jax.device_count(), N))[:,0:N//2] * p[:,0:N//2]) / jnp.sum(p[:,0:N//2])
+                mpi.global_sum(jnp.reshape(Obs1, (jax.device_count(), N))[:,0:N//2] * p[:,0:N//2]) / mpi.global_sum(p[:,0:N//2])
                 )
             )
 
