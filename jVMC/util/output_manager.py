@@ -1,5 +1,6 @@
 import h5py
 import numpy as np
+import jax.numpy as jnp
 import jVMC.mpi_wrapper as mpi
 import time
 
@@ -53,6 +54,8 @@ class OutputManager:
 
                     for name, value in obsDict.items():
 
+                        value = self.to_array(value)
+
                         datasetName = self.currentGroup + "/observables/" + key + "/" + name
 
                         if not key in f[self.currentGroup + "/observables"]:
@@ -86,6 +89,8 @@ class OutputManager:
                 f[self.currentGroup + "/" + groupname + "/times"][-1] = time
 
                 for key, value in kwargs.items():
+
+                    value = self.to_array(value)
 
                     if not key in f[self.currentGroup + "/" + groupname]:
 
@@ -220,3 +225,11 @@ class OutputManager:
     def print(self, text):
         if mpi.rank == 0:
             print(text, flush=True)
+
+
+    def to_array(self, x):
+
+        if not isinstance(x, (np.ndarray, jnp.ndarray)):
+            x = np.array([x])
+
+        return x
