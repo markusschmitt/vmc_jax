@@ -1,10 +1,25 @@
 import h5py
 import numpy as np
+import jax.numpy as jnp
 import jVMC.mpi_wrapper as mpi
 import time
 
 class OutputManager:
     '''This class provides functionality for I/O and timing.
+
+    Upon initialization with
+    
+    :code:`outp = OutputManager("filename.h5")`
+    
+    an HDF5 file :code:`filename.h5` is created. If the file exists, `append=True` will prevent overwriting it.
+    This HDF5 file is intended for numerical output and output can be written to it using the :code:`write_observables()`,
+    :code:`write_metadata()`, and :code:`write_network_checkpoint()` member functions.
+
+    Furthermore, timings can be recorded using the :code:`start_timing()` and :code:`stop_timing()` member functions. The recorded
+    timings can be printed to screen using the :code:`print_timings()` function.
+
+    Finally, the OutputManager provides a :code:`print()` function, that wraps python's standard :code:`print()` to print only
+    on the MPI process with rank 0.
     '''
 
     def __init__(self, dataFileName, group="/", append=False):
@@ -34,6 +49,7 @@ class OutputManager:
         self.append = 'a'
 
     def write_observables(self, time, **kwargs):
+        ''''''
 
         if mpi.rank == 0:
 
@@ -52,6 +68,8 @@ class OutputManager:
                 for key, obsDict in kwargs.items():
 
                     for name, value in obsDict.items():
+
+                        value = self.to_array(value)
 
                         datasetName = self.currentGroup + "/observables/" + key + "/" + name
 
@@ -86,6 +104,8 @@ class OutputManager:
                 f[self.currentGroup + "/" + groupname + "/times"][-1] = time
 
                 for key, value in kwargs.items():
+
+                    value = self.to_array(value)
 
                     if not key in f[self.currentGroup + "/" + groupname]:
 
@@ -220,3 +240,11 @@ class OutputManager:
     def print(self, text):
         if mpi.rank == 0:
             print(text, flush=True)
+
+
+    def to_array(self, x):
+
+        if not isinstance(x, (np.ndarray, jnp.ndarray)):
+            x = np.array([x])
+
+        return x
