@@ -313,6 +313,8 @@ class POVM():
         Obtain X, Y and Z magnetizations and their correlators up to the specified length in ``system data["L"]``.
         Note that this function assumes translational invariance and averages the results obtained for single spins.
         """
+        
+        ndev = global_defs.myDeviceCount
 
         if self.system_data["dim"] == "1D":
             resPerSamplePerSpin = self._evaluate_magnetization_pmapd(operator, states)
@@ -323,12 +325,12 @@ class POVM():
                 correlators[corrLen] = self._spin_average_pmapd(corrPerSamplePerSpin)
             return self._spin_average_pmapd(resPerSamplePerSpin), correlators
         else:
-            resPerSamplePerSpin = self._evaluate_magnetization_pmapd(operator, states.reshape(1, -1, self.system_data["L"]**2)).reshape(1, -1, self.system_data["L"], self.system_data["L"])
+            resPerSamplePerSpin = self._evaluate_magnetization_pmapd(operator, states.reshape(ndev, -1, self.system_data["L"]**2)).reshape(ndev, -1, self.system_data["L"], self.system_data["L"])
             correlators = {}
             for corrLen in np.arange(self.system_data["L"]):
                 corrPerSamplePerSpin = self._evaluate_correlators_pmapd(resPerSamplePerSpin, corrLen)
-                correlators[corrLen] = self._spin_average_pmapd(corrPerSamplePerSpin.reshape(1, -1, self.system_data["L"]**2))
-            return self._spin_average_pmapd(resPerSamplePerSpin.reshape(1, -1, self.system_data["L"]**2)), correlators
+                correlators[corrLen] = self._spin_average_pmapd(corrPerSamplePerSpin.reshape(ndev, -1, self.system_data["L"]**2))
+            return self._spin_average_pmapd(resPerSamplePerSpin.reshape(ndev, -1, self.system_data["L"]**2)), correlators
 
 
 class POVMOperator(Operator):
