@@ -114,7 +114,12 @@ class MCSampler:
         self.orbit = None
         if isinstance(self.net.net, SymNet):
             self.orbit = self.net.net.orbit.orbit
-
+            if self.net.is_gumbel:
+                raise NotImplemented("Gumbel with symmetrization not implemented")
+        
+        if self.net.is_gumbel and  global_defs.device_count()>1:
+            ### raise errror for more devices
+            raise NotImplemented('Gumbel on more devices not implemented')
         stateShape = (global_defs.device_count(), numChains) + sampleShape
         if initState is None:
             initState = jnp.zeros(sampleShape, dtype=np.int32)
@@ -220,6 +225,21 @@ class MCSampler:
 
         if numSamples is None:
             numSamples = self.numSamples
+        
+        if self.net.is_gumbel:
+            if parameters is not None:
+                tmpP = self.net.params
+                self.net.set_parameters(parameters)
+            configs,coeffs,rescaled_coeffs,kappa = self._get_samples_gen(self.net.parameters, numSamples, multipleOf)
+            coeffs = self.net(configs)
+
+            if self.orbit is not None: 
+                coeffs = self.net(configs)
+                re_weights = jnp.nan_to_num(jnp.exp(coeffs) /(-jnp.expm1(-jnp.exp(coeffs-kappa))),0)
+                rescaled_coeffs = re_weights/re_weights.sum()
+            if parameters is not None:
+                self.net.params = tmpP
+            return configs, coeffs, rescaled_coeffs# jnp.ones(configs.shape[:2]) / jnp.prod(jnp.asarray(configs.shape[:2]))
 
         if self.net.is_generator:
             if parameters is not None:
@@ -251,7 +271,8 @@ class MCSampler:
         tmpKey2 = tmpKeys[2 * global_defs.device_count():]
 
         samples = self.net.sample(numSamples, tmpKey, parameters=params)
-
+        if self.net.is_gumbel:
+            return samples
         if not str(numSamples) in self._randomize_samples_jitd:
             self._randomize_samples_jitd[str(numSamples)] = global_defs.pmap_for_my_devices(self._randomize_samples, static_broadcasted_argnums=(), in_axes=(0, 0, None))
 
