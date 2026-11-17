@@ -1,34 +1,48 @@
 from __future__ import annotations
+
+from functools import cached_property, partial
+
 import jax
 import jax.numpy as jnp
-from functools import partial, cached_property
 
-from jVMC_exp.sharding_config import DEVICE_SHARDING, MESH, SizedIterable, pad_to_devices
+from jVMC_exp.sharding_config import (
+    DEVICE_SHARDING,
+    MESH,
+    SizedIterable,
+    pad_to_devices,
+)
+
 
 @jax.jit
 def _get_mean(data, weights):
     return jnp.tensordot(weights, data, axes=(0, 0))
 
+
 @jax.jit
 def _get_var(norm_data):
-    return jnp.sum(jnp.abs(norm_data)**2, axis=0)
+    return jnp.sum(jnp.abs(norm_data) ** 2, axis=0)
+
 
 @jax.jit
 def _get_error_of_mean(var, weights):
-    return jnp.sqrt(var * jnp.sum(weights ** 2))
+    return jnp.sqrt(var * jnp.sum(weights**2))
+
 
 @jax.jit
 def _center(data, mean):
     return data - mean
 
+
 @jax.jit
 def _normalize(data, weights, mean):
     return jnp.einsum("i, i... -> i...", jnp.sqrt(weights), data - mean)
+
 
 @jax.jit
 def _inv_normalize(data, inv_weights, mean, mask):
     raw = jnp.einsum("i, i... -> i...", jnp.sqrt(inv_weights), data) + mean
     return jnp.einsum("i, i... -> i...", mask, raw)
+
 
 @jax.jit
 def _get_weighted_covar(data, weights, other_normalized):
@@ -42,40 +56,48 @@ def _get_weighted_covar(data, weights, other_normalized):
         return jnp.conj(jnp.tensordot(data, jnp.conj(v), axes=(0, 0))).squeeze()
     if jnp.iscomplexobj(v):
         k = v.shape[-1]
-        covar = jnp.tensordot(data, jnp.concatenate([v.real, v.imag], axis=-1), axes=(0, 0))
+        covar = jnp.tensordot(
+            data, jnp.concatenate([v.real, v.imag], axis=-1), axes=(0, 0)
+        )
         return (covar[..., :k] + 1j * covar[..., k:]).squeeze()
 
     return jnp.tensordot(data, v, axes=(0, 0)).squeeze()
+
 
 @jax.jit
 def _mean_and_weighted_no_center(data, weights):
     mean = jnp.tensordot(weights, data, axes=(0, 0))
     weighted = jnp.einsum("i, i... -> i...", jnp.sqrt(weights), data)
-    
+
     return mean, weighted
+
 
 @jax.jit
 def _get_covar(norm_data_1, norm_data_2):
     return jnp.tensordot(jnp.conj(norm_data_1), norm_data_2, axes=(0, 0)).squeeze()
 
+
 @jax.jit
 def _get_self_covar(norm_data):
     return jnp.tensordot(jnp.conj(norm_data), norm_data, axes=(0, 0)).squeeze()
+
 
 @jax.jit
 @jax.vmap
 def _get_covar_per_sample(centered_data_1, centered_data_2):
     return jnp.outer(jnp.conj(centered_data_1), centered_data_2)
 
+
 @jax.jit(static_argnums=(1,))
 def _apply_and_project(data, apply_fn, projection):
     return apply_fn(data) @ projection.T
+
 
 @jax.jit(static_argnums=(1, 2))
 @partial(jax.vmap, in_axes=(0, None, None))
 def _get_autocorrelation_time(x, c, dim):
     fft = jnp.abs(jnp.fft.fft(x - jnp.mean(x), n=dim))
-    correlation = jnp.fft.ifft(fft ** 2)[:x.size].real
+    correlation = jnp.fft.ifft(fft**2)[: x.size].real
     correlation = correlation / correlation[0]
     tau = 2 * jnp.cumsum(correlation) - 1
 
@@ -84,7 +106,8 @@ def _get_autocorrelation_time(x, c, dim):
 
     return tau[window]
 
-class SampledObs():
+
+class SampledObs:
     """
     Sample statistics of an observable.
 
@@ -119,6 +142,7 @@ class SampledObs():
         * ``weights``: Weights :math:`w_n`, an array of shape ``(N,)``. They are normalized to \
           :math:`\\sum_n w_n=1`. If ``None``, every sample gets the weight :math:`1/N`.
     """
+
     def __init__(self, observations, weights=None):
         if len(observations.shape) == 1:
             self._num_obs = 1
@@ -131,14 +155,16 @@ class SampledObs():
         if weights is None:
             weights = jnp.full(self._num_samples, 1.0 / self._num_samples)
         elif weights.shape != (self._num_samples,):
-            raise ValueError(f"Weights must have shape ({self._num_samples},), got {weights.shape}")
+            raise ValueError(
+                f"Weights must have shape ({self._num_samples},), got {weights.shape}"
+            )
         weights /= jnp.sum(weights)
 
         remainder = self._num_samples % num_devices
         if remainder != 0:
             num_pad = num_devices - remainder
             pad = ((0, num_pad),) + ((0, 0),) * (observations.ndim - 1)
-            observations = jnp.pad(observations, pad, mode='constant')
+            observations = jnp.pad(observations, pad, mode="constant")
             weights = jnp.pad(weights, (0, num_pad), constant_values=0)
         inv_weights = jnp.where(weights != 0, 1 / weights, weights)
         zero_mask = jnp.where(weights != 0, 1, 0)
@@ -153,7 +179,7 @@ class SampledObs():
 
     def __repr__(self):
         return self.__str__()
-    
+
     def __str__(self):
         """
         ``mean ± error_of_mean (Var = var)`` for an observation with one component, and the \
@@ -171,7 +197,9 @@ class SampledObs():
         rounded up to a multiple of the number of devices.
         """
         if self._state == "c":
-            self._observations = _normalize(self._observations, self._zero_mask, -self.mean)
+            self._observations = _normalize(
+                self._observations, self._zero_mask, -self.mean
+            )
         elif self._state == "n":
             self._observations = _inv_normalize(
                 self._observations, self._inv_weights, self.mean, self._zero_mask
@@ -184,13 +212,15 @@ class SampledObs():
     def _centered_obs(self):
         """Centered observations :math:`O_n-\\langle O\\rangle`, zero for samples with weight zero."""
         if self._state == "o":
-            self._observations = _normalize(self._observations, self._zero_mask, self.mean)
+            self._observations = _normalize(
+                self._observations, self._zero_mask, self.mean
+            )
         elif self._state == "n":
             self._observations = _normalize(self._observations, self._inv_weights, 0)
         self._state = "c"
 
         return self._observations
-    
+
     @property
     def _normalized_obs(self):
         """Normalized observations :math:`\\sqrt{w_n}(O_n-\\langle O\\rangle)`."""
@@ -201,7 +231,7 @@ class SampledObs():
         self._state = "n"
 
         return self._observations
-    
+
     @property
     def weights(self):
         """Normalized weights :math:`w_n`, of shape ``(N_pad,)``, zero for the padding rows."""
@@ -216,7 +246,7 @@ class SampledObs():
         that replaces it in Monte-Carlo error estimates when the samples carry \
         importance weights (e.g. from ``CutoffSampler`` or ``mu != 2``).
         """
-        return 1.0 / jnp.sum(self.weights ** 2)
+        return 1.0 / jnp.sum(self.weights**2)
 
     @property
     def mean(self):
@@ -266,8 +296,10 @@ class SampledObs():
         """
         if other is None:
             return _get_self_covar(self._normalized_obs)
-        
-        return _get_weighted_covar(self.observations, self.weights, other._normalized_obs)
+
+        return _get_weighted_covar(
+            self.observations, self.weights, other._normalized_obs
+        )
 
     def get_covar_obs(self, other: SampledObs | None = None) -> SampledObs:
         """
@@ -291,12 +323,14 @@ class SampledObs():
             centered = self._centered_obs
             covar_per_sample = _get_covar_per_sample(centered, centered)
         else:
-            covar_per_sample = _get_covar_per_sample(self._centered_obs, other._centered_obs)
+            covar_per_sample = _get_covar_per_sample(
+                self._centered_obs, other._centered_obs
+            )
         if other_num_obs == 1:
             covar_per_sample = covar_per_sample[..., 0]
 
         return SampledObs(covar_per_sample, self.weights)
-    
+
     def get_R_hat(self, n_chains):
         """
         Gelman-Rubin convergence diagnostic :math:`\\hat R` of Markov chains.
@@ -315,7 +349,7 @@ class SampledObs():
         same weight: the weights are not used.
 
         Args:
-            * ``n_chains``: Number of chains, e.g. ``sampler.numChains``. The number of samples \
+            * ``n_chains``: Number of chains, e.g. ``sampler.num_chains``. The number of samples \
               :math:`N` must be a multiple of it.
 
         Returns:
@@ -327,14 +361,14 @@ class SampledObs():
 
         chain_length = self._num_samples // n_chains
         chain_obs = SampledObs(
-            self.observations[:self._num_samples].reshape((n_chains, chain_length)).T
+            self.observations[: self._num_samples].reshape((n_chains, chain_length)).T
         )
 
         B = jnp.var(chain_obs.mean, ddof=1)
         W = jnp.mean(chain_obs.var * chain_length / (chain_length - 1))
-        
+
         return jnp.sqrt(((chain_length - 1) / chain_length * W + B) / W)
-    
+
     def get_autocorrelation_time(self, n_chains, c=5) -> SampledObs:
         """
         Integrated autocorrelation time :math:`\\tau` of each Markov chain.
@@ -348,7 +382,7 @@ class SampledObs():
         weights are not used.
 
         Args:
-            * ``n_chains``: Number of chains, e.g. ``sampler.numChains``. The number of samples \
+            * ``n_chains``: Number of chains, e.g. ``sampler.num_chains``. The number of samples \
               :math:`N` must be a multiple of it.
             * ``c``: Window parameter :math:`c`.
 
@@ -361,12 +395,12 @@ class SampledObs():
             raise NotImplementedError
 
         chain_length = self._num_samples // n_chains
-        obs = self.observations[:self._num_samples].reshape((n_chains, chain_length))
+        obs = self.observations[: self._num_samples].reshape((n_chains, chain_length))
         z = obs - jnp.mean(obs, axis=-1)[:, None]
         dim = 2 * 2 ** int(jnp.ceil(jnp.log2(chain_length)))
-        
+
         return SampledObs(_get_autocorrelation_time(z, c, dim))
-    
+
     def transform(self, element_wise_fn=lambda x: x, linear_map=None) -> SampledObs:
         """
         Transform the observations in place, :math:`O_n\\to L\\,f(O_n)`, and update the mean.
@@ -385,7 +419,9 @@ class SampledObs():
               components.
         """
         if linear_map is not None:
-            self._observations = _apply_and_project(self.observations, element_wise_fn, linear_map)
+            self._observations = _apply_and_project(
+                self.observations, element_wise_fn, linear_map
+            )
         else:
             self._observations = jax.jit(element_wise_fn)(self.observations)
         self._mean = _get_mean(self._observations, self.weights)
@@ -399,7 +435,7 @@ class SampledObs():
               array of indices.
         """
         return SampledObs(self.observations[:, idx], self.weights)
-    
+
     def get_subset(self, start=None, end=None, step=None) -> SampledObs:
         """
         Samples ``observations[start:end:step]``, as a new ``SampledObs`` with the weights \
@@ -417,7 +453,8 @@ class SampledObs():
 
         return SampledObs(self.observations[sl], new_weights / jnp.sum(new_weights))
 
-class LazySampledObs():
+
+class LazySampledObs:
     """
     Sample statistics of observations that are computed one batch at a time.
 
@@ -441,17 +478,21 @@ class LazySampledObs():
     Raises ``ValueError`` if ``weights`` is ``None``, if ``observations`` has no layout, or if the \
     number of weights or of batches does not match the layout.
     """
+
     def __init__(self, observations: SizedIterable, weights):
         if weights is None:
             raise ValueError("LazySampledObs require weights to be an array")
         if not isinstance(observations, SizedIterable) or observations.layout is None:
             raise ValueError("Observations must be a SizedIterable with a BatchLayout")
         self._layout = observations.layout
-        
+
         # Like the observations, the weights are padded to a multiple of the number of devices.
         # The padding samples get zero weight and do not contribute to any estimate.
         num_padded = len(pad_to_devices(weights))
-        if num_padded != self._layout.num_samples or len(observations) != self._layout.n_batches:
+        if (
+            num_padded != self._layout.num_samples
+            or len(observations) != self._layout.n_batches
+        ):
             raise ValueError(
                 f"Got {len(weights)} weights and {len(observations)} batches of observations, "
                 f"but the layout describes {self._layout.num_samples} samples "
@@ -478,7 +519,7 @@ class LazySampledObs():
         if not isinstance(value, SizedIterable):
             raise ValueError(
                 "Observations must be an instance jVMC_exp.sharding_config.SizedIterable"
-        )
+            )
 
         self._observations = value
 
@@ -486,7 +527,7 @@ class LazySampledObs():
         for name, attr in type(self).__dict__.items():
             if isinstance(attr, cached_property):
                 self.__dict__.pop(name, None)
-    
+
     @property
     def layout(self):
         """``jVMC_exp.sharding_config.BatchLayout`` of the batches."""
@@ -506,7 +547,7 @@ class LazySampledObs():
         mean = 0
         for batch, weights in zip(self._observations, self._weights):
             mean += _get_mean(batch, weights)
-        
+
         return mean
 
     @cached_property
@@ -522,7 +563,7 @@ class LazySampledObs():
             mean += _get_mean(batch, weights)
 
         return (sq_sum - jnp.abs(mean) ** 2).squeeze()
-    
+
     @property
     def error_of_mean(self):
         """
@@ -562,7 +603,9 @@ class LazySampledObs():
         elif isinstance(other, SampledObs):
             normalized_obs_other = self._layout.split(other._normalized_obs)
 
-            for batch, weights, batch_other in zip(self._observations, self._weights, normalized_obs_other):
+            for batch, weights, batch_other in zip(
+                self._observations, self._weights, normalized_obs_other
+            ):
                 covar += _get_weighted_covar(batch, weights, batch_other)
 
             return covar.squeeze()
@@ -575,7 +618,9 @@ class LazySampledObs():
                 )
             mean_1 = 0
             mean_2 = 0
-            for batch_1, weights_1, batch_2, weights_2 in zip(self._observations, self._weights, other._observations, other._weights):
+            for batch_1, weights_1, batch_2, weights_2 in zip(
+                self._observations, self._weights, other._observations, other._weights
+            ):
                 m1, batch_1 = _mean_and_weighted_no_center(batch_1, weights_1)
                 m2, batch_2 = _mean_and_weighted_no_center(batch_2, weights_2)
                 mean_1 += m1
@@ -583,7 +628,7 @@ class LazySampledObs():
                 covar += _get_covar(batch_1, batch_2)
 
             return (covar - jnp.tensordot(jnp.conj(mean_1), mean_2, axes=0)).squeeze()
-        
+
         else:
             raise NotImplementedError(
                 "Can only compute the variance with a SampledObs or a LazySampledObs, "
@@ -612,8 +657,8 @@ class LazySampledObs():
         jitted_fn = jax.jit(element_wise_fn)
         iterable = self._observations
         self.observations = SizedIterable(
-            lambda: map(jitted_fn, iterable), 
-            iterable.n_iterations, 
-            iterable.batch_size, 
-            iterable.layout
+            lambda: map(jitted_fn, iterable),
+            iterable.n_iterations,
+            iterable.batch_size,
+            iterable.layout,
         )

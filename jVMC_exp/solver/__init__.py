@@ -1,4 +1,3 @@
-from . import base
-from .pinv import PinvSNR, Pinv
+from . import base, util
 from .cg import CG
-from . import util
+from .pinv import Pinv, PinvSNR

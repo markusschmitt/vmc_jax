@@ -1,14 +1,18 @@
-from optax import adam
-import tqdm
-import jax.numpy as jnp
-from typing import Dict, List, Callable
+from typing import Callable, Dict, List
 
+import jax.numpy as jnp
+import tqdm
+from optax import adam
+
+from jVMC_exp.objective_function.base import (
+    AbstractObjectiveFunction,
+    ObjectiveFunctionOutput,
+)
 from jVMC_exp.optimizer.base import AbstractOptimizer
-from jVMC_exp.objective_function.base import ObjectiveFunctionOutput
-from jVMC_exp.objective_function.base import AbstractObjectiveFunction
+from jVMC_exp.stepper import Euler
 from jVMC_exp.util import ObservableEntry
 from jVMC_exp.util.output_manager import OutputManager
-from jVMC_exp.stepper import Euler
+
 
 class Adam(AbstractOptimizer):
     """
@@ -26,10 +30,16 @@ class Adam(AbstractOptimizer):
         * ``eps``: Constant added to the root of the second moment.
         * ``output_manager`` [optional]: See ``AbstractOptimizer``.
     """
+
     def __init__(
-            self, sampler, psi,
-            learning_rate: float=1e-3, b1: float=0.9, b2: float=0.999, eps: float=1e-8,
-            output_manager: OutputManager | None = None
+        self,
+        sampler,
+        psi,
+        learning_rate: float = 1e-3,
+        b1: float = 0.9,
+        b2: float = 0.999,
+        eps: float = 1e-8,
+        output_manager: OutputManager | None = None,
     ):
         super().__init__(sampler, psi, True, False, output_manager=output_manager)
 
@@ -53,26 +63,27 @@ class Adam(AbstractOptimizer):
             The update, with the shape of ``psi.parameters_flat``.
         """
         grad = 2 * jnp.real(objective_function_out.grad)
-        update, self._opt_state = self._adam.update(grad, self._opt_state, self.psi.parameters_flat)
+        update, self._opt_state = self._adam.update(
+            grad, self._opt_state, self.psi.parameters_flat
+        )
 
         return update
-    
+
     def _update_meta_data(self):
         pass
 
     def cross_validation(self):
         """Does nothing: Adam has no cross validation."""
-        pass
 
     def ground_state_search(
-            self,
-            steps,
-            objective_function: AbstractObjectiveFunction,
-            observables: Dict[str, ObservableEntry] | None = None,
-            callback: List[Callable] | None = None,
-            save_meta_data: bool = False,
-            **objective_function_kwargs
-        ):
+        self,
+        steps,
+        objective_function: AbstractObjectiveFunction,
+        observables: Dict[str, ObservableEntry] | None = None,
+        callback: List[Callable] | None = None,
+        save_meta_data: bool = False,
+        **objective_function_kwargs,
+    ):
         """
         Minimize ``objective_function`` with ``steps`` steps of Adam, as \
         ``AbstractOptimizer.ground_state_search()`` without a stepper.
@@ -88,36 +99,42 @@ class Adam(AbstractOptimizer):
             As ``AbstractOptimizer.ground_state_search()``.
         """
         pbar = tqdm.tqdm(range(steps))
-        for n in pbar: 
+        for n in pbar:
             self._stepper.update_dt(n)
             self.update_hyperparams(n)
 
-            # Updating the parameters after the measurements, 
+            # Updating the parameters after the measurements,
             # allows to reuse the samples for the measurement of the observables
             # saving one sample call per step
-            new_parameters, _ = self.step(0, self._stepper, objective_function, **objective_function_kwargs)
-            self.sampler._samples, self.sampler._logPsi, self.sampler._weights = self._sampler_out     
+            new_parameters, _ = self.step(
+                0, self._stepper, objective_function, **objective_function_kwargs
+            )
+            self.sampler._samples, self.sampler._log_psi, self.sampler._weights = (
+                self._sampler_out
+            )
             self._measure_and_store(n, observables, callback, save_meta_data)
             self.psi.parameters = new_parameters
 
             pbar.set_postfix(E=f"{self.o_loc}")
-  
+
         self.output_manager.print_timings()
-        
+
         if save_meta_data:
-            return self.output_manager.data['observables'], self.output_manager.data['metadata']
-        
+            return self.output_manager.data["observables"], self.output_manager.data[
+                "metadata"
+            ]
+
         return self.output_manager.data["observables"]
 
     def time_evolution(
-            self,
-            t_max,
-            objective_function: AbstractObjectiveFunction,
-            observables: Dict[str, ObservableEntry] | None = None,
-            callback: List[Callable] | None = None,
-            save_meta_data: bool = False,
-            **kwargs
-        ):
+        self,
+        t_max,
+        objective_function: AbstractObjectiveFunction,
+        observables: Dict[str, ObservableEntry] | None = None,
+        callback: List[Callable] | None = None,
+        save_meta_data: bool = False,
+        **kwargs,
+    ):
         """Not available for Adam: raises ``NotImplementedError``."""
         raise NotImplementedError(
             "The Adam optimizer is intended for ground state search only and "

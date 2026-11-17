@@ -1,15 +1,17 @@
 from abc import ABC, abstractmethod
-from chex import dataclass
-import jax
 
-from jVMC_exp.stats import SampledObs, LazySampledObs
+import jax
+from chex import dataclass
+
 from jVMC_exp.operator.base import AbstractOperator
 from jVMC_exp.sampler.base import AbstractSampler
 from jVMC_exp.sharding_config import sharded
+from jVMC_exp.stats import LazySampledObs, SampledObs
 from jVMC_exp.util.grads import pick_gradient
 
+
 @dataclass
-class ObjectiveFunctionOutput():
+class ObjectiveFunctionOutput:
     """
     Output of ``AbstractObjectiveFunction.value_and_grad()``.
 
@@ -23,9 +25,11 @@ class ObjectiveFunctionOutput():
           that :math:`\\partial_{\\theta_k}L=2\\,\\mathrm{Re}\\,F_k`. ``None`` if the gradient was \
           not computed.
     """
+
     o_loc: SampledObs | None = None
     grad_log_psi: SampledObs | LazySampledObs | None = None
     grad: jax.Array | None = None
+
 
 class AbstractObjectiveFunction(ABC):
     """
@@ -55,6 +59,7 @@ class AbstractObjectiveFunction(ABC):
           at a time (``NQS.lazy_gradients()``) and never held in memory at once, see \
           ``jVMC_exp.stats.LazySampledObs``.
     """
+
     def __init__(self, batched_jacobian: bool = False):
         self._batched_jacobian = batched_jacobian
 
@@ -75,7 +80,6 @@ class AbstractObjectiveFunction(ABC):
         Returns:
             The local losses :math:`\\ell_\\theta(s_n)` as a ``SampledObs``.
         """
-        pass
 
     @abstractmethod
     def value_and_grad(
@@ -93,7 +97,6 @@ class AbstractObjectiveFunction(ABC):
         Returns:
             ``ObjectiveFunctionOutput``.
         """
-        pass
 
     def _grad_log_psi(self, sampler: AbstractSampler) -> SampledObs | LazySampledObs:
         """Gamma_k(s_i), returned lazily if ``batched_jacobian`` is set."""
@@ -102,6 +105,7 @@ class AbstractObjectiveFunction(ABC):
                 sampler.psi.lazy_gradients(sampler.samples), sampler.weights
             )
         return SampledObs(sampler.psi.gradients(sampler.samples), sampler.weights)
+
 
 class Observable(AbstractObjectiveFunction):
     """
@@ -116,6 +120,7 @@ class Observable(AbstractObjectiveFunction):
         * ``operator``: Hermitian operator :math:`\\hat O`, see :ref:`Operator`.
         * ``batched_jacobian``: See ``AbstractObjectiveFunction``.
     """
+
     def __init__(self, operator: AbstractOperator, batched_jacobian: bool = False):
         super().__init__(batched_jacobian)
         self._operator = operator
@@ -141,7 +146,9 @@ class Observable(AbstractObjectiveFunction):
         """
         return sampler(self.operator, **op_kwargs)
 
-    def value_and_grad(self, sampler: AbstractSampler, compute_grad: bool = True, **op_kwargs):
+    def value_and_grad(
+        self, sampler: AbstractSampler, compute_grad: bool = True, **op_kwargs
+    ):
         """
         Local estimator, logarithmic derivatives and force \
         :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,O_\\mathrm{loc})`.
@@ -165,6 +172,7 @@ class Observable(AbstractObjectiveFunction):
 
         return ObjectiveFunctionOutput(o_loc=o_loc, grad_log_psi=grad_log_psi)
 
+
 class Estimator(AbstractObjectiveFunction):
     """
     Mean of a real function :math:`f_\\theta(s)` of the configuration and of the parameters.
@@ -181,11 +189,12 @@ class Estimator(AbstractObjectiveFunction):
     Args:
         * ``estimator_fn``: The function ``f(parameters, s)``, with the parameters ``psi.parameters`` \
           of the variational state. It is called on all the samples at once, with ``s`` of shape \
-          ``(N, *sampleShape)``, and must return the ``N`` real values; for its derivatives it is \
-          called on single configurations, of shape ``sampleShape``, and must return a scalar.
+          ``(N, *sample_shape)``, and must return the ``N`` real values; for its derivatives it is \
+          called on single configurations, of shape ``sample_shape``, and must return a scalar.
         * ``batched_jacobian``: See ``AbstractObjectiveFunction``. It also applies to the \
           derivatives of ``estimator_fn``.
     """
+
     def __init__(self, estimator_fn: callable, batched_jacobian: bool = False):
         super().__init__(batched_jacobian)
         self._estimator_fn = estimator_fn
@@ -210,7 +219,9 @@ class Estimator(AbstractObjectiveFunction):
         observations = self.estimator_fn(sampler.psi.parameters, sampler.samples)
         return SampledObs(observations, sampler.weights)
 
-    def value_and_grad(self, sampler: AbstractSampler, compute_grad: bool = True, **kwargs):
+    def value_and_grad(
+        self, sampler: AbstractSampler, compute_grad: bool = True, **kwargs
+    ):
         """
         Values, logarithmic derivatives and force \
         :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,f_\\theta)+\\frac12\\langle\\partial_{\\theta_k}f_\\theta\\rangle_p`.
@@ -255,7 +266,7 @@ class Estimator(AbstractObjectiveFunction):
             )
 
         grad_kwargs = dict(
-            parameters=sampler.psi.parameters, batch_size=sampler.psi.batchSize
+            parameters=sampler.psi.parameters, batch_size=sampler.psi.batch_size
         )
         if self._batched_jacobian:
             grad_obs = LazySampledObs(
@@ -268,13 +279,18 @@ class Estimator(AbstractObjectiveFunction):
 
         return grad_obs.mean
 
-    @sharded(automatic_sharding=True) # TODO: Set flag to False once jax problem is solved
+    @sharded(
+        automatic_sharding=True
+    )  # TODO: Set flag to False once jax problem is solved
     def _grad_fn_sh(self, samples, *, parameters, batch_size):
         return self._grad_fn(self.estimator_fn, parameters, samples)
 
-    @sharded(automatic_sharding=True, yield_iter=True) # TODO: Set flag to False once jax problem is solved
+    @sharded(
+        automatic_sharding=True, yield_iter=True
+    )  # TODO: Set flag to False once jax problem is solved
     def _lazy_grad_fn_sh(self, samples, *, parameters, batch_size):
         return self._grad_fn(self.estimator_fn, parameters, samples)
+
 
 class ParametricObservable(AbstractObjectiveFunction):
     """
@@ -302,12 +318,13 @@ class ParametricObservable(AbstractObjectiveFunction):
           are used.
         * ``batched_jacobian``: See ``AbstractObjectiveFunction``.
     """
+
     def __init__(
-            self,
-            operator: AbstractOperator,
-            estimator_fn: callable,
-            batched_jacobian: bool = False
-        ):
+        self,
+        operator: AbstractOperator,
+        estimator_fn: callable,
+        batched_jacobian: bool = False,
+    ):
         super().__init__(batched_jacobian)
         self._observable = Observable(operator, batched_jacobian)
         self._explicit = Estimator(estimator_fn, batched_jacobian)
@@ -326,7 +343,9 @@ class ParametricObservable(AbstractObjectiveFunction):
         """
         return self._observable(sampler, **op_kwargs)
 
-    def value_and_grad(self, sampler: AbstractSampler, compute_grad: bool = True, **op_kwargs):
+    def value_and_grad(
+        self, sampler: AbstractSampler, compute_grad: bool = True, **op_kwargs
+    ):
         """
         Local estimator, logarithmic derivatives and force \
         :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,O_\\mathrm{loc})+\\frac12\\langle(\\partial_{\\theta_k}\\hat O)_\\mathrm{loc}\\rangle_p`.

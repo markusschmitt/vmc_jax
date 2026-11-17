@@ -1,5 +1,7 @@
-from .base import AbstractSolver
 from jax.scipy.sparse.linalg import cg
+
+from .base import AbstractSolver
+
 
 class CG(AbstractSolver):
     """
@@ -15,6 +17,7 @@ class CG(AbstractSolver):
         * ``maxiter`` [optional]: Maximal number of iterations. If ``None``, ten times the length \
           of :math:`b`.
     """
+
     def __init__(self, tol: float = 1e-5, maxiter: int | None = None):
         self._tol = tol
         self._maxiter = maxiter

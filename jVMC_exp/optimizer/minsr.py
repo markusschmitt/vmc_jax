@@ -1,27 +1,36 @@
-import jax
-import jax.numpy as jnp
 from typing import Callable
 
+import jax
+import jax.numpy as jnp
+
 from jVMC_exp import global_defs
-from jVMC_exp.sampler.base import AbstractSampler
-from jVMC_exp.sampler import ExactSampler
-from jVMC_exp.stats import SampledObs
-from jVMC_exp.vqs import NQS
+from jVMC_exp.objective_function.base import (
+    AbstractObjectiveFunction,
+    ObjectiveFunctionOutput,
+)
 from jVMC_exp.optimizer.base import AbstractOptimizer
-from jVMC_exp.objective_function.base import ObjectiveFunctionOutput, AbstractObjectiveFunction
-from jVMC_exp.sharding_config import sharded, MESH, REPLICATED_SHARDING
-from jVMC_exp.util import OutputManager
-from jVMC_exp.solver.base import AbstractSolver
+from jVMC_exp.sampler import ExactSampler
+from jVMC_exp.sampler.base import AbstractSampler
+from jVMC_exp.sharding_config import MESH, REPLICATED_SHARDING, sharded
 from jVMC_exp.solver import Pinv
+from jVMC_exp.solver.base import AbstractSolver
+from jVMC_exp.stats import SampledObs
+from jVMC_exp.util import OutputManager
+from jVMC_exp.vqs import NQS
+
 
 def _interleave_re_im(arr):
     """
     Real array of shape (2N, ...) with the real and imaginary part of each row of ``arr`` next
     to each other to reduce device communication.
     """
-    return jnp.stack([jnp.real(arr), jnp.imag(arr)], axis=1).reshape((2 * arr.shape[0],) + arr.shape[1:])
+    return jnp.stack([jnp.real(arr), jnp.imag(arr)], axis=1).reshape(
+        (2 * arr.shape[0],) + arr.shape[1:]
+    )
+
 
 _concat_nonholo = jax.jit(_interleave_re_im)
+
 
 @jax.jit(static_argnums=(3,))
 def _normalize_batch(batch, weights, mean, concat):
@@ -31,31 +40,35 @@ def _normalize_batch(batch, weights, mean, concat):
 
     return batch
 
+
 @jax.jit
 def _adjoint_dot(O, x):
     """
-    conj(O).T @ x without copies of O: the conjugate is applied to x, 
+    conj(O).T @ x without copies of O: the conjugate is applied to x,
     and a real O is never converted to complex.
     """
     if jnp.iscomplexobj(O):
         return jnp.conj(jnp.conj(x) @ O)
-    
+
     if jnp.iscomplexobj(x):
         r = jnp.stack([x.real, x.imag]) @ O
         return r[0] + 1j * r[1]
-    
+
     return x @ O
+
 
 @jax.jit
 def _take_columns(matrix, positions):
     return jnp.take(matrix, positions, axis=1)
+
 
 def _redistribute(grad):
     """
     Turns the local block of ``grad``, sharded along the sample axis, into all its samples
     and this device's shard of the parameters.
     """
-    return jax.lax.all_to_all(grad, 'devices', split_axis=1, concat_axis=0, tiled=True)
+    return jax.lax.all_to_all(grad, "devices", split_axis=1, concat_axis=0, tiled=True)
+
 
 def _row_blocks(n_local_rows):
     """
@@ -63,6 +76,7 @@ def _row_blocks(n_local_rows):
     the largest number not larger than the number of devices that divides ``n_local_rows``.
     """
     return max(k for k in range(1, MESH.size + 1) if n_local_rows % k == 0)
+
 
 def _blockwise_tangent_kernel(grad_l, grad_r=None):
     """
@@ -101,13 +115,21 @@ def _blockwise_tangent_kernel(grad_l, grad_r=None):
     # large as grad_r
     n_cols = grad_r.shape[1]
     col_bytes = grad_r.shape[0] * grad_r.dtype.itemsize
-    chunk = max(1, min(n_cols, (global_defs.MATMUL_CHUNK_BYTES or n_cols * col_bytes) // col_bytes))
+    chunk = max(
+        1,
+        min(
+            n_cols, (global_defs.MATMUL_CHUNK_BYTES or n_cols * col_bytes) // col_bytes
+        ),
+    )
 
     def add_block(j, T):
         rows = block_rows(j)
 
         def add_chunk(k, local, size=chunk):
-            l, r = (jax.lax.dynamic_slice_in_dim(x, k * chunk, size, axis=1) for x in (rows, grad_r))
+            l, r = (
+                jax.lax.dynamic_slice_in_dim(x, k * chunk, size, axis=1)
+                for x in (rows, grad_r)
+            )
             # Materialized: XLA would otherwise fuse the slices
             # into the product and autotune it on whole operands
             l, r = jax.lax.optimization_barrier((l, r))
@@ -118,14 +140,17 @@ def _blockwise_tangent_kernel(grad_l, grad_r=None):
         local = jax.lax.fori_loop(1, n_cols // chunk, add_chunk, add_chunk(0, 0))
         if n_cols % chunk:
             local = add_chunk(n_cols // chunk, local, n_cols % chunk)
-        local = jnp.conj(jax.lax.psum_scatter(local, 'devices', scatter_dimension=0, tiled=True))
+        local = jnp.conj(
+            jax.lax.psum_scatter(local, "devices", scatter_dimension=0, tiled=True)
+        )
 
         return jax.lax.dynamic_update_slice_in_dim(T, local, j * block, axis=0)
 
     T = jnp.zeros((n_local_rows, grad_r.shape[0]), dtype)
-    T = jax.lax.pcast(T, ('devices',), to='varying')
+    T = jax.lax.pcast(T, ("devices",), to="varying")
 
     return jax.lax.fori_loop(0, n_blocks, add_block, T)
+
 
 class MinSR(AbstractOptimizer):
     """
@@ -152,7 +177,7 @@ class MinSR(AbstractOptimizer):
     Args:
         * ``sampler``: Sampler of ``psi``.
         * ``psi``: Variational state.
-        * ``diagonalShift``: The shift :math:`\\lambda` added to the diagonal of the tangent \
+        * ``diagonal_shift``: The shift :math:`\\lambda` added to the diagonal of the tangent \
           kernel, or a callable ``step -> value``, evaluated by ``update_hyperparams()``.
         * ``solver``: Dense solver of ``jVMC_exp.solver``, e.g. ``Pinv``: its ``pinv_cutoff`` \
           plays the role of :math:`\\epsilon_\\mathrm{SVD}`. A matrix-free solver, like ``CG``, \
@@ -162,12 +187,17 @@ class MinSR(AbstractOptimizer):
         * ``resample_stepper``: See ``AbstractOptimizer``.
         * ``output_manager`` [optional]: See ``AbstractOptimizer``.
     """
+
     def __init__(
-            self, sampler: AbstractSampler, psi: NQS,
-            diagonalShift=1e-3, solver: AbstractSolver=Pinv(),
-            resample_stepper=True, output_manager: OutputManager | None = None
-        ):
-        self.diag_shift = diagonalShift
+        self,
+        sampler: AbstractSampler,
+        psi: NQS,
+        diagonal_shift=1e-3,
+        solver: AbstractSolver = Pinv(),
+        resample_stepper=True,
+        output_manager: OutputManager | None = None,
+    ):
+        self.diag_shift = diagonal_shift
 
         if not solver._needs_dense_matrix:
             raise ValueError(
@@ -181,21 +211,26 @@ class MinSR(AbstractOptimizer):
             )
         self._solver = solver
 
-        self._concat = (not psi.holomorphic) and (jnp.issubdtype(psi.out_dtype, jnp.complexfloating))
-        num_params = psi.numParameters * (2 if not psi.realParams else 1)
-        self._params_pad_size = (- num_params) % MESH.shape["devices"]
+        self._concat = (not psi.holomorphic) and (
+            jnp.issubdtype(psi.out_dtype, jnp.complexfloating)
+        )
+        num_params = psi.num_parameters * (2 if not psi.real_params else 1)
+        self._params_pad_size = (-num_params) % MESH.shape["devices"]
         self._pad_obs = jax.jit(
             lambda x: jnp.pad(x, ((0, 0), (0, self._params_pad_size)), mode="constant")
         )
-        self._unpad_obs = jax.jit(lambda x: x[:, :-self._params_pad_size])
+        self._unpad_obs = jax.jit(lambda x: x[:, : -self._params_pad_size])
 
         super().__init__(
-            sampler, psi, resample_stepper, use_cross_valiadation=False, output_manager=output_manager
+            sampler,
+            psi,
+            resample_stepper,
+            use_cross_valiadation=False,
+            output_manager=output_manager,
         )
 
         self._solver_state = dict(
-            exact_sampler=isinstance(self.sampler, ExactSampler),
-            pad_size=0
+            exact_sampler=isinstance(self.sampler, ExactSampler), pad_size=0
         )
 
     @property
@@ -218,7 +253,9 @@ class MinSR(AbstractOptimizer):
 
     @diag_shift.setter
     def diag_shift(self, value):
-        self._diag_shift_fn = value if isinstance(value, Callable) else lambda step: value
+        self._diag_shift_fn = (
+            value if isinstance(value, Callable) else lambda step: value
+        )
         self._diag_shift = self._diag_shift_fn(0)
 
     @property
@@ -264,7 +301,9 @@ class MinSR(AbstractOptimizer):
             T = None
             batches_l = iter(grad.observations)
             for l, weights_l in enumerate(grad._weights):
-                batch_l = _normalize_batch(next(batches_l), weights_l, grad.mean, self._concat)
+                batch_l = _normalize_batch(
+                    next(batches_l), weights_l, grad.mean, self._concat
+                )
 
                 T_row = []
                 batches_r = iter(grad.observations)
@@ -273,7 +312,9 @@ class MinSR(AbstractOptimizer):
                         next(batches_r)
                         T_row.append(self._get_tangent_kernel(batch_l))
                         continue
-                    batch_r = _normalize_batch(next(batches_r), weights_r, grad.mean, self._concat)
+                    batch_r = _normalize_batch(
+                        next(batches_r), weights_r, grad.mean, self._concat
+                    )
                     T_row.append(self._get_tangent_kernel(batch_l, batch_r))
                 # The columns come in batch order: move them to the original sample order
                 T_row = _take_columns(jnp.concatenate(T_row, axis=1), positions)
@@ -293,24 +334,28 @@ class MinSR(AbstractOptimizer):
         del T
 
         if isinstance(objective_function_output.grad_log_psi, SampledObs):
-            update = - _adjoint_dot(grad, solution)
+            update = -_adjoint_dot(grad, solution)
         else:
             update = 0
             batches = iter(grad.observations)
             for weights, solution_batch in zip(grad._weights, layout.split(solution)):
-                grad_batch = _normalize_batch(next(batches), weights, grad.mean, self._concat)
+                grad_batch = _normalize_batch(
+                    next(batches), weights, grad.mean, self._concat
+                )
                 update -= _adjoint_dot(grad_batch, solution_batch)
 
         if self._params_pad_size != 0:
             objective_function_output.grad_log_psi.transform(self._unpad_obs)
-            update = update[:-self._params_pad_size]
-    
+            update = update[: -self._params_pad_size]
+
         return update
 
-    def cross_validation(self, objective_function: AbstractObjectiveFunction, **objective_function_kwargs):
+    def cross_validation(
+        self, objective_function: AbstractObjectiveFunction, **objective_function_kwargs
+    ):
         """Not implemented: raises ``NotImplementedError``."""
         raise NotImplementedError
-    
+
     def _update_meta_data(self):
         self.meta_data = dict(**self._additional_info)
 

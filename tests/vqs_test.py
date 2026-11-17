@@ -1,16 +1,16 @@
 import unittest
+from math import isclose
+
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
-from math import isclose
-import flax.linen as nn
 
 import jVMC_exp
-import jVMC_exp.nets as nets
-from jVMC_exp.vqs import NQS
-from jVMC_exp.symmetry.lattice_symetries import square_translation_symmetry
-from jVMC_exp.sharding_config import MESH, DEVICE_SPEC
-from jVMC_exp import global_defs
 import jVMC_exp.nets.activation_functions as act_funs
+from jVMC_exp import global_defs, nets
+from jVMC_exp.symmetry.lattice_symmetries import square_translation_symmetry
+from jVMC_exp.vqs import NQS
+
 
 def _general_test_grad(model, num_samples, L, test_class: unittest.TestCase):
     psi = NQS(model, L, num_samples)
@@ -34,83 +34,96 @@ def _general_test_grad(model, num_samples, L, test_class: unittest.TestCase):
         with test_class.subTest(i=j):
             test_class.assertTrue(jnp.max(jnp.abs(Gfd - G[..., j])) < 1e-2)
 
-class CpxRBM_nonHolomorphic(nn.Module):
+
+class CpxRBMNonHolomorphic(nn.Module):
     """
     Restricted Boltzmann machine with complex parameters.
 
     Initialization arguments:
         * ``s``: Computational basis configuration.
-        * ``numHidden``: Number of hidden units.
+        * ``num_hidden``: Number of hidden units.
         * ``bias``: ``Boolean`` indicating whether to use bias.
 
     """
-    numHidden: int = 2
+
+    num_hidden: int = 2
     bias: bool = False
 
     @nn.compact
     def __call__(self, s):
 
         layer = nn.Dense(
-            self.numHidden, use_bias=self.bias,
+            self.num_hidden,
+            use_bias=self.bias,
             **jVMC_exp.nets.initializers.init_fn_args(
                 kernel_init=jVMC_exp.nets.initializers.cplx_init,
                 bias_init=jax.nn.initializers.zeros,
-                param_dtype=global_defs.DT_PARAMS_CPX
-            )
+                param_dtype=global_defs.DT_PARAMS_CPX,
+            ),
         )
 
         out = layer(2 * s.ravel() - 1)
         out = out + jnp.real(out) * 1e-2
         return jnp.sum(act_funs.log_cosh(out))
 
-class Simple_nonHolomorphic(nn.Module):
+
+class SimpleNonHolomorphic(nn.Module):
     """
     Restricted Boltzmann machine with complex parameters.
 
     Initialization arguments:
         * ``s``: Computational basis configuration.
-        * ``numHidden``: Number of hidden units.
+        * ``num_hidden``: Number of hidden units.
         * ``bias``: ``Boolean`` indicating whether to use bias.
 
     """
-    numHidden: int = 2
+
+    num_hidden: int = 2
     bias: bool = False
 
     @nn.compact
     def __call__(self, s):
-        z = self.param('z', jVMC_exp.nets.initializers.cplx_init, (1,), global_defs.DT_PARAMS_CPX)
-    
+        z = self.param(
+            "z", jVMC_exp.nets.initializers.cplx_init, (1,), global_defs.DT_PARAMS_CPX
+        )
+
         return jnp.sum(jnp.conj(z))
 
-class MatrixMultiplication_NonHolomorphic(nn.Module):
+
+class MatrixMultiplicationNonHolomorphic(nn.Module):
     holo: bool = False
 
     @nn.compact
     def __call__(self, s):
-        layer1 = nn.Dense(1, use_bias=False, **jVMC_exp.nets.initializers.init_fn_args(dtype=global_defs.DT_PARAMS_CPX))
+        layer1 = nn.Dense(
+            1,
+            use_bias=False,
+            **jVMC_exp.nets.initializers.init_fn_args(dtype=global_defs.DT_PARAMS_CPX),
+        )
         out = layer1(2 * s.ravel() - 1)
         if not self.holo:
             out = out + 1e-1 * jnp.real(out)
-    
+
         return jnp.sum(out)
-    
+
+
 class TestGradients(unittest.TestCase):
     def test_automatic_holomorphicity_recognition(self):
         for k in range(10):
             L = 3
             num_samples = 4
 
-            rbm = nets.CpxRBM(numHidden=2**k, bias=True)
+            rbm = nets.CpxRBM(num_hidden=2**k, bias=True)
             orbit = square_translation_symmetry(L, 1, "spin")
-            psiC = NQS(rbm, L, num_samples, orbit=orbit)
+            psi_c = NQS(rbm, L, num_samples, orbit=orbit)
 
-            self.assertTrue(psiC.holomorphic)
+            self.assertTrue(psi_c.holomorphic)
 
     def test_gradients_cpx(self):
         L = 3
         num_samples = 4
 
-        rbm = nets.CpxRBM(numHidden=2, bias=True)
+        rbm = nets.CpxRBM(num_hidden=2, bias=True)
         orbit = square_translation_symmetry(L, 1, "spin")
         model = orbit * rbm
 
@@ -120,35 +133,46 @@ class TestGradients(unittest.TestCase):
         L = 3
         num_samples = 4
 
-        rbmModel1 = nets.RBM(numHidden=2, bias=True)
-        rbmModel2 = nets.RBM(numHidden=3, bias=True)
+        rbm_model_1 = nets.RBM(num_hidden=2, bias=True)
+        rbm_model_2 = nets.RBM(num_hidden=3, bias=True)
 
-        _general_test_grad((rbmModel1, rbmModel2), num_samples, L, self)
+        _general_test_grad((rbm_model_1, rbm_model_2), num_samples, L, self)
 
-    def test_gradients_nonholomorphic(self): 
+    def test_gradients_nonholomorphic(self):
         L = 3
         num_samples = 4
         model = nets.RNN1DGeneral(L=L)
 
         _general_test_grad(model, num_samples, L, self)
-    
+
     def test_gradients_complex_nonholomorphic(self):
         L = 3
         num_samples = 4
-        model = Simple_nonHolomorphic()
+        model = SimpleNonHolomorphic()
 
         _general_test_grad(model, num_samples, L, self)
 
-        model = CpxRBM_nonHolomorphic()
+        model = CpxRBMNonHolomorphic()
 
         _general_test_grad(model, num_samples, L, self)
 
-        model = MatrixMultiplication_NonHolomorphic(holo=False)
+        model = MatrixMultiplicationNonHolomorphic(holo=False)
 
         psi = NQS(model, 1, num_samples)
-        s= jnp.zeros((num_samples, 1), dtype=global_defs.DT_SAMPLES)
+        s = jnp.zeros((num_samples, 1), dtype=global_defs.DT_SAMPLES)
         G = psi.gradients(s)
-        ref = jnp.array([-1.1+0.j, -1.1+0.j, -1.1+0.j, -1.1+0.j, -0.-1.j, -0.-1.j, -0.-1.j, -0.-1.j])
+        ref = jnp.array(
+            [
+                -1.1 + 0.0j,
+                -1.1 + 0.0j,
+                -1.1 + 0.0j,
+                -1.1 + 0.0j,
+                -0.0 - 1.0j,
+                -0.0 - 1.0j,
+                -0.0 - 1.0j,
+                -0.0 - 1.0j,
+            ]
+        )
         self.assertTrue(jnp.allclose(G.T.ravel(), ref))
 
     def test_lazy_gradients_matches_gradients(self):
@@ -163,7 +187,7 @@ class TestGradients(unittest.TestCase):
         L = 3
         batch_size = 4 * jax.device_count()
 
-        rbm = nets.CpxRBM(numHidden=3, bias=True)
+        rbm = nets.CpxRBM(num_hidden=3, bias=True)
         psi = NQS(rbm, L, batch_size, seed=42)
 
         # The second number of samples is not divisible by the number of devices (if there
@@ -171,7 +195,9 @@ class TestGradients(unittest.TestCase):
         for num_samples in (10 * jax.device_count(), 10 * jax.device_count() + 1):
             with self.subTest(num_samples=num_samples):
                 key = jax.random.PRNGKey(0)
-                s = jax.random.randint(key, (num_samples, L), 0, 2).astype(global_defs.DT_SAMPLES)
+                s = jax.random.randint(key, (num_samples, L), 0, 2).astype(
+                    global_defs.DT_SAMPLES
+                )
 
                 dense = psi.gradients(s)
                 lazy = psi.lazy_gradients(s)
@@ -188,7 +214,7 @@ class TestGradients(unittest.TestCase):
     def test_gradient_dict(self):
         L = 3
         num_samples = 4
-        net = jVMC_exp.nets.CpxRBM(numHidden=8, bias=False)
+        net = jVMC_exp.nets.CpxRBM(num_hidden=8, bias=False)
 
         psi = jVMC_exp.vqs.NQS(net, L, num_samples, seed=1234)
         s = jnp.zeros((num_samples, L))
@@ -197,19 +223,20 @@ class TestGradients(unittest.TestCase):
 
         self.assertTrue(isclose(jnp.linalg.norm(g1 - g2), 0.0))
 
+
 class TestEvaluation(unittest.TestCase):
     def test_mixed_precision_nqs_boundary(self):
         L = 3
         num_samples = 4
-        model = nets.CpxRBM(numHidden=2, bias=True)
+        model = nets.CpxRBM(num_hidden=2, bias=True)
         psi = NQS(
-            model, 
-            L, 
-            num_samples, 
-            seed=1234, 
+            model,
+            L,
+            num_samples,
+            seed=1234,
             sampler_dtype=jnp.complex64,
             eval_dtype=jnp.complex64,
-            grad_dtype=jnp.complex64
+            grad_dtype=jnp.complex64,
         )
 
         s = jnp.zeros((num_samples, L), dtype=global_defs.DT_SAMPLES)
@@ -223,17 +250,18 @@ class TestEvaluation(unittest.TestCase):
         self.assertTrue(all(p.dtype == global_defs.DT_PARAMS_CPX for p in param_leaves))
 
         ratio_psi = NQS(
-            nets.CpxRBM_ratio(numHidden=2, bias=True), 
-            L, 
-            num_samples, 
-            seed=1234, 
+            nets.CpxRBMRatio(num_hidden=2, bias=True),
+            L,
+            num_samples,
+            seed=1234,
             sampler_dtype=jnp.complex64,
             eval_dtype=jnp.complex64,
-            grad_dtype=jnp.complex64
+            grad_dtype=jnp.complex64,
         )
         sp = s.at[:, 0].set(1)
         ratio = ratio_psi.call_ratio(s, sp)
         self.assertEqual(ratio.dtype, global_defs.DT_OUT_CPX)
+
 
 if __name__ == "__main__":
     unittest.main()

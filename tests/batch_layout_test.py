@@ -1,32 +1,47 @@
 import unittest
+
 import jax
 import jax.numpy as jnp
 import numpy as np
-
 from jax.sharding import PartitionSpec
 
 from jVMC_exp import sharding_config
 from jVMC_exp.sharding_config import (
-    BatchLayout, DEVICE_SHARDING, DEVICE_SPEC, REPLICATED_SHARDING, sharded, pad_to_devices,
-    _take_batch, _trim_batch, _put_batch,
+    DEVICE_SHARDING,
+    DEVICE_SPEC,
+    REPLICATED_SHARDING,
+    BatchLayout,
+    _put_batch,
+    _take_batch,
+    _trim_batch,
+    pad_to_devices,
+    sharded,
 )
 
 D = jax.device_count()
-COLLECTIVES = ("all-to-all", "all-gather", "collective-permute", "all-reduce", "reduce-scatter")
+COLLECTIVES = (
+    "all-to-all",
+    "all-gather",
+    "collective-permute",
+    "all-reduce",
+    "reduce-scatter",
+)
 
 # (samples per device, samples per device in a batch): several full batches, a partial
 # last batch, a single full batch and fewer samples than one batch
 LOCAL_SIZES = ((12, 4), (10, 4), (4, 4), (3, 8))
 
+
 def _data(num_samples, seed=0):
     x = jax.random.normal(jax.random.PRNGKey(seed), (num_samples, 3))
     return jax.device_put(x, DEVICE_SHARDING)
 
+
 def _interleave(x):
     return jnp.stack([x, -x], axis=1).reshape((2 * x.shape[0],) + x.shape[1:])
 
-class TestBatchLayout(unittest.TestCase):
 
+class TestBatchLayout(unittest.TestCase):
     def test_put_inverts_split(self):
         for n, b in LOCAL_SIZES:
             with self.subTest(n=n, b=b):
@@ -38,7 +53,9 @@ class TestBatchLayout(unittest.TestCase):
                     out = layout.put(out, piece, i)
 
                 self.assertTrue(jnp.array_equal(out, x))
-                self.assertTrue(out.sharding.is_equivalent_to(DEVICE_SHARDING, out.ndim))
+                self.assertTrue(
+                    out.sharding.is_equivalent_to(DEVICE_SHARDING, out.ndim)
+                )
 
     def test_put_accepts_padded_last_batch(self):
         layout = BatchLayout(10 * D, 4 * D)
@@ -66,12 +83,16 @@ class TestBatchLayout(unittest.TestCase):
                 x = _data(n * D)
                 in_batch_order = jnp.concatenate(layout.split(x))
 
-                self.assertTrue(jnp.array_equal(in_batch_order[layout.batch_positions()], x))
+                self.assertTrue(
+                    jnp.array_equal(in_batch_order[layout.batch_positions()], x)
+                )
 
     def test_scaled_layout_splits_interleaved_rows(self):
         layout = BatchLayout(10 * D, 4 * D)
         x = _data(10 * D)
-        for piece, interleaved_piece in zip(layout.split(x), layout.scaled(2).split(_interleave(x))):
+        for piece, interleaved_piece in zip(
+            layout.split(x), layout.scaled(2).split(_interleave(x))
+        ):
             self.assertTrue(jnp.array_equal(_interleave(piece), interleaved_piece))
 
     def test_helpers_do_not_communicate(self):
@@ -110,6 +131,7 @@ class TestBatchLayout(unittest.TestCase):
             with self.assertRaises(ValueError):
                 BatchLayout(4 * D, 4 * D + 1)
 
+
 class _Model:
     @sharded()
     def double(self, x, *, batch_size):
@@ -127,11 +149,13 @@ class _Model:
     def double_custom_specs(self, x, *, batch_size):
         return 2 * x
 
+
 class TestShardedDecorator(unittest.TestCase):
     """
     The decorator evaluates local batches. Non-lazy results must keep the order of the
     input samples, and lazy results must line up with the iterable's layout.
     """
+
     def test_results_keep_sample_order(self):
         model = _Model()
         for n, b in LOCAL_SIZES:
@@ -140,7 +164,9 @@ class TestShardedDecorator(unittest.TestCase):
                 out = model.double(x, batch_size=b * D)
 
                 self.assertTrue(jnp.array_equal(out, 2 * x))
-                self.assertTrue(out.sharding.is_equivalent_to(DEVICE_SHARDING, out.ndim))
+                self.assertTrue(
+                    out.sharding.is_equivalent_to(DEVICE_SHARDING, out.ndim)
+                )
 
     def test_pytree_output_and_several_arguments(self):
         model = _Model()
@@ -197,7 +223,9 @@ class TestShardedDecorator(unittest.TestCase):
         model = _Model()
         x = _data(10 * D)
 
-        self.assertTrue(jnp.array_equal(model.double_custom_specs(x, batch_size=None), 2 * x))
+        self.assertTrue(
+            jnp.array_equal(model.double_custom_specs(x, batch_size=None), 2 * x)
+        )
         with self.assertRaises(ValueError):
             model.double_custom_specs(x, batch_size=4 * D)
 
@@ -208,12 +236,16 @@ class TestShardedDecorator(unittest.TestCase):
         iterable = model.lazy_double(x, batch_size=4 * D)
 
         self.assertEqual(iterable.layout, BatchLayout(len(pad_to_devices(x)), 4 * D))
-        for piece, expected in zip(iterable, iterable.layout.split(pad_to_devices(2 * x))):
+        for piece, expected in zip(
+            iterable, iterable.layout.split(pad_to_devices(2 * x))
+        ):
             self.assertTrue(jnp.array_equal(piece, expected))
+
 
 class TestModule(unittest.TestCase):
     def test_P_is_partition_spec(self):
         self.assertIs(sharding_config.P, PartitionSpec)
+
 
 if __name__ == "__main__":
     unittest.main()

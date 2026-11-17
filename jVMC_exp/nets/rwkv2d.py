@@ -6,10 +6,9 @@ from typing import Any
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import jax.random as random
+from jax import random
 
-import jVMC_exp.global_defs as global_defs
-
+from jVMC_exp import global_defs
 
 RWKV_PHASE_MODES = {
     "legacy_transformer",
@@ -63,7 +62,9 @@ class RWKV2DCausalBlock(nn.Module):
             kernel_init=kernel_init,
             name="gates",
         )(ctx)
-        gate_x, gate_left, gate_up = jnp.split(nn.sigmoid(jnp.asarray(gates, dtype=compute_dtype)), 3, axis=-1)
+        gate_x, gate_left, gate_up = jnp.split(
+            nn.sigmoid(jnp.asarray(gates, dtype=compute_dtype)), 3, axis=-1
+        )
         candidate = nn.Dense(
             int(self.hidden_size),
             param_dtype=param_dtype,
@@ -77,7 +78,12 @@ class RWKV2DCausalBlock(nn.Module):
             kernel_init=kernel_init,
             name="candidate_out",
         )(candidate)
-        mixed = gate_x * x + gate_left * left_h + gate_up * up_h + jnp.asarray(candidate, dtype=compute_dtype)
+        mixed = (
+            gate_x * x
+            + gate_left * left_h
+            + gate_up * up_h
+            + jnp.asarray(candidate, dtype=compute_dtype)
+        )
         mixed = nn.LayerNorm(param_dtype=param_dtype, name="mixed_ln")(mixed)
         update = nn.Dense(
             int(self.hidden_size),
@@ -92,7 +98,10 @@ class RWKV2DCausalBlock(nn.Module):
             kernel_init=kernel_init,
             name="ffn_out",
         )(update)
-        return jnp.asarray(nn.LayerNorm(param_dtype=param_dtype, name="out_ln")(mixed + update), dtype=compute_dtype)
+        return jnp.asarray(
+            nn.LayerNorm(param_dtype=param_dtype, name="out_ln")(mixed + update),
+            dtype=compute_dtype,
+        )
 
 
 class RWKV2DGraphCausalBlock(nn.Module):
@@ -116,7 +125,9 @@ class RWKV2DGraphCausalBlock(nn.Module):
         x = jnp.asarray(x, dtype=compute_dtype)
         left_h = jnp.asarray(left_h, dtype=compute_dtype)
         up_h = jnp.asarray(up_h, dtype=compute_dtype)
-        graph_by_type = jnp.asarray(graph_by_type, dtype=compute_dtype).reshape(3 * int(self.embedding_size))
+        graph_by_type = jnp.asarray(graph_by_type, dtype=compute_dtype).reshape(
+            3 * int(self.embedding_size)
+        )
         graph_h = nn.Dense(
             int(self.embedding_size),
             param_dtype=param_dtype,
@@ -133,7 +144,9 @@ class RWKV2DGraphCausalBlock(nn.Module):
             kernel_init=kernel_init,
             name="gates",
         )(ctx)
-        gate_x, gate_left, gate_up, gate_graph = jnp.split(nn.sigmoid(jnp.asarray(gates, dtype=compute_dtype)), 4, axis=-1)
+        gate_x, gate_left, gate_up, gate_graph = jnp.split(
+            nn.sigmoid(jnp.asarray(gates, dtype=compute_dtype)), 4, axis=-1
+        )
         candidate = nn.Dense(
             int(self.hidden_size),
             param_dtype=param_dtype,
@@ -147,7 +160,13 @@ class RWKV2DGraphCausalBlock(nn.Module):
             kernel_init=kernel_init,
             name="candidate_out",
         )(candidate)
-        mixed = gate_x * x + gate_left * left_h + gate_up * up_h + gate_graph * graph_h + jnp.asarray(candidate, dtype=compute_dtype)
+        mixed = (
+            gate_x * x
+            + gate_left * left_h
+            + gate_up * up_h
+            + gate_graph * graph_h
+            + jnp.asarray(candidate, dtype=compute_dtype)
+        )
         mixed = nn.LayerNorm(param_dtype=param_dtype, name="mixed_ln")(mixed)
         update = nn.Dense(
             int(self.hidden_size),
@@ -162,7 +181,10 @@ class RWKV2DGraphCausalBlock(nn.Module):
             kernel_init=kernel_init,
             name="ffn_out",
         )(update)
-        return jnp.asarray(nn.LayerNorm(param_dtype=param_dtype, name="out_ln")(mixed + update), dtype=compute_dtype)
+        return jnp.asarray(
+            nn.LayerNorm(param_dtype=param_dtype, name="out_ln")(mixed + update),
+            dtype=compute_dtype,
+        )
 
 
 class RWKVPhaseTransformerBlock(nn.Module):
@@ -208,7 +230,7 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
     """Two-dimensional causal autoregressive RWKV log-amplitude network."""
 
     L: int
-    LHilDim: int = 2
+    l_hil_dim: int = 2
     patch_size: int = 1
     grid_Lx: int = 1
     grid_Ly: int = 1
@@ -216,7 +238,7 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
     num_heads: int = 1
     num_layers: int = 1
     embedding_size: int = 32
-    logProbFactor: float = 0.5
+    log_prob_factor: float = 0.5
     one_hot: bool = False
     bias: bool = False
     linear_output: bool = False
@@ -247,7 +269,7 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         param_dtype = _param_dtype(self.param_dtype)
         if int(self.L) <= 0:
             raise ValueError("2D RWKV system size must be positive.")
-        if int(self.LHilDim) <= 1:
+        if int(self.l_hil_dim) <= 1:
             raise ValueError("2D RWKV local Hilbert dimension must be at least 2.")
         if int(self.patch_size) <= 0 or int(self.L) % int(self.patch_size) != 0:
             raise ValueError("2D RWKV patch_size must be positive and divide L.")
@@ -271,48 +293,72 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         if float(self.logit_clip) < 0.0:
             raise ValueError("2D RWKV logit_clip must be nonnegative.")
         if int(self.fixed_n_up) >= 0:
-            if int(self.LHilDim) != 2:
-                raise ValueError("2D RWKV fixed_n_up currently requires binary local Hilbert space.")
+            if int(self.l_hil_dim) != 2:
+                raise ValueError(
+                    "2D RWKV fixed_n_up currently requires binary local Hilbert space."
+                )
             if int(self.fixed_n_up) > int(self.L):
                 raise ValueError("2D RWKV fixed_n_up cannot exceed L.")
             if bool(self.linear_output):
-                raise ValueError("2D RWKV fixed_n_up requires linear_output=False for exact masking.")
+                raise ValueError(
+                    "2D RWKV fixed_n_up requires linear_output=False for exact masking."
+                )
         phase_mode = str(self.phase_mode).lower().replace("-", "_")
         if phase_mode not in RWKV_PHASE_MODES:
             allowed = "', '".join(sorted(RWKV_PHASE_MODES))
             raise ValueError(f"phase_mode must be one of: '{allowed}'.")
         if self.sign_rule not in {"none", "honeycomb_ab_z_phase"}:
-            raise ValueError("2D RWKV sign_rule must be 'none' or 'honeycomb_ab_z_phase'.")
+            raise ValueError(
+                "2D RWKV sign_rule must be 'none' or 'honeycomb_ab_z_phase'."
+            )
         if self.sign_rule == "honeycomb_ab_z_phase" and int(self.patch_size) != 2:
-            raise ValueError("honeycomb_ab_z_phase for 2D RWKV requires one A/B supersite per token.")
+            raise ValueError(
+                "honeycomb_ab_z_phase for 2D RWKV requires one A/B supersite per token."
+            )
         if bool(self.graph_context):
-            if not (len(self.graph_edge_src) == len(self.graph_edge_dst) == len(self.graph_edge_type)):
-                raise ValueError("2D graph RWKV edge source, destination, and type arrays must have equal length.")
+            if not (
+                len(self.graph_edge_src)
+                == len(self.graph_edge_dst)
+                == len(self.graph_edge_type)
+            ):
+                raise ValueError(
+                    "2D graph RWKV edge source, destination, and type arrays must have equal length."
+                )
             if len(self.graph_edge_src) == 0:
-                raise ValueError("2D graph RWKV requires at least one causal graph edge.")
+                raise ValueError(
+                    "2D graph RWKV requires at least one causal graph edge."
+                )
         if len(self.site_permutation) == 0:
             site_permutation = tuple(range(int(self.L)))
         else:
             site_permutation = tuple(int(site) for site in self.site_permutation)
             if len(site_permutation) != int(self.L):
-                raise ValueError("2D RWKV site_permutation must contain one entry per physical site.")
+                raise ValueError(
+                    "2D RWKV site_permutation must contain one entry per physical site."
+                )
             if sorted(site_permutation) != list(range(int(self.L))):
-                raise ValueError("2D RWKV site_permutation must be a permutation of physical site indices.")
+                raise ValueError(
+                    "2D RWKV site_permutation must be a permutation of physical site indices."
+                )
         self.site_permutation_array = jnp.asarray(site_permutation, dtype=jnp.int32)
 
-        patch_states = list(product(range(int(self.LHilDim)), repeat=int(self.patch_size)))
+        patch_states = list(
+            product(range(int(self.l_hil_dim)), repeat=int(self.patch_size))
+        )
         self.patch_states = jnp.asarray(patch_states, dtype=jnp.int32)
         self.patch_bit_counts = jnp.sum(self.patch_states, axis=-1).astype(jnp.int32)
-        self.local_hilbert_dim = int(self.LHilDim) ** int(self.patch_size)
-        self.LocalHilDim = self.local_hilbert_dim
+        self.local_hilbert_dim = int(self.l_hil_dim) ** int(self.patch_size)
+        self.local_hil_dim = self.local_hilbert_dim
         self.null_token = self.local_hilbert_dim
         self.index_weights = jnp.asarray(
-            int(self.LHilDim) ** jnp.arange(int(self.patch_size) - 1, -1, -1),
+            int(self.l_hil_dim) ** jnp.arange(int(self.patch_size) - 1, -1, -1),
             dtype=jnp.int32,
         )
         if bool(self.position_embedding):
             if bool(self.translation_shared):
-                raise ValueError("2D RWKV translation_shared is incompatible with position_embedding.")
+                raise ValueError(
+                    "2D RWKV translation_shared is incompatible with position_embedding."
+                )
             self.token_position_embedding = self.param(
                 "token_position_embedding",
                 nn.initializers.normal(stddev=1e-2),
@@ -324,7 +370,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
             self.position_logit_bias = self.param(
                 "position_logit_bias",
                 zero_init,
-                (self.local_hilbert_dim,) if bool(self.translation_shared) else (self.n_patches, self.local_hilbert_dim),
+                (self.local_hilbert_dim,)
+                if bool(self.translation_shared)
+                else (self.n_patches, self.local_hilbert_dim),
                 param_dtype,
             )
             self.left_conditional_logits = self.param(
@@ -373,7 +421,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
             kernel_init=kernel_init,
             name="base_context",
         )
-        block_cls = RWKV2DGraphCausalBlock if bool(self.graph_context) else RWKV2DCausalBlock
+        block_cls = (
+            RWKV2DGraphCausalBlock if bool(self.graph_context) else RWKV2DCausalBlock
+        )
         self.blocks = [
             block_cls(
                 layer_num=i,
@@ -406,7 +456,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
                 self.cpm_bias = self.param(
                     "CPMBias",
                     nn.initializers.normal(stddev=float(self.cpm_bias_init_std)),
-                    (self.local_hilbert_dim,) if bool(self.translation_shared) else (self.n_patches, self.local_hilbert_dim),
+                    (self.local_hilbert_dim,)
+                    if bool(self.translation_shared)
+                    else (self.n_patches, self.local_hilbert_dim),
                     param_dtype,
                 )
                 self.cpm_kernel = self.param(
@@ -414,7 +466,11 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
                     nn.initializers.normal(stddev=float(self.cpm_weight_init_std)),
                     (self.local_hilbert_dim, int(self.hidden_size))
                     if bool(self.translation_shared)
-                    else (self.n_patches, self.local_hilbert_dim, int(self.hidden_size)),
+                    else (
+                        self.n_patches,
+                        self.local_hilbert_dim,
+                        int(self.hidden_size),
+                    ),
                     param_dtype,
                 )
             else:
@@ -439,12 +495,16 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
                 ]
         if bool(self.conditional_phase):
             if not bool(self.flag_phase):
-                raise ValueError("2D RWKV conditional_phase requires phase output to be enabled.")
+                raise ValueError(
+                    "2D RWKV conditional_phase requires phase output to be enabled."
+                )
             zero_init = nn.initializers.zeros
             self.position_phase_bias = self.param(
                 "position_phase_bias",
                 zero_init,
-                (self.local_hilbert_dim,) if bool(self.translation_shared) else (self.n_patches, self.local_hilbert_dim),
+                (self.local_hilbert_dim,)
+                if bool(self.translation_shared)
+                else (self.n_patches, self.local_hilbert_dim),
                 param_dtype,
             )
             self.left_conditional_phase = self.param(
@@ -468,7 +528,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
 
     def _patch_indices(self, s):
         s = jnp.asarray(s, dtype=jnp.int32).reshape(int(self.L))
-        s = s[self.site_permutation_array].reshape(int(self.n_patches), int(self.patch_size))
+        s = s[self.site_permutation_array].reshape(
+            int(self.n_patches), int(self.patch_size)
+        )
         return jnp.sum(s * self.index_weights[None, :], axis=-1)
 
     def _fixed_sign_phase(self, s):
@@ -477,7 +539,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         if self.sign_rule == "none":
             return jnp.asarray(0.0, dtype=compute_dtype)
         s_ordered = jnp.asarray(s, dtype=jnp.int32).reshape(int(self.L))
-        s_ordered = s_ordered[self.site_permutation_array].reshape(int(self.n_patches), int(self.patch_size))
+        s_ordered = s_ordered[self.site_permutation_array].reshape(
+            int(self.n_patches), int(self.patch_size)
+        )
         exponent = jnp.sum(s_ordered[:, 1])
         return jnp.pi * jnp.asarray(exponent % 2, dtype=compute_dtype)
 
@@ -493,7 +557,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
     def _base_inputs(self, patch_indices):
         param_dtype = _param_dtype(self.param_dtype)
         compute_dtype = _compute_dtype(self.compute_dtype, param_dtype)
-        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(int(self.n_patches))
+        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(
+            int(self.n_patches)
+        )
         null = jnp.full((1,), int(self.null_token), dtype=jnp.int32)
         padded = jnp.concatenate((tokens, null), axis=0)
         embeddings = self._token_embedding(padded)
@@ -521,7 +587,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
                 lambda _: null_embedding,
                 operand=None,
             )
-            return self.base_context(jnp.concatenate((left_tok, up_tok, scan_tok), axis=-1))
+            return self.base_context(
+                jnp.concatenate((left_tok, up_tok, scan_tok), axis=-1)
+            )
 
         out = jax.vmap(site_context)(jnp.arange(int(self.n_patches), dtype=jnp.int32))
         out = jnp.asarray(out, dtype=compute_dtype)
@@ -532,12 +600,20 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
     def _conditional_skip_logits(self, patch_indices):
         param_dtype = _param_dtype(self.param_dtype)
         compute_dtype = _compute_dtype(self.compute_dtype, param_dtype)
-        logits = jnp.zeros((int(self.n_patches), int(self.local_hilbert_dim)), dtype=compute_dtype)
+        logits = jnp.zeros(
+            (int(self.n_patches), int(self.local_hilbert_dim)), dtype=compute_dtype
+        )
         if not bool(self.conditional_logits):
             return logits
-        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(int(self.n_patches))
+        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(
+            int(self.n_patches)
+        )
         position_logit_bias = jnp.asarray(self.position_logit_bias, dtype=compute_dtype)
-        logits = logits + position_logit_bias[None, :] if bool(self.translation_shared) else logits + position_logit_bias
+        logits = (
+            logits + position_logit_bias[None, :]
+            if bool(self.translation_shared)
+            else logits + position_logit_bias
+        )
         left_table = jnp.asarray(self.left_conditional_logits, dtype=compute_dtype)
         up_table = jnp.asarray(self.up_conditional_logits, dtype=compute_dtype)
         graph_table = jnp.asarray(self.graph_conditional_logits, dtype=compute_dtype)
@@ -549,7 +625,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
             if row > 0:
                 logits = logits.at[p].add(up_table[tokens[p - int(self.grid_Lx)]])
         if bool(self.graph_context):
-            for src, dst, kind in zip(self.graph_edge_src, self.graph_edge_dst, self.graph_edge_type):
+            for src, dst, kind in zip(
+                self.graph_edge_src, self.graph_edge_dst, self.graph_edge_type
+            ):
                 src = int(src)
                 dst = int(dst)
                 if src < dst:
@@ -562,7 +640,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         phase = jnp.zeros((int(self.n_patches),), dtype=compute_dtype)
         if not bool(self.conditional_phase):
             return phase
-        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(int(self.n_patches))
+        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(
+            int(self.n_patches)
+        )
         positions = jnp.arange(int(self.n_patches))
         position_phase_bias = jnp.asarray(self.position_phase_bias, dtype=compute_dtype)
         if bool(self.translation_shared):
@@ -578,13 +658,19 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
             if col > 0:
                 phase = phase.at[p].add(left_table[tokens[p - 1], tokens[p]])
             if row > 0:
-                phase = phase.at[p].add(up_table[tokens[p - int(self.grid_Lx)], tokens[p]])
+                phase = phase.at[p].add(
+                    up_table[tokens[p - int(self.grid_Lx)], tokens[p]]
+                )
         if bool(self.graph_context):
-            for src, dst, kind in zip(self.graph_edge_src, self.graph_edge_dst, self.graph_edge_type):
+            for src, dst, kind in zip(
+                self.graph_edge_src, self.graph_edge_dst, self.graph_edge_type
+            ):
                 src = int(src)
                 dst = int(dst)
                 if src < dst:
-                    phase = phase.at[dst].add(graph_table[int(kind), tokens[src], tokens[dst]])
+                    phase = phase.at[dst].add(
+                        graph_table[int(kind), tokens[src], tokens[dst]]
+                    )
         return phase
 
     def _graph_context_by_type(self, post_states, p):
@@ -596,12 +682,17 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         edge_dst = jnp.asarray(self.graph_edge_dst, dtype=jnp.int32)
         edge_type = jnp.asarray(self.graph_edge_type, dtype=jnp.int32)
         src_h = post_states[edge_src]
-        mask = ((edge_dst == jnp.asarray(p, dtype=jnp.int32)) & (edge_src < jnp.asarray(p, dtype=jnp.int32))).astype(compute_dtype)
+        mask = (
+            (edge_dst == jnp.asarray(p, dtype=jnp.int32))
+            & (edge_src < jnp.asarray(p, dtype=jnp.int32))
+        ).astype(compute_dtype)
         type_one_hot = jax.nn.one_hot(edge_type, 3, dtype=compute_dtype)
         weighted_types = type_one_hot * mask[:, None]
         messages = jnp.einsum("et,ed->td", weighted_types, src_h)
         counts = jnp.sum(weighted_types, axis=0)
-        return messages / jnp.maximum(counts[:, None], jnp.asarray(1.0, dtype=compute_dtype))
+        return messages / jnp.maximum(
+            counts[:, None], jnp.asarray(1.0, dtype=compute_dtype)
+        )
 
     def _apply_causal_layer(self, inputs, block):
         param_dtype = _param_dtype(self.param_dtype)
@@ -648,8 +739,12 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
 
     def _fixed_sector_mask(self, patch_indices):
         if int(self.fixed_n_up) < 0:
-            return jnp.ones((int(self.n_patches), int(self.local_hilbert_dim)), dtype=bool)
-        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(int(self.n_patches))
+            return jnp.ones(
+                (int(self.n_patches), int(self.local_hilbert_dim)), dtype=bool
+            )
+        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(
+            int(self.n_patches)
+        )
         selected_counts = jnp.asarray(self.patch_bit_counts, dtype=jnp.int32)[tokens]
         prefix_counts = jnp.concatenate(
             (
@@ -663,7 +758,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         remaining_after = int(self.L) - (positions + 1) * int(self.patch_size)
         proposed_counts = prefix_counts[:, None] + token_counts[None, :]
         target = jnp.asarray(int(self.fixed_n_up), dtype=jnp.int32)
-        return (proposed_counts <= target) & ((proposed_counts + remaining_after[:, None]) >= target)
+        return (proposed_counts <= target) & (
+            (proposed_counts + remaining_after[:, None]) >= target
+        )
 
     def _apply_fixed_sector_mask(self, logits, patch_indices):
         if int(self.fixed_n_up) < 0:
@@ -677,9 +774,13 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
     def _fixed_sector_valid(self, patch_indices):
         if int(self.fixed_n_up) < 0:
             return jnp.asarray(True)
-        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(int(self.n_patches))
+        tokens = jnp.asarray(patch_indices, dtype=jnp.int32).reshape(
+            int(self.n_patches)
+        )
         selected_counts = jnp.asarray(self.patch_bit_counts, dtype=jnp.int32)[tokens]
-        return jnp.sum(selected_counts) == jnp.asarray(int(self.fixed_n_up), dtype=jnp.int32)
+        return jnp.sum(selected_counts) == jnp.asarray(
+            int(self.fixed_n_up), dtype=jnp.int32
+        )
 
     def _phase_logits(self, patch_indices, features, y):
         param_dtype = _param_dtype(self.param_dtype)
@@ -696,7 +797,9 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
                 selected_bias = cpm_bias[positions, patch_indices]
                 selected_kernel = cpm_kernel[positions, patch_indices, :]
             global_feature = features[-1]
-            return selected_bias + jnp.einsum("pk,k->p", selected_kernel, global_feature)
+            return selected_bias + jnp.einsum(
+                "pk,k->p", selected_kernel, global_feature
+            )
         if phase_mode == "shared_neck":
             phase = jnp.asarray(self.phase_head(features), dtype=compute_dtype)
             return phase - jnp.mean(phase, axis=-1, keepdims=True)
@@ -713,17 +816,18 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         for block in self.blocks:
             y = self._apply_causal_layer(y, block)
         features = jnp.asarray(nn.gelu(self.neck(y)), dtype=compute_dtype)
-        logits = self._probability_logits(self.head(features) + self._conditional_skip_logits(patch_indices))
+        logits = self._probability_logits(
+            self.head(features) + self._conditional_skip_logits(patch_indices)
+        )
         logits = self._apply_fixed_sector_mask(logits, patch_indices)
         if bool(self.linear_output):
             probs = nn.elu(logits) + 1.0 + 1e-8
             log_probs = jnp.log(probs / jnp.sum(probs, axis=-1, keepdims=True))
         else:
             log_probs = jax.nn.log_softmax(logits, axis=-1)
-        log_amp = (
-            jnp.take_along_axis(log_probs, patch_indices[:, None], axis=-1).sum(axis=-2).squeeze(-1)
-            * jnp.asarray(float(self.logProbFactor), dtype=compute_dtype)
-        )
+        log_amp = jnp.take_along_axis(log_probs, patch_indices[:, None], axis=-1).sum(
+            axis=-2
+        ).squeeze(-1) * jnp.asarray(float(self.log_prob_factor), dtype=compute_dtype)
         log_amp = jnp.where(
             self._fixed_sector_valid(patch_indices),
             log_amp,
@@ -733,11 +837,17 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
         if not bool(self.flag_phase):
             if self.sign_rule == "none":
                 return log_amp.astype(_out_real_dtype())
-            return log_amp.astype(_out_cpx_dtype()) + 1j * fixed_sign_phase.astype(_out_cpx_dtype())
+            return log_amp.astype(_out_cpx_dtype()) + 1j * fixed_sign_phase.astype(
+                _out_cpx_dtype()
+            )
 
         phase = self._phase_logits(patch_indices, features, y)
         if str(self.phase_mode).lower().replace("-", "_") != "cpm":
-            phase = jnp.take_along_axis(phase, patch_indices[:, None], axis=-1).sum(axis=-2).squeeze(-1)
+            phase = (
+                jnp.take_along_axis(phase, patch_indices[:, None], axis=-1)
+                .sum(axis=-2)
+                .squeeze(-1)
+            )
         else:
             phase = jnp.sum(phase)
         phase = phase + jnp.sum(self._conditional_skip_phase(patch_indices))
@@ -747,25 +857,38 @@ class LogRWKV2DAutoregressiveJVMC(nn.Module):
 
     def sample(self, key):
         keys = random.split(key, int(self.n_patches))
-        axis_marker = jnp.asarray(key[0], dtype=jnp.int32) * jnp.asarray(0, dtype=jnp.int32)
+        axis_marker = jnp.asarray(key[0], dtype=jnp.int32) * jnp.asarray(
+            0, dtype=jnp.int32
+        )
         tokens = jnp.zeros((int(self.n_patches),), dtype=jnp.int32) + axis_marker
 
         def step(tokens_state, p):
             features = self._causal_features(tokens_state)
             logits = self._apply_fixed_sector_mask(
-                self._probability_logits(self.head(features) + self._conditional_skip_logits(tokens_state)),
+                self._probability_logits(
+                    self.head(features) + self._conditional_skip_logits(tokens_state)
+                ),
                 tokens_state,
             )[p]
-            choice = random.categorical(keys[p], jnp.real(logits).reshape(-1)).astype(jnp.int32)
+            choice = random.categorical(keys[p], jnp.real(logits).reshape(-1)).astype(
+                jnp.int32
+            )
             tokens_state = tokens_state.at[p].set(choice)
             return tokens_state, choice
 
-        tokens, _ = jax.lax.scan(step, tokens, jnp.arange(int(self.n_patches), dtype=jnp.int32))
+        tokens, _ = jax.lax.scan(
+            step, tokens, jnp.arange(int(self.n_patches), dtype=jnp.int32)
+        )
         ordered_state = self.patch_states[tokens].reshape(int(self.L))
-        return jnp.zeros_like(ordered_state).at[self.site_permutation_array].set(ordered_state).astype(global_defs.DT_SAMPLES)
+        return (
+            jnp.zeros_like(ordered_state)
+            .at[self.site_permutation_array]
+            .set(ordered_state)
+            .astype(global_defs.DT_SAMPLES)
+        )
 
-    def sample_batch(self, numSamples: int, key):
-        return jax.vmap(self.sample)(random.split(key, int(numSamples)))
+    def sample_batch(self, num_samples: int, key):
+        return jax.vmap(self.sample)(random.split(key, int(num_samples)))
 
 
 class LogRWKV2DGraphAutoregressiveJVMC(LogRWKV2DAutoregressiveJVMC):

@@ -1,11 +1,13 @@
 import os
 import time
 import unittest
+
 import h5py
 import numpy as np
 
 from jVMC_exp.util.input_manager import InputManager
 from jVMC_exp.util.output_manager import OutputManager
+
 
 class TestOutputManager(unittest.TestCase):
     def setUp(self):
@@ -62,7 +64,7 @@ class TestOutputManager(unittest.TestCase):
         weights = np.random.uniform(size=(5,))
         self.outp.write_network_checkpoint(1.0, weights)
 
-        t, w = self.outp.get_network_checkpoint()       
+        t, w = self.outp.get_network_checkpoint()
         self.assertAlmostEqual(t, 1.0)
         self.assertTrue(np.allclose(w, weights))
 
@@ -77,7 +79,9 @@ class TestOutputManager(unittest.TestCase):
 
         with h5py.File(self.h5) as f:
             self.assertIn("network_checkpoints", f)
-            self.assertTrue(np.allclose(f["network_checkpoints/checkpoints"][0], weights))
+            self.assertTrue(
+                np.allclose(f["network_checkpoints/checkpoints"][0], weights)
+            )
 
     def test_save_append_overwrites_datasets(self):
         """Calling save_to_h5 twice with append=True should replace datasets."""
@@ -131,7 +135,9 @@ class TestOutputManager(unittest.TestCase):
 
         inp = InputManager(self.h5)
         loaded = inp.load_parameters(template, step="latest")
-        self.assertTrue(np.allclose(loaded["dense"]["kernel"], params["dense"]["kernel"]))
+        self.assertTrue(
+            np.allclose(loaded["dense"]["kernel"], params["dense"]["kernel"])
+        )
         self.assertTrue(np.allclose(loaded["dense"]["bias"], params["dense"]["bias"]))
 
     def test_timings_accumulate(self):

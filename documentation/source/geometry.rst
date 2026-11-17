@@ -23,7 +23,7 @@ conditions, and the extent sets the box where the Markov chains start::
         + op.PotentialOperator(geometry, lambda x: 0.5 * omega ** 2 * jnp.sum(x ** 2))
         + op.CoulombInteraction(geometry)
     )
-    psi = jVMC_exp.vqs.NQS(net, sampleShape=2 * N, batchSize=1000, seed=0)
+    psi = jVMC_exp.vqs.NQS(net, sample_shape=2 * N, batch_size=1000, seed=0)
     sampler = jVMC_exp.sampler.MCSamplerCont(psi, jVMC_exp.propose.RWM(geometry))
 
 Geometries

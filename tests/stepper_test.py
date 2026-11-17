@@ -1,10 +1,12 @@
 import unittest
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 import jVMC_exp.stepper as st
 from jVMC_exp import global_defs
+
 
 def _make_linear_ode(N: int, seed: int = 123):
     """Return a random complex matrix M and a random initial state y0."""
@@ -14,11 +16,13 @@ def _make_linear_ode(N: int, seed: int = 123):
 
     return mat, y0
 
+
 def _run_linear_ode(stepper, mat, y0, n_steps: int, **step_kwargs):
     """
     Integrate  dy/dt = mat @ y  for n_steps steps.
     Returns the max normalised error against the matrix-exponential exact solution.
     """
+
     def f(y, t, **args):
         return args["mat"].dot(y)
 
@@ -42,6 +46,7 @@ def _run_scalar_ode(stepper, lam: complex, y0: complex, n_steps: int, **step_kwa
     Exact solution: y(t) = y0 * exp(lam * t).
     Returns the max absolute error.
     """
+
     def f(y, t, **args):
         return args["lam"] * y
 
@@ -56,25 +61,25 @@ def _run_scalar_ode(stepper, lam: complex, y0: complex, n_steps: int, **step_kwa
 
     return max(errors)
 
-class TestEuler(unittest.TestCase):
 
+class TestEuler(unittest.TestCase):
     def test_linear_ode_accuracy(self):
         """First-order method: error should stay below a loose threshold."""
         mat, y0 = _make_linear_ode(N=4, seed=42)
-        stepper = st.Euler(timeStep=1e-4)
+        stepper = st.Euler(time_step=1e-4)
         max_err = _run_linear_ode(stepper, mat, y0, n_steps=200)
         self.assertLess(max_err, 1e-2)
 
     def test_scalar_ode(self):
         """Scalar decay: y' = -y, exact solution y = exp(-t)."""
-        stepper = st.Euler(timeStep=1e-4)
+        stepper = st.Euler(time_step=1e-4)
         err = _run_scalar_ode(stepper, lam=-1.0 + 0j, y0=1.0 + 0j, n_steps=100)
         self.assertLess(err, 1e-2)
 
     def test_callable_scheduler(self):
         """dt should track the scheduler output at each step."""
-        schedule = lambda step: 1e-3 * (0.9 ** step)
-        stepper = st.Euler(timeStep=schedule)
+        schedule = lambda step: 1e-3 * (0.9**step)
+        stepper = st.Euler(time_step=schedule)
 
         def f(y, t, **args):
             return -y
@@ -82,12 +87,12 @@ class TestEuler(unittest.TestCase):
         y = jnp.array([1.0])
         for k in range(5):
             stepper.update_dt(k)
-            self.assertAlmostEqual(float(stepper.dt), 1e-3 * (0.9 ** k), places=10)
+            self.assertAlmostEqual(float(stepper.dt), 1e-3 * (0.9**k), places=10)
             y, _ = stepper.step(0.0, f, y)
 
     def test_fixed_step_returned(self):
         """The returned dt must equal the configured step size."""
-        stepper = st.Euler(timeStep=0.025)
+        stepper = st.Euler(time_step=0.025)
 
         def f(y, t, **args):
             return -y
@@ -97,21 +102,20 @@ class TestEuler(unittest.TestCase):
 
 
 class TestHeun(unittest.TestCase):
-
     def test_linear_ode_accuracy(self):
         """Second-order method should be meaningfully more accurate than Euler."""
         mat, y0 = _make_linear_ode(N=4, seed=42)
-        stepper = st.Heun(timeStep=1e-3)
+        stepper = st.Heun(time_step=1e-3)
         max_err = _run_linear_ode(stepper, mat, y0, n_steps=200)
         self.assertLess(max_err, 1e-4)
 
     def test_scalar_ode(self):
-        stepper = st.Heun(timeStep=1e-3)
+        stepper = st.Heun(time_step=1e-3)
         err = _run_scalar_ode(stepper, lam=-1.0 + 0j, y0=1.0 + 0j, n_steps=100)
         self.assertLess(err, 1e-4)
 
     def test_fixed_step_returned(self):
-        stepper = st.Heun(timeStep=0.01)
+        stepper = st.Heun(time_step=0.01)
 
         def f(y, t, **args):
             return -y
@@ -123,12 +127,12 @@ class TestHeun(unittest.TestCase):
         """For the same step size Heun should beat Euler on the same ODE."""
         mat, y0 = _make_linear_ode(N=4, seed=7)
 
-        err_euler = _run_linear_ode(st.Euler(timeStep=1e-3), mat, y0, n_steps=50)
-        err_heun  = _run_linear_ode(st.Heun(timeStep=1e-3),  mat, y0, n_steps=50)
+        err_euler = _run_linear_ode(st.Euler(time_step=1e-3), mat, y0, n_steps=50)
+        err_heun = _run_linear_ode(st.Heun(time_step=1e-3), mat, y0, n_steps=50)
         self.assertLess(err_heun, err_euler)
 
-class TestAdaptiveHeun(unittest.TestCase):
 
+class TestAdaptiveHeun(unittest.TestCase):
     def test_linear_ode_accuracy(self):
         mat, y0 = _make_linear_ode(N=4, seed=123)
         stepper = st.AdaptiveHeun(rtol=1e-8, atol=1e-8)
@@ -150,7 +154,9 @@ class TestAdaptiveHeun(unittest.TestCase):
     def test_max_step_respected(self):
         """dt must never exceed max_step after adaptation."""
         max_step = 0.05
-        stepper = st.AdaptiveHeun(timeStep=1e-3, rtol=1e-6, atol=1e-6, max_step=max_step)
+        stepper = st.AdaptiveHeun(
+            time_step=1e-3, rtol=1e-6, atol=1e-6, max_step=max_step
+        )
 
         def f(y, t, **args):
             return -y
@@ -160,8 +166,8 @@ class TestAdaptiveHeun(unittest.TestCase):
             y, dt = stepper.step(0.0, f, y)
             self.assertLessEqual(float(dt), max_step + 1e-12)
 
-class TestRK23(unittest.TestCase):
 
+class TestRK23(unittest.TestCase):
     def test_linear_ode_accuracy(self):
         mat, y0 = _make_linear_ode(N=4, seed=123)
         stepper = st.RK23(rtol=1e-8, atol=1e-8)
@@ -196,7 +202,7 @@ class TestRK23(unittest.TestCase):
 
     def test_max_step_respected(self):
         max_step = 0.05
-        stepper = st.RK23(timeStep=1e-3, rtol=1e-6, atol=1e-6, max_step=max_step)
+        stepper = st.RK23(time_step=1e-3, rtol=1e-6, atol=1e-6, max_step=max_step)
 
         def f(y, t, **args):
             return -y
@@ -206,8 +212,8 @@ class TestRK23(unittest.TestCase):
             y, dt = stepper.step(0.0, f, y)
             self.assertLessEqual(float(dt), max_step + 1e-12)
 
-class TestRK45(unittest.TestCase):
 
+class TestRK45(unittest.TestCase):
     def test_linear_ode_accuracy(self):
         """Fifth-order method should hit tight tolerances comfortably."""
         mat, y0 = _make_linear_ode(N=4, seed=123)
@@ -239,7 +245,7 @@ class TestRK45(unittest.TestCase):
 
     def test_max_step_respected(self):
         max_step = 0.05
-        stepper = st.RK45(timeStep=1e-3, rtol=1e-6, atol=1e-6, max_step=max_step)
+        stepper = st.RK45(time_step=1e-3, rtol=1e-6, atol=1e-6, max_step=max_step)
 
         def f(y, t, **args):
             return -y
@@ -254,7 +260,10 @@ class TestDtype(unittest.TestCase):
     """The steppers keep the data type DT_OUT_REAL of the flat parameters."""
 
     def setUp(self):
-        saved = {name: getattr(global_defs, name) for name in ("DT_OUT_REAL", "DT_OPERATORS_REAL")}
+        saved = {
+            name: getattr(global_defs, name)
+            for name in ("DT_OUT_REAL", "DT_OPERATORS_REAL")
+        }
         self.addCleanup(lambda: [setattr(global_defs, k, v) for k, v in saved.items()])
 
     def test_steppers_keep_the_data_type_of_the_parameters(self):
@@ -264,10 +273,16 @@ class TestDtype(unittest.TestCase):
         for dtype in (jnp.float32, jnp.float64):
             global_defs.update(dt_out_real=dtype)
             steppers = (
-                st.Euler(1e-2), st.Heun(1e-2), st.AdaptiveHeun(1e-2), st.RK23(1e-2), st.RK45(1e-2)
+                st.Euler(1e-2),
+                st.Heun(1e-2),
+                st.AdaptiveHeun(1e-2),
+                st.RK23(1e-2),
+                st.RK45(1e-2),
             )
             for stepper in steppers:
-                with self.subTest(dtype=jnp.dtype(dtype).name, stepper=type(stepper).__name__):
+                with self.subTest(
+                    dtype=jnp.dtype(dtype).name, stepper=type(stepper).__name__
+                ):
                     y = jnp.ones(4, dtype=dtype)
                     for _ in range(3):
                         y, _ = stepper.step(0.0, f, y)
@@ -277,8 +292,12 @@ class TestDtype(unittest.TestCase):
         """With 32-bit parameters the times passed to f, and the time steps, stay 64-bit."""
         global_defs.update(dt_out_real=jnp.float32)
 
-        # timeStep=0.5 is rejected first, so that dt also comes from the step size control
-        for stepper in (st.AdaptiveHeun(timeStep=0.5), st.RK23(timeStep=0.5), st.RK45(timeStep=0.5)):
+        # time_step=0.5 is rejected first, so that dt also comes from the step size control
+        for stepper in (
+            st.AdaptiveHeun(time_step=0.5),
+            st.RK23(time_step=0.5),
+            st.RK45(time_step=0.5),
+        ):
             times = []
 
             def f(y, t, **args):
@@ -291,7 +310,9 @@ class TestDtype(unittest.TestCase):
                 t += dt
 
             with self.subTest(stepper=type(stepper).__name__):
-                self.assertEqual({jnp.asarray(s).dtype for s in times}, {jnp.dtype(jnp.float64)})
+                self.assertEqual(
+                    {jnp.asarray(s).dtype for s in times}, {jnp.dtype(jnp.float64)}
+                )
                 self.assertEqual(y.dtype, jnp.dtype(jnp.float32))
 
 

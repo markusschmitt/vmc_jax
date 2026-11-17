@@ -1,12 +1,15 @@
 from __future__ import annotations
+
 from abc import abstractmethod
+
 import jax
 import jax.numpy as jnp
 from scipy.sparse import coo_matrix
 
-from jVMC_exp.vqs import NQS
-from jVMC_exp.sharding_config import sharded, MESH
 from jVMC_exp.operator.base import AbstractOperator
+from jVMC_exp.sharding_config import MESH, sharded
+from jVMC_exp.vqs import NQS
+
 
 class Operator(AbstractOperator):
     """
@@ -23,27 +26,28 @@ class Operator(AbstractOperator):
     The operator is compiled into arrays when it is first used.
 
     Args:
-        * ``ldim``: Local Hilbert space dimension.
+        * ``l_dim``: Local Hilbert space dimension.
     """
-    def __init__(self, ldim):
-        self._ldim = ldim
+
+    def __init__(self, l_dim):
+        self._l_dim = l_dim
         self._is_compiled = False
         self._scale = 1
 
     @property
-    def ldim(self):
+    def l_dim(self):
         """Local Hilbert space dimension of an elementary operator, ``None`` for combined operators."""
-        return self._ldim
-    
+        return self._l_dim
+
     def __add__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
             # TODO: Since I don't know the total dim of the Hilbert space this is not doable
-            raise NotImplementedError 
+            raise NotImplementedError
         elif isinstance(other, Operator):
-            return self._create_composite(self, other, 'sum')
+            return self._create_composite(self, other, "sum")
         else:
             return NotImplemented
-        
+
     def __radd__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
             if other == 0:
@@ -52,40 +56,40 @@ class Operator(AbstractOperator):
             raise NotImplementedError
         else:
             return NotImplemented
-        
+
     def __neg__(self) -> Operator:
         return self._create_scaled(self, -1)
-    
+
     def __sub__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
             # TODO: Same as previous todo
             raise NotImplementedError
         elif isinstance(other, Operator):
-            return self._create_composite(self, -other, 'sum')
+            return self._create_composite(self, -other, "sum")
         else:
             return NotImplemented
-        
+
     def __rsub__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
             # TODO: Same as previous todo
             raise NotImplementedError
         else:
             return NotImplemented
-        
+
     def __mul__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)) or callable(other):
             return self._create_scaled(self, other)
         elif isinstance(other, Operator):
-            return self._create_composite(self, other, 'mul')
+            return self._create_composite(self, other, "mul")
         else:
             return NotImplemented
-        
+
     def __rmul__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)) or callable(other):
             return self._create_scaled(self, other)
         else:
             return NotImplemented
-        
+
     def __truediv__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
             if other == 0:
@@ -94,37 +98,37 @@ class Operator(AbstractOperator):
         else:
             return NotImplemented
 
-    def get_O_loc(self, s, psi: NQS, *, logPsiS=None, **kwargs): 
+    def get_O_loc(self, s, psi: NQS, *, log_psi_s=None, **kwargs):
         """
         Compute the local estimator of the operator, see ``AbstractOperator.get_O_loc()``.
 
         The connected configurations are evaluated with ``psi.eval_ratio()`` if the network \
-        provides it, and from :math:`\\ln\\psi` otherwise. At most ``psi.batchSize`` network \
+        provides it, and from :math:`\\ln\\psi` otherwise. At most ``psi.batch_size`` network \
         evaluations run at once.
         """
-        logPsiS = psi(s) if logPsiS is None else logPsiS
+        log_psi_s = psi(s) if log_psi_s is None else log_psi_s
 
         if not self._is_compiled:
             self._compile()
 
-        # Bound the number of simultaneous network evaluations by psi.batchSize,
-        # i.e. by B = psi.batchSize / n_devices on each device:
+        # Bound the number of simultaneous network evaluations by psi.batch_size,
+        # i.e. by B = psi.batch_size / n_devices on each device:
         #   - B >= n_conn: all connected configurations of a sample fit at once,
         #     so each device processes B // n_conn samples per call.
         #   - B < n_conn: each device processes a single sample per call and
         #     evaluates its connected configurations in chunks of B (lax.map).
-        evals_per_device = psi.batchSize // MESH.size
+        evals_per_device = psi.batch_size // MESH.size
         chunk_size = max(1, min(self.n_conn, evals_per_device))
         batch_size = MESH.size * (evals_per_device // chunk_size)
 
         return self._get_O_loc(
             s,
-            logPsiS,
+            log_psi_s,
             parameters=psi.eval_parameters,
             psi=psi,
             chunk_size=chunk_size,
             batch_size=batch_size,
-            **kwargs
+            **kwargs,
         )
 
     def get_conn_elements(self, s, batch_size, **kwargs):
@@ -135,14 +139,14 @@ class Operator(AbstractOperator):
         all diagonal matrix elements; the remaining ones are the non-diagonal connections.
 
         Args:
-            * ``s``: Configurations, of shape ``(N, *sampleShape)``.
+            * ``s``: Configurations, of shape ``(N, *sample_shape)``.
             * ``batch_size``: Number of configurations processed at once, a multiple of the \
               number of devices.
             * ``**kwargs``: Keyword arguments of the callable prefactors.
 
         Returns:
             ``s_primes, mat_els``: The connected configurations, of shape \
-            ``(N, n_conn + 1, *sampleShape)``, and the matrix elements, of shape \
+            ``(N, n_conn + 1, *sample_shape)``, and the matrix elements, of shape \
             ``(N, n_conn + 1)``.
         """
         if not self._is_compiled:
@@ -155,7 +159,9 @@ class Operator(AbstractOperator):
         Return the dense matrix representation of this operator in the supplied ordered
         computational basis, with the arguments of ``to_sparse()``.
         """
-        return self.to_sparse(basis, zero_tolerance=zero_tolerance, **op_kwargs).todense()
+        return self.to_sparse(
+            basis, zero_tolerance=zero_tolerance, **op_kwargs
+        ).todense()
 
     def to_sparse(self, basis, *, zero_tolerance=0.0, **op_kwargs):
         """
@@ -166,7 +172,7 @@ class Operator(AbstractOperator):
         :math:`\\langle b_i|\\hat O|b_j\\rangle` between the basis configurations ``b_i`` and ``b_j``.
 
         Args:
-            * ``basis``: Ordered computational basis with shape ``(num_states, *sampleShape)``. \
+            * ``basis``: Ordered computational basis with shape ``(num_states, *sample_shape)``. \
               The basis must be closed under every nonzero action of the operator. Zero-weight \
               padded connections returned by the operator are ignored.
             * ``zero_tolerance``: Connections with absolute matrix element less than or equal \
@@ -179,8 +185,7 @@ class Operator(AbstractOperator):
         """
         if zero_tolerance < 0:
             raise ValueError(
-                "zero_tolerance must be nonnegative. "
-                f"Got {zero_tolerance}."
+                f"zero_tolerance must be nonnegative. Got {zero_tolerance}."
             )
 
         basis_array = jnp.asarray(basis)
@@ -204,9 +209,7 @@ class Operator(AbstractOperator):
             for index, configuration in enumerate(flat_basis)
         }
         if len(basis_index) != dim:
-            raise ValueError(
-                "The supplied basis contains duplicate configurations."
-            )
+            raise ValueError("The supplied basis contains duplicate configurations.")
 
         n_devices = jax.device_count()
         s_primes, mat_els = self.get_conn_elements(
@@ -236,7 +239,10 @@ class Operator(AbstractOperator):
         n_conn = flat_mat_els.size // dim
 
         all_cols = jax.device_get(
-            jnp.repeat(jnp.arange(dim), n_conn,)
+            jnp.repeat(
+                jnp.arange(dim),
+                n_conn,
+            )
         )
 
         rows = []
@@ -271,17 +277,13 @@ class Operator(AbstractOperator):
 
         if missing_connections:
             raise ValueError(
-                "The operator has nonzero connections outside "
-                "the supplied basis."
+                "The operator has nonzero connections outside the supplied basis."
             )
 
         matrix = coo_matrix(
             (
                 jax.device_get(jnp.asarray(data)),
-                (
-                    jax.device_get(jnp.asarray(rows)),
-                    jax.device_get(jnp.asarray(cols))
-                ),
+                (jax.device_get(jnp.asarray(rows)), jax.device_get(jnp.asarray(cols))),
             ),
             shape=(dim, dim),
         ).tocsr()
@@ -293,8 +295,7 @@ class Operator(AbstractOperator):
 
     @sharded(static_kwarg_names=("psi", "chunk_size"))
     def _get_O_loc(
-        self, s, log_psi_s, *, 
-        parameters, psi: NQS, chunk_size, batch_size, **kwargs
+        self, s, log_psi_s, *, parameters, psi: NQS, chunk_size, batch_size, **kwargs
     ):
         s_p, mat_els, mat_el_diag = self._get_conn_elements(s, kwargs)
 
@@ -305,7 +306,8 @@ class Operator(AbstractOperator):
         if psi.eval_ratio:
             psi_ratio = jax.lax.map(
                 lambda x: psi.apply_fun(parameters, s, x, method=psi.net.eval_ratio),
-                s_p, batch_size=chunk_size
+                s_p,
+                batch_size=chunk_size,
             ).astype(psi.out_dtype)
         else:
             log_psi_s_p = jax.lax.map(
@@ -321,7 +323,7 @@ class Operator(AbstractOperator):
 
         return (
             jnp.concatenate([s[None], s_p], axis=0),
-            jnp.concatenate([mat_el_diag[None], mat_els], axis=0)
+            jnp.concatenate([mat_el_diag[None], mat_els], axis=0),
         )
 
     @property
@@ -330,14 +332,12 @@ class Operator(AbstractOperator):
         """
         Number of non-diagonal connected configurations generated per sample.
         """
-        pass
 
     @abstractmethod
     def _compile(self):
         """
         Compile the operator into JAX arrays for efficient computation.
         """
-        pass
 
     @abstractmethod
     def _get_conn_elements(self, s, kwargs):
@@ -346,13 +346,13 @@ class Operator(AbstractOperator):
         generated by the action of an operator on a given input configuration.
 
         This method must return:
-        (i) all non-diagonal connected configurations with shape (NumConnectedElements, SampleShape),
+        (i) all non-diagonal connected configurations with shape (NumConnectedElements, sample_shape),
         (ii) their associated matrix elements with shape (NumConnectedElements,), and
         (iii) the total diagonal contribution.
 
         Parameters
         ----------
-        s : Single input configuration 
+        s : Single input configuration
 
         kwargs : Auxiliary parameters required to compute operator prefactors.
 
@@ -365,16 +365,13 @@ class Operator(AbstractOperator):
 
         mat_els_diag : Scalar equal to the sum of all diagonal matrix elements.
         """
-        pass
-    
+
     @classmethod
     @abstractmethod
     def _create_composite(cls, O_1, O_2, label):
         """Return the sum (``label="sum"``) or product (``label="mul"``) of two operators."""
-        pass
 
     @classmethod
     @abstractmethod
     def _create_scaled(cls, O, scalar):
         """Return the operator ``O`` multiplied by ``scalar``."""
-        pass

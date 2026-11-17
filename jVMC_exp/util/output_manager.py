@@ -1,5 +1,7 @@
 """Collection of the data of a run, in memory and in HDF5 files."""
+
 from __future__ import annotations
+
 import json
 import time
 from pathlib import Path
@@ -11,8 +13,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+
 def _is_main_process() -> bool:
     return jax.process_index() == 0
+
 
 def _as_h5_array(value: Any):
     try:
@@ -20,7 +24,11 @@ def _as_h5_array(value: Any):
     except (TypeError, ValueError):
         arr = jax.device_get(value)
     dtype = getattr(arr, "dtype", None)
-    if isinstance(arr, (str, bytes)) or dtype is not None and (dtype == object or dtype.kind in {"U", "S"}):
+    if (
+        isinstance(arr, (str, bytes))
+        or dtype is not None
+        and (dtype == object or dtype.kind in {"U", "S"})
+    ):
         if hasattr(arr, "shape") and arr.shape == ():
             text = arr.item()
         else:
@@ -39,13 +47,17 @@ def _local_memory_info():
             stats = device.memory_stats()
         except Exception:
             stats = None
-        infos.append({
-            "id": int(device.id),
-            "process_index": int(device.process_index),
-            "platform": str(device.platform),
-            "device_kind": str(device.device_kind),
-            "stats": None if stats is None else {str(k): int(v) for k, v in stats.items()},
-        })
+        infos.append(
+            {
+                "id": int(device.id),
+                "process_index": int(device.process_index),
+                "platform": str(device.platform),
+                "device_kind": str(device.device_kind),
+                "stats": None
+                if stats is None
+                else {str(k): int(v) for k, v in stats.items()},
+            }
+        )
     return infos
 
 
@@ -55,14 +67,17 @@ def _gather_memory_info():
     if jax.process_count() == 1:
         return local
     from jax.experimental import multihost_utils
+
     local_data = np.frombuffer(json.dumps(local).encode("utf-8"), dtype=np.uint8)
-    lengths = np.asarray(multihost_utils.process_allgather(np.asarray(local_data.size, dtype=np.int64))).reshape(-1)
+    lengths = np.asarray(
+        multihost_utils.process_allgather(np.asarray(local_data.size, dtype=np.int64))
+    ).reshape(-1)
     padded = np.zeros(int(lengths.max()), dtype=np.uint8)
-    padded[:local_data.size] = local_data
+    padded[: local_data.size] = local_data
     gathered_data = np.asarray(multihost_utils.process_allgather(padded))
     infos = []
     for row, length in zip(gathered_data, lengths):
-        infos.extend(json.loads(row[:int(length)].tobytes().decode("utf-8")))
+        infos.extend(json.loads(row[: int(length)].tobytes().decode("utf-8")))
     return infos
 
 
@@ -111,7 +126,7 @@ class OutputManager:
     Example::
 
         outp = OutputManager("results.h5", group="run_000", append=False)
-        opt = jVMC_exp.optimizer.SR(sampler, psi, diagonalShift=1e-3, output_manager=outp)
+        opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=1e-3, output_manager=outp)
         opt.ground_state_search(500, energy, jVMC_exp.stepper.Euler(5e-2))
         outp.write_parameters(500, psi.parameters, attrs={"optimizer": "SR"})
 
@@ -125,7 +140,9 @@ class OutputManager:
         outp.save_to_h5("results.h5")
     """
 
-    def __init__(self, path: str | Path | None = None, group: str = "/", append: bool = True):
+    def __init__(
+        self, path: str | Path | None = None, group: str = "/", append: bool = True
+    ):
         self.path: Path | None = None
         self.group = self._normalize_group(group)
         self.mode = "a"
@@ -154,7 +171,7 @@ class OutputManager:
         mode = "a" if append else "w"
         with h5py.File(self.path, mode) as handle:
             handle.require_group(self.group)
-        
+
     def _root(self, handle):
         return handle[self.group]
 
@@ -195,7 +212,7 @@ class OutputManager:
             else:
                 self._append_h5(parent, str(key), value)
 
-    def _add(self, subgroup: str, time_val: float | int, **kwargs) -> None:
+    def _add(self, subgroup: str, time_val: float, **kwargs) -> None:
         if subgroup not in self.data:
             self.data[subgroup] = {}
         if "times" not in self.data[subgroup]:
@@ -214,7 +231,7 @@ class OutputManager:
                     store[key] = []
                 store[key].append(value)
 
-    def write_observables(self, step: int | float, **observables) -> None:
+    def write_observables(self, step: float, **observables) -> None:
         """
         Append the observables of a step: ``step`` to ``observables/times``, and every keyword \
         argument to ``observables/<name>``.
@@ -231,7 +248,7 @@ class OutputManager:
                 self._append_h5(group, "times", step)
                 self._append_nested_h5(group, observables)
 
-    def write_metadata(self, step: int | float | None = None, **metadata) -> None:
+    def write_metadata(self, step: float | None = None, **metadata) -> None:
         """
         Write metadata of the run, under ``metadata``.
 
@@ -277,7 +294,9 @@ class OutputManager:
                 self._append_h5(group, "times", time)
                 self._append_h5(group, "checkpoints", weights)
 
-    def write_dataset(self, name: str, data: Any, group: str = "/", path: str | Path | None = None) -> None:
+    def write_dataset(
+        self, name: str, data: Any, group: str = "/", path: str | Path | None = None
+    ) -> None:
         """
         Store ``data`` under ``<group>/<name>``, replacing an earlier dataset of that name.
 
@@ -289,7 +308,9 @@ class OutputManager:
               chosen at construction or with ``save_to_h5()``.
         """
         if path is not None:
-            raise ValueError("write_dataset() does not bind paths. Use save_to_h5(path=...) to choose an output file.")
+            raise ValueError(
+                "write_dataset() does not bind paths. Use save_to_h5(path=...) to choose an output file."
+            )
         self._store_dataset(name, data, group=group)
         if self.path is not None and self.is_main_process:
             with h5py.File(self.path, "a") as handle:
@@ -303,7 +324,9 @@ class OutputManager:
                 store = store.setdefault(part, {})
         store[str(name)] = data
 
-    def _write_dataset_to_h5(self, handle, name: str, data: Any, group: str = "/") -> None:
+    def _write_dataset_to_h5(
+        self, handle, name: str, data: Any, group: str = "/"
+    ) -> None:
         root = self._root(handle)
         parent = root if group == "/" else root.require_group(group.strip("/"))
         if name in parent:
@@ -350,7 +373,9 @@ class OutputManager:
             reads it back.
         """
         if path is not None:
-            raise ValueError("write_parameters() does not bind paths. Use save_to_h5(path=...) to choose an output file.")
+            raise ValueError(
+                "write_parameters() does not bind paths. Use save_to_h5(path=...) to choose an output file."
+            )
         state = flax.serialization.to_state_dict(params)
         group_name = f"{int(step):08d}"
         self.data.setdefault("parameters", {})[group_name] = state
@@ -360,7 +385,9 @@ class OutputManager:
         self._parameter_latest = group_name
         if self.path is not None and self.is_main_process:
             with h5py.File(self.path, "a") as handle:
-                self._write_parameters_to_h5(handle, group_name, state, checkpoint_attrs)
+                self._write_parameters_to_h5(
+                    handle, group_name, state, checkpoint_attrs
+                )
         return group_name
 
     def save_to_h5(self, path: str | Path | None = None, append: bool = False) -> None:
@@ -376,7 +403,9 @@ class OutputManager:
         if path is not None:
             self._set_path(path, append=append)
         if self.path is None:
-            raise ValueError("A path is required for this operation. Pass a path to save_to_h5().")
+            raise ValueError(
+                "A path is required for this operation. Pass a path to save_to_h5()."
+            )
         if not self.is_main_process:
             return
 
@@ -386,7 +415,9 @@ class OutputManager:
             self._write_dict_to_h5(self._root(handle), self.data)
             self._write_parameter_attrs_to_h5(handle)
 
-    def _write_parameters_to_h5(self, handle, group_name: str, state: dict[str, Any], attrs: dict[str, Any]) -> None:
+    def _write_parameters_to_h5(
+        self, handle, group_name: str, state: dict[str, Any], attrs: dict[str, Any]
+    ) -> None:
         params_root = self._root(handle).require_group("parameters")
         if group_name in params_root:
             del params_root[group_name]
@@ -420,7 +451,16 @@ class OutputManager:
 
     def start_timing(self, name: str) -> None:
         """Start the timer ``name``."""
-        entry = self._timings.setdefault(name, {"total": 0.0, "last_timing": 0.0, "first_timing": 0.0, "count": 0, "start": 0.0})
+        entry = self._timings.setdefault(
+            name,
+            {
+                "total": 0.0,
+                "last_timing": 0.0,
+                "first_timing": 0.0,
+                "count": 0,
+                "start": 0.0,
+            },
+        )
         entry["start"] = time.perf_counter()
 
     def stop_timing(self, name: str) -> float:
@@ -436,7 +476,16 @@ class OutputManager:
 
     def add_timing(self, name: str, elapsed: float) -> None:
         """Add ``elapsed`` seconds and one call to the timer ``name``, and record it as its last call."""
-        entry = self._timings.setdefault(name, {"total": 0.0, "last_timing": 0.0, "first_timing": 0.0, "count": 0, "start": 0.0})
+        entry = self._timings.setdefault(
+            name,
+            {
+                "total": 0.0,
+                "last_timing": 0.0,
+                "first_timing": 0.0,
+                "count": 0,
+                "start": 0.0,
+            },
+        )
         if entry["count"] == 0:
             entry["first_timing"] = float(elapsed)
         entry["total"] = float(entry["total"]) + float(elapsed)
@@ -461,15 +510,21 @@ class OutputManager:
         ``last_timing``. ``path`` has to be ``None``, otherwise ``ValueError`` is raised.
         """
         if path is not None:
-            raise ValueError("flush_timings() does not bind paths. Use save_to_h5(path=...) to choose an output file.")
+            raise ValueError(
+                "flush_timings() does not bind paths. Use save_to_h5(path=...) to choose an output file."
+            )
         timings = self.data.setdefault("timings", {})
         for key, value in self._timings.items():
             timings[str(key)] = {k: v for k, v in value.items() if k != "start"}
         if self.path is not None and self.is_main_process:
             with h5py.File(self.path, "a") as handle:
-                self._write_dict_to_h5(self._root(handle).require_group("timings"), timings)
+                self._write_dict_to_h5(
+                    self._root(handle).require_group("timings"), timings
+                )
 
-    def flush_memory_info(self, path: str | Path | None = None) -> dict[str, dict[str, Any]]:
+    def flush_memory_info(
+        self, path: str | Path | None = None
+    ) -> dict[str, dict[str, Any]]:
         """
         Store ``device.memory_stats()`` of the devices of all processes under \
         ``memory/device_<id>``, replacing earlier memory information. ``available`` is ``False`` \
@@ -480,7 +535,9 @@ class OutputManager:
             The dictionary stored under ``memory``.
         """
         if path is not None:
-            raise ValueError("flush_memory_info() does not bind paths. Use save_to_h5(path=...) to choose an output file.")
+            raise ValueError(
+                "flush_memory_info() does not bind paths. Use save_to_h5(path=...) to choose an output file."
+            )
         memory = {}
         for info in sorted(_gather_memory_info(), key=lambda d: d["id"]):
             stats = info["stats"]

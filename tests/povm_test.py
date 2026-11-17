@@ -7,7 +7,7 @@
 
 
 # class TestPOVM(unittest.TestCase):
-#     def prepare_net(self, L, dt, hiddenSize=1, depth=1, cell="RNN"):
+#     def prepare_net(self, L, dt, hidden_size=1, depth=1, cell="RNN"):
 #         def copy_dict(a):
 #             b = {}
 #             for key, value in a.items():
@@ -22,10 +22,10 @@
 #         self.psi = jVMC.util.util.init_net({"batch_size": 200, "net1":
 #                                             {"type": "RNN",
 #                                              "translation": {"use": True, "factor": 1},
-#                                              "parameters": {"inputDim": 4,
-#                                                             "realValuedOutput": True,
-#                                                             "realValuedParams": True,
-#                                                             "logProbFactor": 1, "hiddenSize": hiddenSize, "L": L, "depth": depth, "cell": cell}}},
+#                                              "parameters": {"input_dim": 4,
+#                                                             "real_valued_output": True,
+#                                                             "real_valued_params": True,
+#                                                             "log_prob_factor": 1, "hidden_size": hidden_size, "L": L, "depth": depth, "cell": cell}}},
 #                                            sample_shape, 1234)
 
 #         system_data = {"dim": "1D", "L": L}
@@ -42,13 +42,13 @@
 #                                   for p in jax.tree_util.tree_flatten(params)[0]])
 #         self.psi.set_parameters(params)
 
-#         self.sampler = jVMC.sampler.ExactSampler(self.psi, (L,), lDim=4, logProbFactor=1)
+#         self.sampler = jVMC.sampler.ExactSampler(self.psi, (L,), l_dim=4, log_prob_factor=1)
 
 #         self.tdvpEquation = jVMC.util.tdvp.TDVP(self.sampler, rhsPrefactor=-1.,
-#                                                 pinvTol=0.0, pinvCutoff=1e-6, diagonalShift=0, makeReal='real', crossValidation=False)
+#                                                 pinvTol=0.0, pinvCutoff=1e-6, diagonal_shift=0, makeReal='real', crossValidation=False)
 
-#         #self.stepper = jVMC.util.stepper.Euler(timeStep=dt)  # ODE integrator
-#         self.stepper = jVMC.util.stepper.Heun(timeStep=dt)  # ODE integrator
+#         #self.stepper = jVMC.util.stepper.Euler(time_step=dt)  # ODE integrator
+#         self.stepper = jVMC.util.stepper.Heun(time_step=dt)  # ODE integrator
 
 #     def test_matrix_to_povm(self):
 #         unity = jnp.eye(2, dtype=jVMC.global_defs.tCpx)
@@ -108,7 +108,7 @@
 #         Tmax = 0.5
 #         dt = 2E-3
 
-#         self.prepare_net(L, dt, hiddenSize=1, depth=1)
+#         self.prepare_net(L, dt, hidden_size=1, depth=1)
 
 #         Lindbladian = op.POVMOperator(self.povm)
 #         for l in range(L):
@@ -130,7 +130,7 @@
 
 #             dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
 #                                       psi=self.psi)
-            
+
 #             t += stepSize
 
 #             self.psi.set_parameters(dp)
@@ -155,7 +155,7 @@
 #         Tmax = 0.25
 #         dt = 2E-3
 
-#         self.prepare_net(L, dt, hiddenSize=3, depth=1)
+#         self.prepare_net(L, dt, hidden_size=3, depth=1)
 
 #         sx = op.get_paulis()[0]
 #         XX_ = jnp.kron(sx, sx)
@@ -186,7 +186,7 @@
 
 #             dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
 #                                       psi=self.psi)
-            
+
 #             t += stepSize
 
 #             self.psi.set_parameters(dp)
@@ -210,7 +210,7 @@
 #         Tmax = 0.2
 #         dt = 5E-4
 
-#         self.prepare_net(L, dt, hiddenSize=3, depth=1)
+#         self.prepare_net(L, dt, hidden_size=3, depth=1)
 
 #         sx = op.get_paulis()[0]
 #         XXX = jnp.kron(jnp.kron(sx, sx), sx)
@@ -242,7 +242,7 @@
 
 #             dp, stepSize = self.stepper.step(0, self.tdvpEquation, self.psi.get_parameters(), hamiltonian=Lindbladian,
 #                                       psi=self.psi)
-            
+
 #             t += stepSize
 
 #             self.psi.set_parameters(dp)

@@ -26,15 +26,15 @@ Usage
     energy = jVMC_exp.objective_function.Observable(H)
 
     # Ground state search
-    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonalShift=1e-3)
+    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=1e-3)
     out = opt.ground_state_search(500, energy, stepper=jVMC_exp.stepper.Euler(5e-2))
     out["energy"]["mean"]                   # Mean of the local energies at every step
 
     # Real-time evolution with an adaptive time step, measuring an observable
-    opt = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=False, diagonalShift=0.)
+    opt = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=False, diagonal_shift=0.)
     out = opt.time_evolution(
         t_max, jVMC_exp.objective_function.Observable(H_quench),
-        jVMC_exp.stepper.AdaptiveHeun(timeStep=1e-3, rtol=1e-5, atol=1e-5),
+        jVMC_exp.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5),
         observables={"ZZ": ZZ}
     )
     out["times"], out["ZZ"]["mean"]

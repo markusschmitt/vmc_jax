@@ -53,7 +53,7 @@ Click on the badge above to open a notebook that implements an exemplary ground 
 
 ## Important gotchas
 ### Out-of-memory issues and batching
-Memory requirements grow with increasing network sizes. To avoid out-of-memory issues, the ``batchSize`` parameter of the ``NQS`` class has to be adjusted. The ``batchSize`` indicates on how many input configurations the network is evaluated concurrently. Out-of-memory issues are usually resolved by reducing this number. The ``numChains`` parameter of the ``Sampler`` class for Markov Chain Monte Carlo sampling plays a similar role, but its optimal values in terms of computational speed are typically not memory critical.
+Memory requirements grow with increasing network sizes. To avoid out-of-memory issues, the ``batch_size`` parameter of the ``NQS`` class has to be adjusted. The ``batch_size`` indicates on how many input configurations the network is evaluated concurrently. Out-of-memory issues are usually resolved by reducing this number. The ``num_chains`` parameter of the ``Sampler`` class for Markov Chain Monte Carlo sampling plays a similar role, but its optimal values in terms of computational speed are typically not memory critical.
 
 ## Citing jVMC
 

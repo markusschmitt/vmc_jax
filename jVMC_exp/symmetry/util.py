@@ -1,11 +1,15 @@
-import jax.numpy as jnp
 from typing import Literal
+
+import jax.numpy as jnp
 
 #: Particle types accepted by the symmetry projectors (the plural forms are accepted too).
 ParticleType = Literal["spin", "boson", "bosons", "spinless_fermion", "spinful_fermion"]
 _PARTICLE_TYPES = {"spin", "boson", "spinless_fermion", "spinful_fermion"}
 
-def deduplicate_symmetry_arrays(perm, character, local_map=None, local_phase=None, local_sign=None, perm_sign=None):
+
+def deduplicate_symmetry_arrays(
+    perm, character, local_map=None, local_phase=None, local_sign=None, perm_sign=None
+):
     """
     Merge the elements of a projector that act identically.
 
@@ -25,7 +29,11 @@ def deduplicate_symmetry_arrays(perm, character, local_map=None, local_phase=Non
         original order, and the characters of the distinct elements.
     """
     n_original = int(perm.shape[0])
-    local_sign = jnp.zeros((n_original,), dtype=jnp.int8) if local_sign is None else jnp.asarray(local_sign, dtype=jnp.int8)
+    local_sign = (
+        jnp.zeros((n_original,), dtype=jnp.int8)
+        if local_sign is None
+        else jnp.asarray(local_sign, dtype=jnp.int8)
+    )
     buckets = {}
     order = []
     for idx, row in enumerate(perm.tolist()):
@@ -43,17 +51,22 @@ def deduplicate_symmetry_arrays(perm, character, local_map=None, local_phase=Non
 
     keep = jnp.asarray([buckets[key]["idx"] for key in order], dtype=jnp.int32)
     scale = len(order) / n_original
-    character_unique = jnp.asarray([scale * buckets[key]["character"] for key in order], dtype=jnp.complex128)
+    character_unique = jnp.asarray(
+        [scale * buckets[key]["character"] for key in order], dtype=jnp.complex128
+    )
 
     return keep, character_unique
+
 
 def array_tuple(x, dtype):
     """Two-dimensional array as a tuple of tuples of Python scalars, with the type ``dtype``."""
     return tuple(map(tuple, jnp.asarray(x, dtype=dtype).tolist()))
 
+
 def vector_tuple(x, dtype):
     """One-dimensional array as a tuple of Python scalars, with the type ``dtype``."""
     return tuple(jnp.asarray(x, dtype=dtype).tolist())
+
 
 def normalize_particle_type(particle_type: ParticleType) -> str:
     """
@@ -70,5 +83,7 @@ def normalize_particle_type(particle_type: ParticleType) -> str:
     if particle_type == "spinful_fermions":
         particle_type = "spinful_fermion"
     if particle_type not in _PARTICLE_TYPES:
-        raise ValueError("particle_type must be 'spin', 'boson', 'spinless_fermion', or 'spinful_fermion'.")
+        raise ValueError(
+            "particle_type must be 'spin', 'boson', 'spinless_fermion', or 'spinful_fermion'."
+        )
     return particle_type

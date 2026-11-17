@@ -1,2 +1,8 @@
-from .base import AbstractObjectiveFunction, Observable, ParametricObservable, Estimator, ObjectiveFunctionOutput
+from .base import (
+    AbstractObjectiveFunction,
+    Estimator,
+    ObjectiveFunctionOutput,
+    Observable,
+    ParametricObservable,
+)
 from .infidelity import Infidelity

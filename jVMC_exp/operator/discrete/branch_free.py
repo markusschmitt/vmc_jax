@@ -1,17 +1,22 @@
-from abc import abstractmethod
-import numpy as np
-import jax.numpy as jnp
 import inspect
-import jax
+from abc import abstractmethod
 
-from jVMC_exp.operator.discrete.base import Operator as BaseOperator
+import jax
+import jax.numpy as jnp
+import numpy as np
+
 from jVMC_exp import global_defs
+from jVMC_exp.operator.discrete.base import Operator as BaseOperator
 from jVMC_exp.sharding_config import MESH
+
 
 def _has_kwargs(fun):
     """Whether ``fun`` accepts arbitrary keyword arguments."""
     sig = inspect.signature(fun)
-    return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values())
+    return any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
+    )
+
 
 def _spin_index(spin):
     """Return ``spin`` as 0 (up) or 1 (down), accepting ``"up"`` and ``"down"`` and their abbreviations."""
@@ -23,17 +28,19 @@ def _spin_index(spin):
             if spin in {"down", "dn", "d", "↓"}:
                 return 1
             raise ValueError(f"spin must be 0/1 or 'up'/'down'. Got {spin}")
-        
+
         spin = int(spin)
         if spin not in (0, 1):
             raise ValueError(f"spin must be 0/1 or 'up'/'down'. Got {spin}")
-    
+
     return spin
+
 
 class OperatorString(list):
     """
     A list of operators to be applied sequentially, with an associated scale factor.
     """
+
     def __init__(self, operators):
         super().__init__(operators)
         self._scale = [1]
@@ -43,6 +50,7 @@ class OperatorString(list):
     def diagonal(self):
         """Whether the operator string is diagonal."""
         return self._diagonal
+
 
 class Operator(BaseOperator):
     """
@@ -60,42 +68,41 @@ class Operator(BaseOperator):
     (L-1, down), (L-1, up), ..., (0, down), (0, up).
 
     Args:
-        * ``ldim``: Local Hilbert space dimension.
+        * ``l_dim``: Local Hilbert space dimension.
         * ``idx``: Site the operator acts on.
         * ``diag``: Whether the operator is diagonal.
         * ``fermionic``: Whether the operator is fermionic.
         * ``spin``: Spin the operator acts on, for spinful fermions: ``0`` or ``"up"``, ``1`` or \
           ``"down"``. ``None`` otherwise.
     """
+
     def __init__(
-            self, ldim, idx, diag, 
-            fermionic: bool=False, 
-            spin: str | int | None=None
-        ):
-        super().__init__(ldim)
+        self, l_dim, idx, diag, fermionic: bool = False, spin: str | int | None = None
+    ):
+        super().__init__(l_dim)
 
         self._idx = idx
         self._diag = diag
-        self._site_ldim = {idx: ldim} if ldim is not None else {}
+        self._site_l_dim = {idx: l_dim} if l_dim is not None else {}
 
         self._fermionic = fermionic
-        self._spin = _spin_index(spin) 
+        self._spin = _spin_index(spin)
 
     @property
     def idx(self):
         """Site the operator acts on, ``None`` for combined operators."""
         return self._idx
-    
+
     @property
     def fermionic(self):
         """Whether the operator is fermionic."""
         return self._fermionic
-    
+
     @property
     def spin(self):
         """Spin the operator acts on, 0 (up) or 1 (down), or ``None``."""
         return self._spin
-    
+
     @property
     def diag(self):
         """Whether the operator is diagonal."""
@@ -107,25 +114,23 @@ class Operator(BaseOperator):
             self._compile()
 
         return self._n_conn
-    
+
     @property
     @abstractmethod
     def mat_els(self):
         """Matrix elements ``mat_els[j]`` of the local states ``j``."""
-        pass
-    
+
     @property
     @abstractmethod
     def map(self):
         """Images ``map[j]`` of the local states ``j``."""
-        pass
-        
+
     def _get_list_of_strings(self):
         """
         Flatten the operator tree into a list of operator strings.
-        Each operator string is an OperatorString (list subclass) of leaf operators 
+        Each operator string is an OperatorString (list subclass) of leaf operators
         to be applied sequentially, with a scale attribute.
-        
+
         Returns: List of OperatorString objects
         """
         strings_stack = []
@@ -149,11 +154,11 @@ class Operator(BaseOperator):
                     right = strings_stack.pop()
                     left = strings_stack.pop()
 
-                    if node._label == 'sum':
+                    if node._label == "sum":
                         # Sum: concatenate the two lists of operator strings
                         strings_stack.append(left + right)
-                    
-                    elif node._label == 'mul':
+
+                    elif node._label == "mul":
                         # Product: create all combinations (distributive law)
                         out = []
                         for left_string in left:
@@ -164,7 +169,7 @@ class Operator(BaseOperator):
                                 combined._scale.extend(left_string._scale)
                                 combined._scale.extend(right_string._scale)
                                 out.append(combined)
-                        
+
                         strings_stack.append(out)
 
                 elif isinstance(node, ScaledOperator):
@@ -177,24 +182,24 @@ class Operator(BaseOperator):
                 else:
                     # Leaf operator: wrap in an OperatorString
                     op_string = OperatorString([node])
-                    strings_stack.append([op_string])        
-        
+                    strings_stack.append([op_string])
+
         return strings_stack[0]
 
     def _compile(self):
         strings = self._get_list_of_strings()
         max_length = max(len(s) for s in strings)
-        max_ldim = max(self._site_ldim.values())
-        
+        max_l_dim = max(self._site_l_dim.values())
+
         # Create identity operator for padding
-        IdOp = IdentityOperator(max_ldim, 0)
-        
-        idxC = []
-        mapC = []
-        matElsC = []
-        fermionicC = []
-        spinC = []
-        spinfulC = []
+        id_op = IdentityOperator(max_l_dim, 0)
+
+        idx_c = []
+        map_c = []
+        mat_els_c = []
+        fermionic_c = []
+        spin_c = []
+        spinful_c = []
         diagonal = []
         constant_prefactors = np.ones(len(strings), dtype=global_defs.DT_OPERATORS_CPX)
         callable_prefactors = {}
@@ -202,38 +207,38 @@ class Operator(BaseOperator):
         for j, op_string in enumerate(strings):
             idx_row = []
             map_row = []
-            matels_row = []
+            mat_els_row = []
             fermionic_row = []
             spin_row = []
             spinful_row = []
             d = 1
-            
+
             n = len(op_string)
             for k in range(max_length):
                 k_rev = n - 1 - k
                 if k_rev >= 0:
                     op = op_string[k_rev]
                     idx_row.append(op.idx)
-                    map_row.append(np.pad(op.map, (0, max_ldim - op.ldim)))
-                    matels_row.append(np.pad(op.mat_els, (0, max_ldim - op.ldim)))
+                    map_row.append(np.pad(op.map, (0, max_l_dim - op.l_dim)))
+                    mat_els_row.append(np.pad(op.mat_els, (0, max_l_dim - op.l_dim)))
                     fermionic_row.append(int(op.fermionic))
                     spin_row.append(op.spin if op.spin is not None else 0)
                     spinful_row.append(1 if op.spin is not None else 0)
                     d *= op.diag
                 else:
-                    idx_row.append(IdOp.idx)
-                    map_row.append(IdOp.map)
-                    matels_row.append(IdOp.mat_els)
+                    idx_row.append(id_op.idx)
+                    map_row.append(id_op.map)
+                    mat_els_row.append(id_op.mat_els)
                     fermionic_row.append(0)
                     spin_row.append(0)
                     spinful_row.append(0)
-            
-            idxC.append(idx_row)
-            mapC.append(map_row)
-            matElsC.append(matels_row)
-            fermionicC.append(fermionic_row)
-            spinC.append(spin_row)
-            spinfulC.append(spinful_row)
+
+            idx_c.append(idx_row)
+            map_c.append(map_row)
+            mat_els_c.append(mat_els_row)
+            fermionic_c.append(fermionic_row)
+            spin_c.append(spin_row)
+            spinful_c.append(spinful_row)
 
             for scale in op_string._scale:
                 if callable(scale):
@@ -245,27 +250,25 @@ class Operator(BaseOperator):
                 else:
                     constant_prefactors[j] *= scale
             diagonal.append(d)
-        
-        self.idxC = np.array(idxC, dtype=np.int32)
-        self.mapC = np.array(mapC, dtype=np.int32)
-        self.matElsC = np.array(matElsC)
-        self.fermionicC = np.array(fermionicC, dtype=np.int32)
-        self.spinC = np.array(spinC, dtype=np.int32)
-        self.spinfulC = np.array(spinfulC, dtype=np.int32)
-        self.diagC = np.array(diagonal, dtype=np.bool_)
-        self.nondiagC = ~self.diagC
-        self.firstC = (
-            np.argmax(
-                self.idxC[:, :, None] == self.idxC[:, None, :], axis=2
-            ) == np.arange(max_length)
-        )
+
+        self.idx_c = np.array(idx_c, dtype=np.int32)
+        self.map_c = np.array(map_c, dtype=np.int32)
+        self.mat_els_c = np.array(mat_els_c)
+        self.fermionic_c = np.array(fermionic_c, dtype=np.int32)
+        self.spin_c = np.array(spin_c, dtype=np.int32)
+        self.spinful_c = np.array(spinful_c, dtype=np.int32)
+        self.diag_c = np.array(diagonal, dtype=np.bool_)
+        self.nondiag_c = ~self.diag_c
+        self.first_c = np.argmax(
+            self.idx_c[:, :, None] == self.idx_c[:, None, :], axis=2
+        ) == np.arange(max_length)
         self._constant_prefactors = constant_prefactors
         self._callable_prefactors = list(callable_prefactors.values())
         self._n_conn = sum(not d for d in diagonal)
         self._is_compiled = True
 
     def _get_conn_elements(self, s, kwargs):
-        sampleShape = s.shape
+        sample_shape = s.shape
         s = s.ravel()
         dim = s.shape[0]
 
@@ -281,7 +284,9 @@ class Operator(BaseOperator):
         right_up = jnp.cumsum(up_s[::-1])[::-1] - up_s
         right_total = jnp.cumsum((up_s + down_s)[::-1])[::-1] - up_s - down_s
 
-        def process_string(s, prefactor, idx, map, matEls, fermionic, spin, spinful, first):
+        def process_string(
+            s, prefactor, idx, map, mat_els, fermionic, spin, spinful, first
+        ):
             """
             Apply one operator string to ``s``. Spinful fermion signs use the
             ordering (L-1, down), (L-1, up), ..., (0, down), (0, up), i.e.
@@ -291,8 +296,8 @@ class Operator(BaseOperator):
             string_sites = idx
 
             def apply_operator(c, x):
-                carry_sample, carry_matEl = c
-                idx, map, matEl, fermionic, spin, spinful = x
+                carry_sample, carry_mat_el = c
+                idx, map, mat_el, fermionic, spin, spinful = x
 
                 sample_bits = carry_sample.astype(jnp.int32)
 
@@ -308,9 +313,9 @@ class Operator(BaseOperator):
 
                 right_count = right_total[idx] + jnp.sum(
                     jnp.where(
-                        changed, 
-                        up_occ + down_occ - up_s[string_sites] - down_s[string_sites], 
-                        0
+                        changed,
+                        up_occ + down_occ - up_s[string_sites] - down_s[string_sites],
+                        0,
                     )
                 )
                 down_occ_idx = jnp.bitwise_and(jnp.right_shift(sample_bits[idx], 1), 1)
@@ -318,58 +323,74 @@ class Operator(BaseOperator):
                 spinful_parity = jnp.bitwise_and(right_count + onsite_count, 1)
 
                 sign = (
-                    1 - 2 * fermionic * (spinful * spinful_parity + (1 - spinful) * spinless_parity)
+                    1
+                    - 2
+                    * fermionic
+                    * (spinful * spinful_parity + (1 - spinful) * spinless_parity)
                 ).astype(global_defs.DT_OPERATORS_CPX)
-                carry_matEl_new = carry_matEl * matEl[carry_sample[idx]] * sign
+                carry_mat_el_new = carry_mat_el * mat_el[carry_sample[idx]] * sign
                 # A select instead of a scatter, so that XLA can fuse the steps of the unrolled scan
                 carry_sample_new = jnp.where(
                     jnp.arange(dim) == idx, map[carry_sample[idx]], carry_sample
                 )
 
-                return (carry_sample_new, carry_matEl_new), None
-            
-            prefactor = jax.lax.pcast(prefactor, MESH.axis_names, to='varying')
-            (s_p, matEl), _ = jax.lax.scan(
-                apply_operator, 
-                (s, prefactor), 
-                (idx, map, matEls, fermionic, spin, spinful),
-                unroll=True
+                return (carry_sample_new, carry_mat_el_new), None
+
+            prefactor = jax.lax.pcast(prefactor, MESH.axis_names, to="varying")
+            (s_p, mat_el), _ = jax.lax.scan(
+                apply_operator,
+                (s, prefactor),
+                (idx, map, mat_els, fermionic, spin, spinful),
+                unroll=True,
             )
 
-            return s_p.reshape(sampleShape), matEl
-        
+            return s_p.reshape(sample_shape), mat_el
+
         s_p, mat_els = jax.vmap(process_string, in_axes=(None,) + (0,) * 8)(
-            s, prefactors, self.idxC, self.mapC, self.matElsC,
-            self.fermionicC, self.spinC, self.spinfulC, self.firstC
+            s,
+            prefactors,
+            self.idx_c,
+            self.map_c,
+            self.mat_els_c,
+            self.fermionic_c,
+            self.spin_c,
+            self.spinful_c,
+            self.first_c,
         )
-        
-        mat_el_diag = jnp.sum(mat_els[self.diagC])
-        s_p_nondiag = s_p[self.nondiagC]
-        mat_els_nondiag = mat_els[self.nondiagC]
+
+        mat_el_diag = jnp.sum(mat_els[self.diag_c])
+        s_p_nondiag = s_p[self.nondiag_c]
+        mat_els_nondiag = mat_els[self.nondiag_c]
 
         return s_p_nondiag, mat_els_nondiag, mat_el_diag
-    
+
     @classmethod
     def _create_composite(cls, O_1, O_2, label):
         return CompositeOperator(O_1, O_2, label)
-    
+
     @classmethod
     def _create_scaled(cls, O, scalar):
         return ScaledOperator(O, scalar)
-    
+
+
 class CompositeOperator(Operator):
     """
     Sum (``label="sum"``) or product (``label="mul"``) of two operators, as created by ``+`` and
     ``*``. The local dimensions of the two operators must agree on the sites they share.
     """
+
     def __init__(self, O_1: Operator, O_2: Operator, label: str):
-        for site in O_1._site_ldim.keys():
-            if (site in O_2._site_ldim.keys()) and (O_1._site_ldim[site] != O_2._site_ldim[site]):
-                raise ValueError(f"Can't combine two operators with different local dimensions. "
-                                 f"Got ldim={O_1._site_ldim[site]} and ldim={O_2._site_ldim[site]} at site {site}")
+        for site in O_1._site_l_dim.keys():
+            if (site in O_2._site_l_dim.keys()) and (
+                O_1._site_l_dim[site] != O_2._site_l_dim[site]
+            ):
+                raise ValueError(
+                    f"Can't combine two operators with different local dimensions. "
+                    f"Got l_dim={O_1._site_l_dim[site]} and l_dim={O_2._site_l_dim[site]} at site {site}"
+                )
         super().__init__(None, None, None, None)
 
-        self._site_ldim = {**O_1._site_ldim, **O_2._site_ldim}
+        self._site_l_dim = {**O_1._site_l_dim, **O_2._site_l_dim}
         self.O_1 = O_1
         self.O_2 = O_2
         self._label = label
@@ -377,48 +398,53 @@ class CompositeOperator(Operator):
     @property
     def mat_els(self):
         pass
-    
+
     @property
     def map(self):
         pass
+
 
 class ScaledOperator(Operator):
     """
     Operator ``O`` multiplied by ``scalar``, a number or a callable ``f(**kwargs)``, as created by
     ``*`` and ``/``.
     """
-    def  __init__(self, O: Operator, scalar):
+
+    def __init__(self, O: Operator, scalar):
         if callable(scalar) and (not _has_kwargs(scalar)):
             raise ValueError(
-                'Any callable that multiplies an operator has to have **kwargs in its argument.'
+                "Any callable that multiplies an operator has to have **kwargs in its argument."
             )
 
         super().__init__(None, None, None, None)
-        self._site_ldim = O._site_ldim
+        self._site_l_dim = O._site_l_dim
         self.scalar = scalar
         self.O = O
 
     @property
     def mat_els(self):
         pass
-    
+
     @property
     def map(self):
         pass
 
+
 class IdentityOperator(Operator):
-    """Identity on site ``idx``, with local dimension ``ldim``. Its multiples add constants to operators."""
-    def __init__(self, ldim, idx):
-        super().__init__(ldim, idx, True, False)
+    """Identity on site ``idx``, with local dimension ``l_dim``. Its multiples add constants to operators."""
+
+    def __init__(self, l_dim, idx):
+        super().__init__(l_dim, idx, True, False)
 
     @property
     def mat_els(self):
-        return np.ones(self.ldim, dtype=global_defs.DT_OPERATORS_CPX)
-    
+        return np.ones(self.l_dim, dtype=global_defs.DT_OPERATORS_CPX)
+
     @property
     def map(self):
-        return np.arange(self.ldim, dtype=np.int32)
-  
+        return np.arange(self.l_dim, dtype=np.int32)
+
+
 class _Creation(Operator):
     def __init__(self, idx, fermionic):
         super().__init__(2, idx, False, fermionic)
@@ -426,10 +452,11 @@ class _Creation(Operator):
     @property
     def mat_els(self):
         return np.array([1, 0], dtype=global_defs.DT_OPERATORS_CPX)
-    
+
     @property
     def map(self):
         return np.array([1, 0], dtype=np.int32)
+
 
 class _Annihilation(Operator):
     def __init__(self, idx, fermionic):
@@ -438,60 +465,71 @@ class _Annihilation(Operator):
     @property
     def mat_els(self):
         return np.array([0, 1], dtype=global_defs.DT_OPERATORS_CPX)
-    
+
     @property
     def map(self):
         return np.array([0, 0], dtype=np.int32)
-    
+
+
 class SigmaX(Operator):
     """Pauli operator :math:`\\sigma^x` on site ``idx``."""
+
     def __init__(self, idx):
         super().__init__(2, idx, False)
 
     @property
     def mat_els(self):
-        return np.ones(self.ldim, dtype=global_defs.DT_OPERATORS_CPX)
-    
+        return np.ones(self.l_dim, dtype=global_defs.DT_OPERATORS_CPX)
+
     @property
     def map(self):
         return np.array([1, 0], dtype=np.int32)
 
+
 class SigmaY(Operator):
     """Pauli operator :math:`\\sigma^y` on site ``idx``."""
+
     def __init__(self, idx):
         super().__init__(2, idx, False)
 
     @property
     def mat_els(self):
         return np.array([1j, -1j], dtype=global_defs.DT_OPERATORS_CPX)
-    
+
     @property
     def map(self):
         return np.array([1, 0], dtype=np.int32)
-    
+
+
 class SigmaZ(Operator):
     """Pauli operator :math:`\\sigma^z` on site ``idx``: +1 for the local state 0, and -1 for 1."""
+
     def __init__(self, idx):
         super().__init__(2, idx, True)
 
     @property
     def mat_els(self):
         return np.array([1, -1], dtype=global_defs.DT_OPERATORS_CPX)
-    
+
     @property
     def map(self):
-        return np.arange(self.ldim, dtype=np.int32)
-    
+        return np.arange(self.l_dim, dtype=np.int32)
+
+
 class SigmaPlus(_Annihilation):
     """Spin raising operator :math:`\\sigma^+=(\\sigma^x+i\\sigma^y)/2` on site ``idx``, which maps the local state 1 to 0."""
+
     def __init__(self, idx):
         super().__init__(idx, False)
 
+
 class SigmaMinus(_Creation):
     """Spin lowering operator :math:`\\sigma^-=(\\sigma^x-i\\sigma^y)/2` on site ``idx``, which maps the local state 0 to 1."""
+
     def __init__(self, idx):
         super().__init__(idx, False)
-    
+
+
 class _Number(Operator):
     def __init__(self, idx):
         super().__init__(2, idx, True, False)
@@ -503,6 +541,7 @@ class _Number(Operator):
     @property
     def map(self):
         return np.array([0, 1], dtype=np.int32)
+
 
 class _SpinfulCreation(Operator):
     def __init__(self, idx, spin):
@@ -520,6 +559,7 @@ class _SpinfulCreation(Operator):
             return np.array([1, 1, 3, 3], dtype=np.int32)
         return np.array([2, 3, 2, 3], dtype=np.int32)
 
+
 class _SpinfulAnnihilation(Operator):
     def __init__(self, idx, spin):
         super().__init__(4, idx, False, True, spin)
@@ -536,6 +576,7 @@ class _SpinfulAnnihilation(Operator):
             return np.array([0, 0, 2, 2], dtype=np.int32)
         return np.array([0, 1, 0, 1], dtype=np.int32)
 
+
 class _SpinfulNumber(Operator):
     def __init__(self, idx, spin):
         super().__init__(4, idx, True, False, spin)
@@ -548,7 +589,8 @@ class _SpinfulNumber(Operator):
 
     @property
     def map(self):
-        return np.arange(self.ldim, dtype=np.int32)
+        return np.arange(self.l_dim, dtype=np.int32)
+
 
 def Creation(idx, spin=None):
     """
@@ -561,6 +603,7 @@ def Creation(idx, spin=None):
         return _Creation(idx, True)
     return _SpinfulCreation(idx, spin)
 
+
 def Annihilation(idx, spin=None):
     """
     Fermionic annihilation operator :math:`\\hat c` on site ``idx``, for a spinless fermion or, \
@@ -569,6 +612,7 @@ def Annihilation(idx, spin=None):
     if spin is None:
         return _Annihilation(idx, True)
     return _SpinfulAnnihilation(idx, spin)
+
 
 def Number(idx, spin=None):
     """

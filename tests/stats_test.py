@@ -1,15 +1,16 @@
 import unittest
+
 import jax
 import jax.numpy as jnp
 
-from jVMC_exp.stats import SampledObs, LazySampledObs
-from jVMC_exp.sharding_config import SizedIterable, BatchLayout, pad_to_devices
+from jVMC_exp.sharding_config import BatchLayout, SizedIterable, pad_to_devices
+from jVMC_exp.stats import LazySampledObs, SampledObs
 
 # 3 samples per device and batch: over 20 samples the last batch is never full
 BATCH_SIZE = 3 * jax.device_count()
 
+
 class TestStats(unittest.TestCase):
-        
     def test_subset_function(self):
 
         N = 10
@@ -20,16 +21,19 @@ class TestStats(unittest.TestCase):
         obs1 = SampledObs(Obs1, p)
         obs2 = obs1.get_subset(0, N // 2)
 
-        self.assertTrue(jnp.allclose(obs1.mean[0], jnp.sum(jnp.reshape(Obs1, (N,)) * p)))
+        self.assertTrue(
+            jnp.allclose(obs1.mean[0], jnp.sum(jnp.reshape(Obs1, (N,)) * p))
+        )
 
-        self.assertTrue( 
+        self.assertTrue(
             jnp.allclose(
-                obs2.mean, 
-                jnp.sum(jnp.reshape(Obs1, (N,))[0:N//2] * p[0:N//2]) / jnp.sum(p[0:N//2])
+                obs2.mean,
+                jnp.sum(jnp.reshape(Obs1, (N,))[0 : N // 2] * p[0 : N // 2])
+                / jnp.sum(p[0 : N // 2]),
             )
         )
 
-        obs3 = SampledObs(Obs1[0:N//2, :], p[0:N//2] / jnp.sum(p[0:N//2]))
+        obs3 = SampledObs(Obs1[0 : N // 2, :], p[0 : N // 2] / jnp.sum(p[0 : N // 2]))
 
         self.assertTrue(jnp.allclose(obs3.get_covar(), obs2.get_covar()))
 
@@ -66,12 +70,12 @@ class TestStats(unittest.TestCase):
         centered_ref = data - mean_ref
         normalized_ref = jnp.einsum("i,i...->i...", jnp.sqrt(weights), centered_ref)
 
-        self.assertTrue(jnp.allclose(obs._centered_obs, centered_ref))      # o -> c
+        self.assertTrue(jnp.allclose(obs._centered_obs, centered_ref))  # o -> c
         self.assertTrue(jnp.allclose(obs._normalized_obs, normalized_ref))  # c -> n
-        self.assertTrue(jnp.allclose(obs.observations, data))               # n -> o
+        self.assertTrue(jnp.allclose(obs.observations, data))  # n -> o
         self.assertTrue(jnp.allclose(obs._normalized_obs, normalized_ref))  # o -> n
-        self.assertTrue(jnp.allclose(obs._centered_obs, centered_ref))      # n -> c
-        self.assertTrue(jnp.allclose(obs.observations, data))               # c -> o
+        self.assertTrue(jnp.allclose(obs._centered_obs, centered_ref))  # n -> c
+        self.assertTrue(jnp.allclose(obs.observations, data))  # c -> o
 
     def test_state_roundtrip_zero_weight_rows(self):
         """
@@ -93,14 +97,16 @@ class TestStats(unittest.TestCase):
         obs = SampledObs(data, weights)
         mean_ref = jnp.tensordot(weights, data, axes=(0, 0))
 
-        _ = obs._normalized_obs      # o -> n: zero-weight rows collapse to 0 here
-        raw = obs.observations       # n -> o
+        _ = obs._normalized_obs  # o -> n: zero-weight rows collapse to 0 here
+        raw = obs.observations  # n -> o
         centered = obs._centered_obs  # o -> c
 
         self.assertTrue(jnp.allclose(raw[nonzero_rows], data[nonzero_rows]))
         self.assertTrue(jnp.allclose(raw[zero_rows], 0.0))
 
-        self.assertTrue(jnp.allclose(centered[nonzero_rows], data[nonzero_rows] - mean_ref))
+        self.assertTrue(
+            jnp.allclose(centered[nonzero_rows], data[nonzero_rows] - mean_ref)
+        )
         self.assertTrue(jnp.allclose(centered[zero_rows], 0.0))
 
     def _make_converged_obs(self, n_chains, chain_length, seed=0):
@@ -123,7 +129,9 @@ class TestStats(unittest.TestCase):
         noise = jax.random.normal(key, shape=(n_chains, chain_length))
         samples = jnp.zeros((n_chains, chain_length))
         for t in range(1, chain_length):
-            samples = samples.at[:, t].set(rho * samples[:, t-1] + jnp.sqrt(1 - rho**2) * noise[:, t])
+            samples = samples.at[:, t].set(
+                rho * samples[:, t - 1] + jnp.sqrt(1 - rho**2) * noise[:, t]
+            )
         return SampledObs(samples.ravel()[:, None]), rho
 
     def test_rhat_converged_close_to_one(self):
@@ -168,7 +176,9 @@ class TestStats(unittest.TestCase):
     def test_act_correlated_larger_than_iid(self):
         """Autocorrelation time of AR(1) samples should exceed that of i.i.d."""
         obs_iid = self._make_converged_obs(n_chains=4, chain_length=512)
-        obs_ar1, _ = self._make_autocorrelated_obs(n_chains=4, chain_length=512, rho=0.9)
+        obs_ar1, _ = self._make_autocorrelated_obs(
+            n_chains=4, chain_length=512, rho=0.9
+        )
 
         tau_iid = float(jnp.mean(obs_iid.get_autocorrelation_time(n_chains=4).mean))
         tau_ar1 = float(jnp.mean(obs_ar1.get_autocorrelation_time(n_chains=4).mean))
@@ -196,8 +206,12 @@ class TestStats(unittest.TestCase):
 
     def test_act_higher_rho_gives_larger_tau(self):
         """Higher AR(1) correlation coefficient should yield larger autocorrelation time."""
-        obs_lo, _ = self._make_autocorrelated_obs(n_chains=4, chain_length=1024, rho=0.5)
-        obs_hi, _ = self._make_autocorrelated_obs(n_chains=4, chain_length=1024, rho=0.95)
+        obs_lo, _ = self._make_autocorrelated_obs(
+            n_chains=4, chain_length=1024, rho=0.5
+        )
+        obs_hi, _ = self._make_autocorrelated_obs(
+            n_chains=4, chain_length=1024, rho=0.95
+        )
 
         tau_lo = float(jnp.mean(obs_lo.get_autocorrelation_time(n_chains=4).mean))
         tau_hi = float(jnp.mean(obs_hi.get_autocorrelation_time(n_chains=4).mean))
@@ -215,9 +229,11 @@ class TestStats(unittest.TestCase):
         n_chains, chain_length = 4, 8192
         for rho in (0.0, 0.5, 0.9):
             noise = jax.random.normal(jax.random.PRNGKey(1), (chain_length, n_chains))
+
             def step(x, eps):
-                x = rho * x + jnp.sqrt(1 - rho ** 2) * eps
+                x = rho * x + jnp.sqrt(1 - rho**2) * eps
                 return x, x
+
             # Start from the stationary distribution, chains stored one after the other
             _, samples = jax.lax.scan(step, noise[0], noise[1:])
             samples = jnp.concatenate([noise[:1], samples]).T.ravel()
@@ -226,6 +242,7 @@ class TestStats(unittest.TestCase):
             exact = (1 + rho) / (1 - rho)
             with self.subTest(rho=rho):
                 self.assertAlmostEqual(float(tau.mean[0]) / exact, 1.0, delta=0.15)
+
 
 def _make_lazy(observations, weights, batch_size):
     """
@@ -245,6 +262,7 @@ def _make_lazy(observations, weights, batch_size):
     )
     return LazySampledObs(iterable, weights)
 
+
 class TestLazySampledObs(unittest.TestCase):
     """
     `LazySampledObs` is the batched_jacobian backend for SampledObs: it must
@@ -254,6 +272,7 @@ class TestLazySampledObs(unittest.TestCase):
     3, 3, 3, 2] per device), which is the case that would break a naive
     equal-split implementation.
     """
+
     def _make_data(self, seed=0, n=20 * jax.device_count(), n_obs=3):
         key = jax.random.PRNGKey(seed)
         k1, k2, k3 = jax.random.split(key, 3)
@@ -297,7 +316,9 @@ class TestLazySampledObs(unittest.TestCase):
         dense2 = SampledObs(obs2, weights)
         lazy1 = _make_lazy(obs1, weights, batch_size=BATCH_SIZE)
 
-        self.assertTrue(jnp.allclose(lazy1.get_covar(dense2), dense1.get_covar(dense2), atol=1e-10))
+        self.assertTrue(
+            jnp.allclose(lazy1.get_covar(dense2), dense1.get_covar(dense2), atol=1e-10)
+        )
 
     def test_get_covar_against_lazy_sampled_obs_other(self):
         obs1, weights = self._make_data(seed=0)
@@ -307,7 +328,9 @@ class TestLazySampledObs(unittest.TestCase):
         lazy1 = _make_lazy(obs1, weights, batch_size=BATCH_SIZE)
         lazy2 = _make_lazy(obs2, weights, batch_size=BATCH_SIZE)
 
-        self.assertTrue(jnp.allclose(lazy1.get_covar(lazy2), dense1.get_covar(dense2), atol=1e-10))
+        self.assertTrue(
+            jnp.allclose(lazy1.get_covar(lazy2), dense1.get_covar(dense2), atol=1e-10)
+        )
 
     def test_get_covar_and_covar_var_matches_sampled_obs(self):
         obs, weights = self._make_data()
@@ -352,7 +375,7 @@ class TestLazySampledObs(unittest.TestCase):
         lazy = _make_lazy(obs, weights, batch_size=BATCH_SIZE)
         iterable = lazy.observations
         with self.assertRaises(ValueError):
-            LazySampledObs(iterable, weights[:-jax.device_count()])
+            LazySampledObs(iterable, weights[: -jax.device_count()])
 
     def test_iterable_without_layout_raises(self):
         obs, weights = self._make_data()
@@ -373,7 +396,9 @@ class TestLazySampledObs(unittest.TestCase):
         with self.assertRaises(ValueError):
             lazy1.get_covar(lazy2)
 
-    @unittest.skipIf(jax.device_count() == 1, "Every number of samples is divisible by one device")
+    @unittest.skipIf(
+        jax.device_count() == 1, "Every number of samples is divisible by one device"
+    )
     def test_indivisible_number_of_samples_matches_sampled_obs(self):
         """
         Samples that are not divisible by the number of devices are padded, and
@@ -388,8 +413,12 @@ class TestLazySampledObs(unittest.TestCase):
         self.assertTrue(jnp.allclose(lazy1.mean, dense1.mean))
         self.assertTrue(jnp.allclose(lazy1.var, dense1.var))
         self.assertTrue(jnp.allclose(lazy1.get_covar(), dense1.get_covar(), atol=1e-10))
-        self.assertTrue(jnp.allclose(lazy1.get_covar(dense2), dense1.get_covar(dense2), atol=1e-10))
-        self.assertTrue(jnp.allclose(lazy1.get_covar(lazy2), dense1.get_covar(dense2), atol=1e-10))
+        self.assertTrue(
+            jnp.allclose(lazy1.get_covar(dense2), dense1.get_covar(dense2), atol=1e-10)
+        )
+        self.assertTrue(
+            jnp.allclose(lazy1.get_covar(lazy2), dense1.get_covar(dense2), atol=1e-10)
+        )
 
     def test_batches_line_up_with_weights(self):
         """
@@ -403,6 +432,7 @@ class TestLazySampledObs(unittest.TestCase):
         lazy = _make_lazy(index[:, None], index + 1, batch_size=BATCH_SIZE)
         for batch, weights in zip(lazy.observations, lazy._weights):
             self.assertTrue(jnp.allclose(batch[:, 0] + 1, weights * jnp.sum(index + 1)))
+
 
 if __name__ == "__main__":
     unittest.main()

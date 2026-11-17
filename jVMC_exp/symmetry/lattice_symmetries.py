@@ -24,13 +24,21 @@ particle-hole transformation :math:`C` satisfies :math:`C\\hat c_iC^{-1}=\\hat c
 every mode, with the sign given in ``particle_hole_symmetry()``.
 """
 
-from typing import Literal, Sequence
-import jax.numpy as jnp
 import cmath
 import math
+from collections.abc import Sequence
+from typing import Literal
 
-from .util import ParticleType, normalize_particle_type, array_tuple, vector_tuple, deduplicate_symmetry_arrays
+import jax.numpy as jnp
+
 from .projector import SymmetryProjector
+from .util import (
+    ParticleType,
+    array_tuple,
+    deduplicate_symmetry_arrays,
+    normalize_particle_type,
+    vector_tuple,
+)
 
 #: Custom site enumeration: an array of the site indices, used with ``site_order="custom"``.
 SiteEnumeration = Sequence[Sequence[int]] | jnp.ndarray | None
@@ -39,12 +47,16 @@ SiteOrder = Literal["direct", "snake", "custom"]
 #: Axes of a custom site enumeration: ``"yx"`` for ``site_enum[y, x]``, ``"xy"`` for ``site_enum[x, y]``.
 SiteEnumerationAxes = Literal["yx", "xy"]
 
+
 def _validate_lattice_shape(Lx: int, Ly: int) -> tuple[int, int]:
     Lx, Ly = int(Lx), int(Ly)
     if Lx <= 0 or Ly <= 0:
-        raise ValueError("Lx and Ly must both be positive. Use Ly=1 for one-dimensional chains.")
-    
+        raise ValueError(
+            "Lx and Ly must both be positive. Use Ly=1 for one-dimensional chains."
+        )
+
     return Lx, Ly
+
 
 def _site_enum_array(
     Lx: int,
@@ -59,7 +71,7 @@ def _site_enum_array(
         raise ValueError("site_enum_axes must be 'yx' or 'xy'.")
     if site_order != "custom" and site_enum is not None:
         raise ValueError("site_enum is only accepted with site_order='custom'.")
-    
+
     if site_order == "direct":
         enum = jnp.arange(Lx * Ly, dtype=jnp.int32).reshape(Ly, Lx)
     elif site_order == "snake":
@@ -72,18 +84,25 @@ def _site_enum_array(
         enum = jnp.asarray(site_enum, dtype=jnp.int32)
         if site_enum_axes == "xy":
             if enum.shape != (Lx, Ly):
-                raise ValueError("site_enum with site_enum_axes='xy' must have shape (Lx, Ly).")
+                raise ValueError(
+                    "site_enum with site_enum_axes='xy' must have shape (Lx, Ly)."
+                )
             enum = enum.T
         else:
             if enum.shape != (Ly, Lx):
-                raise ValueError("site_enum with site_enum_axes='yx' must have shape (Ly, Lx).")
-            
+                raise ValueError(
+                    "site_enum with site_enum_axes='yx' must have shape (Ly, Lx)."
+                )
+
     flat = jnp.ravel(enum)
     expected = jnp.arange(Lx * Ly, dtype=jnp.int32)
     if bool(jnp.any(jnp.sort(flat) != expected)):
-        raise ValueError("site enumeration must contain each site index from 0 to Lx*Ly-1 exactly once.")
-    
+        raise ValueError(
+            "site enumeration must contain each site index from 0 to Lx*Ly-1 exactly once."
+        )
+
     return enum
+
 
 def _site_enum_lookup(
     Lx: int,
@@ -96,9 +115,12 @@ def _site_enum_lookup(
     coords = jnp.zeros((Lx * Ly, 2), dtype=jnp.int32)
     for y in range(Ly):
         for x in range(Lx):
-            coords = coords.at[int(enum[y, x])].set(jnp.asarray([x, y], dtype=jnp.int32))
+            coords = coords.at[int(enum[y, x])].set(
+                jnp.asarray([x, y], dtype=jnp.int32)
+            )
 
     return enum, coords
+
 
 def square_translation_symmetry(
     Lx: int,
@@ -154,6 +176,7 @@ def square_translation_symmetry(
         character=tuple(characters),
         name="translation",
     )
+
 
 def square_d4_symmetry(
     Lx: int,
@@ -213,6 +236,7 @@ def square_d4_symmetry(
         name="d4",
     )
 
+
 def _unique_symmetry_projector(
     Lx: int,
     Ly: int,
@@ -228,9 +252,17 @@ def _unique_symmetry_projector(
     particle_type = normalize_particle_type(particle_type)
     perm = jnp.asarray(perm, dtype=jnp.int32)
     character = jnp.asarray(character, dtype=jnp.complex128)
-    local_map_arr = None if local_map is None else jnp.asarray(local_map, dtype=jnp.int32)
-    local_phase_arr = None if local_phase is None else jnp.asarray(local_phase, dtype=jnp.complex128)
-    local_sign_arr = jnp.zeros((perm.shape[0],), dtype=jnp.int8) if local_sign is None else jnp.asarray(local_sign, dtype=jnp.int8)
+    local_map_arr = (
+        None if local_map is None else jnp.asarray(local_map, dtype=jnp.int32)
+    )
+    local_phase_arr = (
+        None if local_phase is None else jnp.asarray(local_phase, dtype=jnp.complex128)
+    )
+    local_sign_arr = (
+        jnp.zeros((perm.shape[0],), dtype=jnp.int8)
+        if local_sign is None
+        else jnp.asarray(local_sign, dtype=jnp.int8)
+    )
     keep, character_unique = deduplicate_symmetry_arrays(
         perm,
         character,
@@ -245,11 +277,16 @@ def _unique_symmetry_projector(
         particle_type=particle_type,
         perm=array_tuple(perm[keep], jnp.int32),
         character=vector_tuple(character_unique, jnp.complex128),
-        local_map=None if local_map_arr is None else array_tuple(local_map_arr[keep], jnp.int32),
-        local_phase=None if local_phase_arr is None else array_tuple(local_phase_arr[keep], jnp.complex128),
+        local_map=None
+        if local_map_arr is None
+        else array_tuple(local_map_arr[keep], jnp.int32),
+        local_phase=None
+        if local_phase_arr is None
+        else array_tuple(local_phase_arr[keep], jnp.complex128),
         local_sign=tuple(jnp.asarray(local_sign_arr[keep], dtype=jnp.int8).tolist()),
         name=name,
     )
+
 
 def rectangle_d2_symmetry(
     Lx: int,
@@ -301,6 +338,7 @@ def rectangle_d2_symmetry(
         name="d2",
     )
 
+
 def chain_reflection_symmetry(
     L: int,
     particle_type: ParticleType = "spin",
@@ -327,6 +365,7 @@ def chain_reflection_symmetry(
         site_enum=site_enum,
         site_enum_axes=site_enum_axes,
     )
+
 
 def point_group_symmetry(
     Lx: int,
@@ -366,6 +405,7 @@ def point_group_symmetry(
         site_enum=site_enum,
         site_enum_axes=site_enum_axes,
     )
+
 
 def particle_hole_symmetry(
     Lx: int,
@@ -412,8 +452,12 @@ def particle_hole_symmetry(
     elif particle_type == "spinful_fermion":
         ph_map = [3, 2, 1, 0]
     else:
-        raise ValueError("particle_hole_symmetry is defined for bosons and fermions, not spins.")
-    local_sign = [0, 1] if particle_type in {"spinless_fermion", "spinful_fermion"} else [0, 0]
+        raise ValueError(
+            "particle_hole_symmetry is defined for bosons and fermions, not spins."
+        )
+    local_sign = (
+        [0, 1] if particle_type in {"spinless_fermion", "spinful_fermion"} else [0, 0]
+    )
 
     return SymmetryProjector(
         Lx=Lx,
@@ -426,7 +470,10 @@ def particle_hole_symmetry(
         name="particle_hole",
     )
 
-def spin_flip_symmetry(Lx: int, Ly: int, particle_type: ParticleType = "spin") -> SymmetryProjector:
+
+def spin_flip_symmetry(
+    Lx: int, Ly: int, particle_type: ParticleType = "spin"
+) -> SymmetryProjector:
     """
     Spin flip of all the sites.
 
@@ -451,9 +498,14 @@ def spin_flip_symmetry(Lx: int, Ly: int, particle_type: ParticleType = "spin") -
         local_phase = None
     elif particle_type == "spinful_fermion":
         local_map = [[0, 1, 2, 3], [0, 2, 1, 3]]
-        local_phase = [[1.0 + 0.0j] * 4, [1.0 + 0.0j, 1.0 + 0.0j, 1.0 + 0.0j, -1.0 + 0.0j]]
+        local_phase = [
+            [1.0 + 0.0j] * 4,
+            [1.0 + 0.0j, 1.0 + 0.0j, 1.0 + 0.0j, -1.0 + 0.0j],
+        ]
     else:
-        raise ValueError("spin_flip_symmetry is defined for spins and spinful fermions.")
+        raise ValueError(
+            "spin_flip_symmetry is defined for spins and spinful fermions."
+        )
     n_sites = Lx * Ly
     perm = [list(range(n_sites)), list(range(n_sites))]
 
@@ -464,6 +516,8 @@ def spin_flip_symmetry(Lx: int, Ly: int, particle_type: ParticleType = "spin") -
         perm=array_tuple(perm, jnp.int32),
         character=(1.0 + 0.0j, 1.0 + 0.0j),
         local_map=array_tuple(local_map, jnp.int32),
-        local_phase=None if local_phase is None else array_tuple(local_phase, jnp.complex128),
+        local_phase=None
+        if local_phase is None
+        else array_tuple(local_phase, jnp.complex128),
         name="spin_flip",
     )

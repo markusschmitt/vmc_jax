@@ -1,5 +1,7 @@
+from collections.abc import Sequence
+
 import flax.linen as nn
-from typing import Sequence
+
 
 class TwoNets(nn.Module):
     nets: Sequence[callable]
@@ -14,7 +16,7 @@ class TwoNets(nn.Module):
         return self.nets[0](s) + 1j * self.nets[1](s)
 
     def eval_real(self, s):
-        return self.nets[0](s)  
-    
+        return self.nets[0](s)
+
     def _sample_fun(self, *args):
         return self.nets[0].sample(*args)

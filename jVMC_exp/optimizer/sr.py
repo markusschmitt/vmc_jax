@@ -1,11 +1,13 @@
-from typing import Dict, List, Callable
+from typing import Callable, Dict, List
 
-from .base import Evolution
-from jVMC_exp.solver import PinvSNR
 from jVMC_exp.objective_function import AbstractObjectiveFunction
+from jVMC_exp.solver import PinvSNR
 from jVMC_exp.stepper import AbstractStepper, Euler
 from jVMC_exp.util import ObservableEntry
 from jVMC_exp.util.output_manager import OutputManager
+
+from .base import Evolution
+
 
 class SR(Evolution):
     """
@@ -19,38 +21,52 @@ class SR(Evolution):
     Args:
         * ``sampler``: Sampler of ``psi``.
         * ``psi``: Variational state.
-        * ``diagonalShift``: Constant added to the diagonal of :math:`S`, or a callable \
+        * ``diagonal_shift``: Constant added to the diagonal of :math:`S`, or a callable \
           ``step -> value``.
-        * ``diagonalScale``: Relative increase of the diagonal of :math:`S`, or a callable \
+        * ``diagonal_scale``: Relative increase of the diagonal of :math:`S`, or a callable \
           ``step -> value``.
         * ``solver``: Solver of ``jVMC_exp.solver``.
         * ``resample_stepper``: See ``AbstractOptimizer``.
         * ``output_manager`` [optional]: See ``AbstractOptimizer``.
         * ``store_qgt``: Whether to keep :math:`S`, see ``Evolution.qgt``.
     """
+
     def __init__(
-            self, sampler, psi, 
-            diagonalShift=0.001, diagonalScale=0., solver=PinvSNR(),
-            resample_stepper=True, output_manager: OutputManager | None = None,
-            store_qgt: bool = False
-        ):
+        self,
+        sampler,
+        psi,
+        diagonal_shift=0.001,
+        diagonal_scale=0.0,
+        solver=PinvSNR(),
+        resample_stepper=True,
+        output_manager: OutputManager | None = None,
+        store_qgt: bool = False,
+    ):
         super().__init__(
-            sampler, psi, resample_stepper, True, True, 
-            False, diagonalShift, diagonalScale, solver,
-            output_manager=output_manager, store_qgt=store_qgt,
-            compute_tdvp_error=False
+            sampler,
+            psi,
+            resample_stepper,
+            True,
+            True,
+            False,
+            diagonal_shift,
+            diagonal_scale,
+            solver,
+            output_manager=output_manager,
+            store_qgt=store_qgt,
+            compute_tdvp_error=False,
         )
 
     def time_evolution(
-            self,
-            t_max,
-            objective_function: AbstractObjectiveFunction,
-            stepper: AbstractStepper = Euler,
-            observables: Dict[str, ObservableEntry] | None = None,
-            callback: List[Callable] | None = None,
-            save_meta_data: bool = False,
-            **kwargs
-        ):
+        self,
+        t_max,
+        objective_function: AbstractObjectiveFunction,
+        stepper: AbstractStepper = Euler,
+        observables: Dict[str, ObservableEntry] | None = None,
+        callback: List[Callable] | None = None,
+        save_meta_data: bool = False,
+        **kwargs,
+    ):
         """Not available for SR: raises ``NotImplementedError``, use ``TDVP``."""
         raise NotImplementedError(
             "The SR optimizer is intended for ground state search only and "
@@ -58,5 +74,4 @@ class SR(Evolution):
         )
 
     def cross_validation(self):
-            """Does nothing: SR has no cross validation."""
-            pass
+        """Does nothing: SR has no cross validation."""

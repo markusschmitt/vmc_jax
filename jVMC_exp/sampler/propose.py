@@ -1,19 +1,22 @@
-import jax 
-import jax.numpy as jnp
 from abc import ABC, abstractmethod
-import jax.random as random 
 from functools import partial
 
-from jVMC_exp.geometry import AbstractGeometry
-from jVMC_exp.util.key_gen import format_key
-from jVMC_exp.sharding_config import DEVICE_SPEC, REPLICATED_SPEC, DEVICE_SHARDING
-from jVMC_exp import global_defs
+import jax
+import jax.numpy as jnp
+from jax import random
 
-def shard_array_across_chains(arr, numChains, dtype):
-    """Copy ``arr`` for each of the ``numChains`` chains and shard the result across devices."""
+from jVMC_exp import global_defs
+from jVMC_exp.geometry import AbstractGeometry
+from jVMC_exp.sharding_config import DEVICE_SHARDING, DEVICE_SPEC, REPLICATED_SPEC
+from jVMC_exp.util.key_gen import format_key
+
+
+def shard_array_across_chains(arr, num_chains, dtype):
+    """Copy ``arr`` for each of the ``num_chains`` chains and shard the result across devices."""
     arr = jnp.atleast_1d(jnp.asarray(arr, dtype=dtype))
-    sharded_arr = jnp.broadcast_to(arr, (numChains,) + arr.shape)
+    sharded_arr = jnp.broadcast_to(arr, (num_chains,) + arr.shape)
     return jax.device_put(sharded_arr, DEVICE_SHARDING)
+
 
 class AbstractProposer(ABC):
     """
@@ -31,6 +34,7 @@ class AbstractProposer(ABC):
         * ``use_custom_thermalization``: Whether the sampler thermalizes the chains with \
           ``_custom_therm_fun()`` instead of plain sweeps.
     """
+
     def __init__(self, use_custom_thermalization=False):
         self._use_custom_thermalization = use_custom_thermalization
         self._arg = None
@@ -52,7 +56,6 @@ class AbstractProposer(ABC):
             the probability to propose :math:`s'` from :math:`s`. Return 0 as second value if no \
             correction is needed.
         """
-        pass
 
     @property
     def arg_in_axes(self):
@@ -71,22 +74,22 @@ class AbstractProposer(ABC):
         different devices. It is derived from ``arg_in_axes``.
         """
         return jax.tree_util.tree_map(
-            lambda x: DEVICE_SPEC if x is not None else REPLICATED_SPEC, 
-            self.arg_in_axes, 
-            is_leaf=lambda x: x is None
-        ) 
+            lambda x: DEVICE_SPEC if x is not None else REPLICATED_SPEC,
+            self.arg_in_axes,
+            is_leaf=lambda x: x is None,
+        )
 
-    def init_arg(self, vqs, numChains):
+    def init_arg(self, vqs, num_chains):
         """
-        Initialize all the arguments of the proposer with the right shape 
+        Initialize all the arguments of the proposer with the right shape
         for sharding across devices and chains, and store them in ``self._arg``.
         The sampler calls this whenever it initializes its chains.
 
         Args:
             * ``vqs``: Variational state of the sampler.
-            * ``numChains``: Total number of chains.
+            * ``num_chains``: Total number of chains.
         """
-        return None
+        return
 
     def update_arg(self, vqs):
         """
@@ -96,18 +99,28 @@ class AbstractProposer(ABC):
         Args:
             * ``vqs``: Variational state of the sampler.
         """
-        pass
-    
-    def _custom_therm_fun(self, states, logAccProb, key, numProposed, numAccepted, 
-                          params, sweepSteps, thermSweeps, sweepFunction, arg):
+
+    def _custom_therm_fun(
+        self,
+        states,
+        log_acc_prob,
+        key,
+        num_proposed,
+        num_accepted,
+        params,
+        sweep_steps,
+        therm_sweeps,
+        sweep_function,
+        arg,
+    ):
         """
         Optional custom thermalization function.
 
         Subclasses can override this method if
         ``use_custom_thermalization=True``. The sampler calls it as
-        ``_custom_therm_fun(states, logAccProb, key, numProposed, numAccepted, params,
-        sweepSteps, thermSweeps, sweepFunction, arg)``, with the proposer arguments ``arg`` as last
-        argument, and expects ``states, logAccProb, key, numProposed, numAccepted, arg`` back.
+        ``_custom_therm_fun(states, log_acc_prob, key, num_proposed, num_accepted, params,
+        sweep_steps, therm_sweeps, sweep_function, arg)``, with the proposer arguments ``arg`` as last
+        argument, and expects ``states, log_acc_prob, key, num_proposed, num_accepted, arg`` back.
         """
         if self._use_custom_thermalization:
             raise NotImplementedError(
@@ -115,9 +128,8 @@ class AbstractProposer(ABC):
                 "but '_custom_therm_fun' is not implemented."
             )
         else:
-            raise RuntimeError(
-                "Custom thermalization not enabled for this proposer."
-            )
+            raise RuntimeError("Custom thermalization not enabled for this proposer.")
+
 
 class AbstractProposeCont(AbstractProposer):
     """
@@ -128,9 +140,12 @@ class AbstractProposeCont(AbstractProposer):
           ``jVMC_exp.geometry.AbstractGeometry``.
         * ``use_custom_thermalization``: See :class:`~jVMC_exp.sampler.propose.AbstractProposer`.
     """
+
     def __init__(self, geometry: AbstractGeometry, use_custom_thermalization=False):
         if not isinstance(geometry, AbstractGeometry):
-            raise ValueError("The argument 'geometry' has to be an instance of the class 'jVMC.geometry.AbstractGeometry'.")
+            raise ValueError(
+                "The argument 'geometry' has to be an instance of the class 'jVMC.geometry.AbstractGeometry'."
+            )
         self._geometry = geometry
         super().__init__(use_custom_thermalization)
 
@@ -139,8 +154,10 @@ class AbstractProposeCont(AbstractProposer):
         """Geometry of the system."""
         return self._geometry
 
+
 class SpinFlip(AbstractProposer):
     """Flip the local state, 0 or 1, of a randomly chosen site."""
+
     def __init__(self):
         super().__init__(False)
 
@@ -150,11 +167,13 @@ class SpinFlip(AbstractProposer):
         update = (s[idx] + 1) % 2
 
         return s.at[idx].set(update), 0
-    
+
+
 class POVMOutcome(AbstractProposer):
     """
     Change the POVM outcome of a randomly chosen site.
     """
+
     def __init__(self):
         super().__init__(False)
 
@@ -162,9 +181,10 @@ class POVMOutcome(AbstractProposer):
         key, subkey = random.split(key)
         idx = random.randint(subkey, (1,), 0, s.size)[0]
         idx = jnp.unravel_index(idx, s.shape)
-        update = (s[idx] + random.randint(key, (1,), 0, 3) % 4)
+        update = s[idx] + random.randint(key, (1,), 0, 3) % 4
 
         return s.at[idx].set(update), 0
+
 
 class SpinFlipZ2(AbstractProposer):
     """
@@ -172,39 +192,42 @@ class SpinFlipZ2(AbstractProposer):
 
     The global flip helps the chains to move between the sectors related by :math:`Z_2` symmetry.
     """
+
     def __init__(self):
         super().__init__(False)
 
     def __call__(self, key, s, arg):
-        idxKey, flipKey = jax.random.split(key)
-        idx = random.randint(idxKey, (1,), 0, s.size)[0]
+        idx_key, flip_key = jax.random.split(key)
+        idx = random.randint(idx_key, (1,), 0, s.size)[0]
         idx = jnp.unravel_index(idx, s.shape)
         update = (s[idx] + 1) % 2
         s = s.at[idx].set(update)
         # On average, do a global spin flip every 5 updates to
         # reflect Z_2 symmetry
-        doFlip = random.randint(flipKey, (1,), 0, 5)[0]
+        do_flip = random.randint(flip_key, (1,), 0, 5)[0]
 
-        return jax.lax.cond(doFlip == 0, lambda x: 1 - x, lambda x: x, s), 0
-    
+        return jax.lax.cond(do_flip == 0, lambda x: 1 - x, lambda x: x, s), 0
+
+
 class SpinFlipZeroMag(AbstractProposer):
     """
     Exchange a randomly chosen 1 and 0, and flip all the sites with probability 1/5.
 
     The moves stay in the zero magnetization sector. They are defined for configurations with two \
-    axes that are already in this sector, so the chains need a suitable ``initState``.
+    axes that are already in this sector, so the chains need a suitable ``init_state``.
     """
+
     def __init__(self):
         super().__init__(False)
 
     def __call__(self, key, s, arg):
         # propose spin flips that stay in the zero magnetization sector
-        idxKeyUp, idxKeyDown, flipKey = jax.random.split(key, num=3)
+        idx_key_up, idx_key_down, flip_key = jax.random.split(key, num=3)
 
         # can't use jnp.where because then it is not jit-compilable
         # find indices based on cumsum
-        bound_up = jax.random.randint(idxKeyUp, (1,), 1, s.size / 2 + 1)
-        bound_down = jax.random.randint(idxKeyDown, (1,), 1, s.size / 2 + 1)
+        bound_up = jax.random.randint(idx_key_up, (1,), 1, s.size / 2 + 1)
+        bound_down = jax.random.randint(idx_key_down, (1,), 1, s.size / 2 + 1)
 
         id_up = jnp.searchsorted(jnp.cumsum(s), bound_up)
         id_down = jnp.searchsorted(jnp.cumsum(1 - s), bound_down)
@@ -217,9 +240,10 @@ class SpinFlipZeroMag(AbstractProposer):
 
         # On average, do a global spin flip every 5 updates to
         # reflect Z_2 symmetry
-        doFlip = random.randint(flipKey, (1,), 0, 5)[0]
+        do_flip = random.randint(flip_key, (1,), 0, 5)[0]
 
-        return jax.lax.cond(doFlip == 0, lambda x: 1 - x, lambda x: x, s), 0
+        return jax.lax.cond(do_flip == 0, lambda x: 1 - x, lambda x: x, s), 0
+
 
 class RWM(AbstractProposeCont):
     """
@@ -239,7 +263,15 @@ class RWM(AbstractProposeCont):
         * ``adapt_rate``: Rate of the adaptation.
         * ``target_rate``: Acceptance rate targeted by the adaptation.
     """
-    def __init__(self, geometry, sigma=None, use_thermalization=True, adapt_rate=0.1, target_rate=0.5):
+
+    def __init__(
+        self,
+        geometry,
+        sigma=None,
+        use_thermalization=True,
+        adapt_rate=0.1,
+        target_rate=0.5,
+    ):
         super().__init__(geometry, use_thermalization)
         self._adapt_rate = adapt_rate
         self._target_rate = target_rate
@@ -249,21 +281,25 @@ class RWM(AbstractProposeCont):
     def adapt_rate(self):
         """Rate of the adaptation of ``sigma``."""
         return self._adapt_rate
-    
+
     @property
     def target_rate(self):
         """Acceptance rate targeted by the adaptation of ``sigma``."""
         return self._target_rate
-            
+
     @property
     def arg_in_axes(self):
         return {"sigma": 0}
-    
-    def init_arg(self, vqs, numChains):
+
+    def init_arg(self, vqs, num_chains):
         if self._sigma is None:
             sigma = jnp.array(self.geometry.extent) * 0.1
-        else: 
-            sigma = jnp.asarray(self._sigma) if not isinstance(self._sigma, jax.Array) else self._sigma
+        else:
+            sigma = (
+                jnp.asarray(self._sigma)
+                if not isinstance(self._sigma, jax.Array)
+                else self._sigma
+            )
             if sigma.size == 1:
                 sigma = jnp.full(self.geometry.n_dim, sigma.item())
             elif sigma.size != self.geometry.n_dim:
@@ -271,10 +307,12 @@ class RWM(AbstractProposeCont):
                     f"'sigma' must have the same dimension as 'geometry.n_dim' "
                     f"(expected {self.geometry.n_dim}, got {sigma.size})."
                 )
-        sigma = shard_array_across_chains(jnp.asarray(sigma), numChains, dtype=global_defs.DT_SAMPLES_CONT)
+        sigma = shard_array_across_chains(
+            jnp.asarray(sigma), num_chains, dtype=global_defs.DT_SAMPLES_CONT
+        )
 
         self._arg = {"sigma": sigma}
-    
+
     def __call__(self, key, s, arg):
         """
         Proposal move for random walk metropolis (RWM).
@@ -289,34 +327,58 @@ class RWM(AbstractProposeCont):
             conditions of the geometry applied, and 0, as the move is symmetric.
         """
         sigma = jnp.tile(arg["sigma"], self.geometry.n_particles)
-        dx = (sigma * jax.random.normal(format_key(key), s.shape, dtype=s.dtype))   
+        dx = sigma * jax.random.normal(format_key(key), s.shape, dtype=s.dtype)
         return self.geometry.apply_PBC(s + dx), 0
-    
-    def _get_new_sigma(self, sigma, acceptance_rate):
-        new_sigma = sigma * jnp.exp(self.adapt_rate * (acceptance_rate - self.target_rate))
-        return jnp.clip(new_sigma, max=jnp.array(self.geometry.extent) / 2)
-    
-    def _custom_therm_fun(self, states, logAccProb, key, numProposed, numAccepted,
-                          params, sweepSteps, thermSweeps, sweepFunction, arg):
-        def therm_sweep_fun(carry, i):
-            states, logAccProb, key, numProposed, numAccepted, arg = carry
-            tmp_numAccepted = numAccepted
 
-            states, logAccProb, key, numProposed, numAccepted = sweepFunction(
-                states, logAccProb, key, numProposed, numAccepted, params, sweepSteps, self, arg
+    def _get_new_sigma(self, sigma, acceptance_rate):
+        new_sigma = sigma * jnp.exp(
+            self.adapt_rate * (acceptance_rate - self.target_rate)
+        )
+        return jnp.clip(new_sigma, max=jnp.array(self.geometry.extent) / 2)
+
+    def _custom_therm_fun(
+        self,
+        states,
+        log_acc_prob,
+        key,
+        num_proposed,
+        num_accepted,
+        params,
+        sweep_steps,
+        therm_sweeps,
+        sweep_function,
+        arg,
+    ):
+        def therm_sweep_fun(carry, i):
+            states, log_acc_prob, key, num_proposed, num_accepted, arg = carry
+            tmp_num_accepted = num_accepted
+
+            states, log_acc_prob, key, num_proposed, num_accepted = sweep_function(
+                states,
+                log_acc_prob,
+                key,
+                num_proposed,
+                num_accepted,
+                params,
+                sweep_steps,
+                self,
+                arg,
             )
-            acceptance_rate = (numAccepted - tmp_numAccepted) / jnp.maximum(sweepSteps, 1)
+            acceptance_rate = (num_accepted - tmp_num_accepted) / jnp.maximum(
+                sweep_steps, 1
+            )
             # Vectorize across chains
             new_sigma = jax.vmap(self._get_new_sigma)(arg["sigma"], acceptance_rate)
             arg = {**arg, "sigma": new_sigma}
 
-            new_carry = (states, logAccProb, key, numProposed, numAccepted, arg)
-            return new_carry, None 
+            new_carry = (states, log_acc_prob, key, num_proposed, num_accepted, arg)
+            return new_carry, None
 
-        carry = (states, logAccProb, key, numProposed, numAccepted, arg)
-        final_carry, _ = jax.lax.scan(therm_sweep_fun, carry, jnp.arange(thermSweeps))
+        carry = (states, log_acc_prob, key, num_proposed, num_accepted, arg)
+        final_carry, _ = jax.lax.scan(therm_sweep_fun, carry, jnp.arange(therm_sweeps))
         return final_carry
-    
+
+
 class MALA(AbstractProposeCont):
     """
     Metropolis-adjusted Langevin algorithm: move the particles along the gradient of the log-probability.
@@ -347,14 +409,24 @@ class MALA(AbstractProposeCont):
         * ``mu``: Exponent of the distribution used for the drift. It should match the ``mu`` of \
           the sampler to get the intended drift.
     """
-    def __init__(self, geometry, apply_fun, tau=None, use_thermalization=True, adapt_rate=0.1, target_rate=0.5, mu=2):
+
+    def __init__(
+        self,
+        geometry,
+        apply_fun,
+        tau=None,
+        use_thermalization=True,
+        adapt_rate=0.1,
+        target_rate=0.5,
+        mu=2,
+    ):
         super().__init__(geometry, use_thermalization)
         self._adapt_rate = adapt_rate
         self._target_rate = target_rate
         self._apply_fun = apply_fun
         self._mu = mu
         self._tau = tau
-        
+
     @property
     def apply_fun(self):
         """Function evaluating :math:`\\ln\\psi` for a single configuration."""
@@ -369,7 +441,7 @@ class MALA(AbstractProposeCont):
     def adapt_rate(self):
         """Rate of the adaptation of ``tau``."""
         return self._adapt_rate
-    
+
     @property
     def target_rate(self):
         """Acceptance rate targeted by the adaptation of ``tau``."""
@@ -378,8 +450,8 @@ class MALA(AbstractProposeCont):
     @property
     def arg_in_axes(self):
         return {"params": None, "tau": 0}
-    
-    def init_arg(self, vqs, numChains):
+
+    def init_arg(self, vqs, num_chains):
         # TODO: implement version for tau in more dims
         if self._tau is None:
             tau = jnp.array(self.geometry.extent)[0] * 0.01
@@ -387,15 +459,17 @@ class MALA(AbstractProposeCont):
             raise ValueError('"tau" can not be negative.')
         else:
             tau = self._tau
-        tau = shard_array_across_chains(jnp.asarray(tau), numChains, dtype=global_defs.DT_SAMPLES_CONT)
+        tau = shard_array_across_chains(
+            jnp.asarray(tau), num_chains, dtype=global_defs.DT_SAMPLES_CONT
+        )
 
         self._arg = {"params": vqs.parameters, "tau": tau}
-    
+
     def update_arg(self, vqs):
         if self._arg is None:
             raise RuntimeError("Must call init_arg before update_arg.")
         self._arg["params"] = vqs.parameters
-    
+
     def __call__(self, key, s, arg):
         """
         Proposal move for the Metropolis-adjusted Langevin algorithm (MALA).
@@ -412,7 +486,9 @@ class MALA(AbstractProposeCont):
         """
         tau = arg["tau"]
         params = arg["params"]
-        log_prob_fun = partial(lambda x, p: self.mu * jnp.real(self.apply_fun(p, x)), p=params)
+        log_prob_fun = partial(
+            lambda x, p: self.mu * jnp.real(self.apply_fun(p, x)), p=params
+        )
         log_prob_fun_grad = jax.grad(log_prob_fun)
 
         xi = jax.random.normal(format_key(key), s.shape, dtype=s.dtype)
@@ -422,33 +498,58 @@ class MALA(AbstractProposeCont):
         sp_wrapped = self.geometry.apply_PBC(sp)
 
         # The reverse move starts from the wrapped position and undoes the same displacement
-        log_q_s_sp = - jnp.sum((s - sp - tau * log_prob_fun_grad(sp_wrapped)) ** 2) / (4 * tau)
-        log_q_sp_s = - jnp.sum(xi ** 2) * 0.5
+        log_q_s_sp = -jnp.sum((s - sp - tau * log_prob_fun_grad(sp_wrapped)) ** 2) / (
+            4 * tau
+        )
+        log_q_sp_s = -jnp.sum(xi**2) * 0.5
         log_prob_correction = log_q_s_sp - log_q_sp_s
 
         return sp_wrapped, log_prob_correction.squeeze()
-    
+
     def _get_new_tau(self, tau, acceptance_rate):
         new_tau = tau * jnp.exp(self.adapt_rate * (acceptance_rate - self.target_rate))
-        return jnp.clip(new_tau, max=jnp.array(self.geometry.extent)[0] / 2) # TODO: change when tau gets more dims
-    
-    def _custom_therm_fun(self, states, logAccProb, key, numProposed, numAccepted,
-                          params, sweepSteps, thermSweeps, sweepFunction, arg):
-        def therm_sweep_fun(carry, i):
-            states, logAccProb, key, numProposed, numAccepted, arg = carry
-            tmp_numAccepted = numAccepted
+        return jnp.clip(
+            new_tau, max=jnp.array(self.geometry.extent)[0] / 2
+        )  # TODO: change when tau gets more dims
 
-            states, logAccProb, key, numProposed, numAccepted = sweepFunction(
-                states, logAccProb, key, numProposed, numAccepted, params, sweepSteps, self, arg
+    def _custom_therm_fun(
+        self,
+        states,
+        log_acc_prob,
+        key,
+        num_proposed,
+        num_accepted,
+        params,
+        sweep_steps,
+        therm_sweeps,
+        sweep_function,
+        arg,
+    ):
+        def therm_sweep_fun(carry, i):
+            states, log_acc_prob, key, num_proposed, num_accepted, arg = carry
+            tmp_num_accepted = num_accepted
+
+            states, log_acc_prob, key, num_proposed, num_accepted = sweep_function(
+                states,
+                log_acc_prob,
+                key,
+                num_proposed,
+                num_accepted,
+                params,
+                sweep_steps,
+                self,
+                arg,
             )
-            acceptance_rate = (numAccepted - tmp_numAccepted) / jnp.maximum(sweepSteps, 1)
+            acceptance_rate = (num_accepted - tmp_num_accepted) / jnp.maximum(
+                sweep_steps, 1
+            )
             # Vectorize across chains
             new_tau = jax.vmap(self._get_new_tau)(arg["tau"], acceptance_rate)
             arg = {**arg, "tau": new_tau}
 
-            new_carry = (states, logAccProb, key, numProposed, numAccepted, arg)
-            return new_carry, None 
+            new_carry = (states, log_acc_prob, key, num_proposed, num_accepted, arg)
+            return new_carry, None
 
-        carry = (states, logAccProb, key, numProposed, numAccepted, arg)
-        final_carry, _ = jax.lax.scan(therm_sweep_fun, carry, jnp.arange(thermSweeps))
+        carry = (states, log_acc_prob, key, num_proposed, num_accepted, arg)
+        final_carry, _ = jax.lax.scan(therm_sweep_fun, carry, jnp.arange(therm_sweeps))
         return final_carry

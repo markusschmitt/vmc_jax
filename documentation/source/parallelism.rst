@@ -5,7 +5,7 @@ Parallelism
 `jVMC` distributes its computations with JAX sharding: the same program runs on all the available
 devices, on one or several processes, and the arrays are split across the devices. The arrays
 passed to or obtained from the `jVMC` API have the same shape whatever the number of devices:
-configurations have the shape ``(N, *sampleShape)``, wave function coefficients ``(N,)`` and
+configurations have the shape ``(N, *sample_shape)``, wave function coefficients ``(N,)`` and
 gradients ``(N, P)``, with ``N`` the number of samples. The tools used for this are in
 ``jVMC_exp.sharding_config`` (see :ref:`ShardingConfig`).
 
@@ -19,10 +19,10 @@ and the number of samples up to a multiple of the number of chains, with a messa
 
 **Example:**
 
-    With 4 devices, ``numChains=50`` and ``numSamples=1000``, the sampler uses 52 chains and
+    With 4 devices, ``num_chains=50`` and ``num_samples=1000``, the sampler uses 52 chains and
     returns 1040 configurations of a system of size :math:`L=7`, sharded along the first axis:
 
-    >>> configs, logPsi, weights = sampler.sample()
+    >>> configs, log_psi, weights = sampler.sample()
     >>> configs.shape, configs.sharding.spec
     ((1040, 7), PartitionSpec('devices',))
     >>> psi.gradients(configs).shape
@@ -37,9 +37,9 @@ and the number of samples up to a multiple of the number of chains, with a messa
 Batching
 ^^^^^^^^
 Wave function coefficients, gradients and local estimators are computed in batches of
-``batchSize`` samples, an argument of ``NQS``, which bounds the memory used at once and fixes the
+``batch_size`` samples, an argument of ``NQS``, which bounds the memory used at once and fixes the
 shapes of the compiled functions whatever the number of samples. A batch is split evenly between
-the devices, so ``batchSize`` has to be a multiple of the number of devices. To avoid moving data
+the devices, so ``batch_size`` has to be a multiple of the number of devices. To avoid moving data
 between devices, a batch is made of a block of the samples of every device: on more than one
 device, it does not consist of consecutive samples (see ``BatchLayout``).
 

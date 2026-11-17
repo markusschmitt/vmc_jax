@@ -1,30 +1,40 @@
+import warnings
+from abc import ABC, abstractmethod
+from functools import partial
+from typing import Callable, Dict, List
+
 import jax
 import jax.numpy as jnp
-from abc import ABC, abstractmethod
 import tqdm
-from typing import Dict, List
-import warnings
-from typing import Callable
-from functools import partial
 
 from jVMC_exp import global_defs
-from jVMC_exp.stats import LazySampledObs, SampledObs
-from jVMC_exp.vqs import NQS
-from jVMC_exp.sampler.base import AbstractSampler
+from jVMC_exp.objective_function.base import (
+    AbstractObjectiveFunction,
+    ObjectiveFunctionOutput,
+)
 from jVMC_exp.sampler import ExactSampler
-from jVMC_exp.util import make_cmplx_array, make_real_array, remove_double
-from jVMC_exp.util.output_manager import OutputManager
-from jVMC_exp.stepper import AbstractStepper, Euler
-from jVMC_exp.util import ObservableEntry, measure
+from jVMC_exp.sampler.base import AbstractSampler
+from jVMC_exp.sharding_config import DEVICE_SHARDING, MESH, sharded
 from jVMC_exp.solver.base import AbstractSolver
 from jVMC_exp.solver.pinv import PinvSNR
-from jVMC_exp.objective_function.base import AbstractObjectiveFunction, ObjectiveFunctionOutput
-from jVMC_exp.sharding_config import sharded, MESH, DEVICE_SHARDING
+from jVMC_exp.stats import LazySampledObs, SampledObs
+from jVMC_exp.stepper import AbstractStepper, Euler
+from jVMC_exp.util import (
+    ObservableEntry,
+    make_cmplx_array,
+    make_real_array,
+    measure,
+    remove_double,
+)
+from jVMC_exp.util.output_manager import OutputManager
+from jVMC_exp.vqs import NQS
+
 
 def _init_qgt(grad_log_psi):
     n_params = grad_log_psi.shape[1]
 
     return jnp.zeros((n_params, n_params), grad_log_psi.dtype, device=DEVICE_SHARDING)
+
 
 class AbstractOptimizer(ABC):
     """
@@ -44,23 +54,30 @@ class AbstractOptimizer(ABC):
         * ``resample_stepper``: If ``True``, the sampler draws new samples at every substep of \
           the stepper. Otherwise the samples of the first substep are reused, with their \
           weights multiplied by :math:`|\\psi(s)/\\psi_0(s)|^{1/\\kappa}`, where :math:`\\psi_0` \
-          is the state at the first substep and :math:`\\kappa` the ``logProbFactor`` of the \
+          is the state at the first substep and :math:`\\kappa` the ``log_prob_factor`` of the \
           sampler.
         * ``use_cross_valiadation``: Whether ``cross_validation()`` runs at the first substep of \
           every step.
         * ``output_manager`` [optional]: ``jVMC_exp.util.output_manager.OutputManager`` that \
           records the data. A new one by default.
     """
+
     def __init__(
-            self, sampler: AbstractSampler, psi: NQS, resample_stepper: bool=True,
-            use_cross_valiadation: bool=False, output_manager: OutputManager | None = None
-        ):
+        self,
+        sampler: AbstractSampler,
+        psi: NQS,
+        resample_stepper: bool = True,
+        use_cross_valiadation: bool = False,
+        output_manager: OutputManager | None = None,
+    ):
         self._sampler = sampler
         self._psi = psi
         self._resample = resample_stepper
         self.use_cross_valiadation = use_cross_valiadation
         self.meta_data = {}
-        self._output_manager = output_manager if output_manager is not None else OutputManager()
+        self._output_manager = (
+            output_manager if output_manager is not None else OutputManager()
+        )
         self.o_loc = None
         self._elapsed = 0
         self._sampler_out = (None,) * 3
@@ -74,28 +91,33 @@ class AbstractOptimizer(ABC):
     def sampler(self):
         """Sampler of the variational state."""
         return self._sampler
-    
+
     @property
     def psi(self):
         """Variational state."""
         return self._psi
-    
+
     @property
     @abstractmethod
     def _needs_grad(self) -> bool:
         pass
 
     def __call__(
-            self, parameters, t, *,
-            numSamples=None, intStep=None,
-            objective_function: AbstractObjectiveFunction, **objective_function_kwargs
+        self,
+        parameters,
+        t,
+        *,
+        num_samples=None,
+        int_step=None,
+        objective_function: AbstractObjectiveFunction,
+        **objective_function_kwargs,
     ):
         """
         Update of the parameters at ``parameters``: the right hand side for the stepper.
 
         Samples the state at ``parameters`` (see ``resample_stepper``), evaluates \
         ``objective_function.value_and_grad()`` and returns ``get_update()`` of its output. \
-        ``psi.parameters`` is restored afterwards. At the first substep, ``intStep=0``, the \
+        ``psi.parameters`` is restored afterwards. At the first substep, ``int_step=0``, the \
         samples, the local losses and the information of the solver are kept for the \
         measurements, and ``cross_validation()`` runs if it is enabled. The time spent on the \
         sampling, on the objective function and on the solve is recorded in \
@@ -104,8 +126,8 @@ class AbstractOptimizer(ABC):
         Args:
             * ``parameters``: Flat parameters, as ``psi.parameters_flat``.
             * ``t``: Time, passed to the objective function as the keyword argument ``t``.
-            * ``numSamples`` [optional]: Number of samples, passed to ``sampler.sample()``.
-            * ``intStep``: Index of the substep of the stepper.
+            * ``num_samples`` [optional]: Number of samples, passed to ``sampler.sample()``.
+            * ``int_step``: Index of the substep of the stepper.
             * ``objective_function``: ``AbstractObjectiveFunction``.
             * ``**objective_function_kwargs``: Further keyword arguments of \
               ``objective_function.value_and_grad()``.
@@ -117,7 +139,7 @@ class AbstractOptimizer(ABC):
         """
         tmp_parameters = self.psi.parameters
         self.psi.parameters = parameters
-        if intStep is None or intStep == 0:
+        if int_step is None or int_step == 0:
             self._elapsed = 0
 
         def stop_timing(name, wait_for=None):
@@ -126,30 +148,30 @@ class AbstractOptimizer(ABC):
             return self.output_manager.stop_timing(name)
 
         # Get sample
-        if self._resample or intStep == 0:
+        if self._resample or int_step == 0:
             self.output_manager.start_timing("sampling")
-            sampler_out = self.sampler.sample(numSamples=numSamples)
+            sampler_out = self.sampler.sample(num_samples=num_samples)
             self._elapsed += stop_timing("sampling", wait_for=sampler_out[0])
         # Importance sampling
-        elif not self._resample and intStep != 0:
-            _, logPsi0, w0 = self._sampler_out
-            self.sampler._logPsi = self.psi(self.sampler.samples)
-            # The samples are distributed as |psi|^(1 / logProbFactor) at the first substep
+        elif not self._resample and int_step != 0:
+            _, log_psi_0, w0 = self._sampler_out
+            self.sampler._log_psi = self.psi(self.sampler.samples)
+            # The samples are distributed as |psi|^(1 / log_prob_factor) at the first substep
             self.sampler._weights = w0 * jnp.exp(
-                jnp.real(self.sampler.logPsi - logPsi0) / self.sampler.logProbFactor
+                jnp.real(self.sampler.log_psi - log_psi_0) / self.sampler.log_prob_factor
             )
 
         # Evaluate local observables and their gradient
         self.output_manager.start_timing("compute objective function and gradient")
         objective_fn_out = objective_function.value_and_grad(
             self.sampler,
-            compute_grad=self._needs_grad, 
+            compute_grad=self._needs_grad,
             t=t,
-            **objective_function_kwargs
+            **objective_function_kwargs,
         )
         self._elapsed += stop_timing(
-            "compute objective function and gradient", 
-            wait_for=(objective_fn_out.o_loc, objective_fn_out.grad)
+            "compute objective function and gradient",
+            wait_for=(objective_fn_out.o_loc, objective_fn_out.grad),
         )
 
         # Obtain the update from the gradients
@@ -159,20 +181,28 @@ class AbstractOptimizer(ABC):
 
         self.psi.parameters = tmp_parameters
 
-        if intStep is not None:
-            if intStep == 0:
+        if int_step is not None:
+            if int_step == 0:
                 self._sampler_out = sampler_out
                 self.o_loc = objective_fn_out.o_loc
                 self._update_meta_data()
 
                 if self.use_cross_valiadation:
                     self.output_manager.start_timing("cross_validation")
-                    self.cross_validation(objective_function, t=t, **objective_function_kwargs)
+                    self.cross_validation(
+                        objective_function, t=t, **objective_function_kwargs
+                    )
                     self._elapsed += stop_timing("cross_validation")
 
         return update
-    
-    def step(self, t, stepper: AbstractStepper, objective_function: AbstractObjectiveFunction, **kwargs):
+
+    def step(
+        self,
+        t,
+        stepper: AbstractStepper,
+        objective_function: AbstractObjectiveFunction,
+        **kwargs,
+    ):
         """
         One step of ``stepper`` from ``psi.parameters_flat``, with this optimizer as the right \
         hand side. ``psi.parameters`` does not change.
@@ -191,19 +221,19 @@ class AbstractOptimizer(ABC):
             self,
             self.psi.parameters_flat,
             objective_function=objective_function,
-            **kwargs
+            **kwargs,
         )
-    
+
     def ground_state_search(
-            self,
-            steps,
-            objective_function: AbstractObjectiveFunction,
-            stepper: AbstractStepper = Euler(),
-            observables: Dict[str, ObservableEntry] | None = None,
-            callback: List[Callable] | None = None,
-            save_meta_data: bool = False,
-            **kwargs # KWARGS ARE FOR BOTH THE STEPPER AND THE OBJECTIVE FUNCTION, TODO: ADD DOCUMENTATION ON THIS
-        ):
+        self,
+        steps,
+        objective_function: AbstractObjectiveFunction,
+        stepper: AbstractStepper = Euler(),
+        observables: Dict[str, ObservableEntry] | None = None,
+        callback: List[Callable] | None = None,
+        save_meta_data: bool = False,
+        **kwargs,  # KWARGS ARE FOR BOTH THE STEPPER AND THE OBJECTIVE FUNCTION, TODO: ADD DOCUMENTATION ON THIS
+    ):
         """
         Minimize ``objective_function`` with ``steps`` steps of ``stepper``.
 
@@ -222,7 +252,7 @@ class AbstractOptimizer(ABC):
             * ``callback`` [optional]: Callable, or list of callables, called without arguments \
               after the measurements of every step.
             * ``save_meta_data``: Whether to record ``meta_data`` at every step.
-            * ``**kwargs``: Keyword arguments of the stepper (e.g. ``normFunction``) and of the \
+            * ``**kwargs``: Keyword arguments of the stepper (e.g. ``norm_function``) and of the \
               objective function.
 
         Returns:
@@ -243,33 +273,37 @@ class AbstractOptimizer(ABC):
             stepper.update_dt(n)
             self.update_hyperparams(n)
 
-            # Updating the parameters after the measurements, 
+            # Updating the parameters after the measurements,
             # allows to reuse the samples for the measurement of the observables
             # saving one sample call per step
             new_parameters, _ = self.step(0, stepper, objective_function, **kwargs)
-            self.sampler._samples, self.sampler._logPsi, self.sampler._weights = self._sampler_out     
+            self.sampler._samples, self.sampler._log_psi, self.sampler._weights = (
+                self._sampler_out
+            )
             self._measure_and_store(n, observables, callback, save_meta_data)
             self.psi.parameters = new_parameters
 
             pbar.set_postfix(E=f"{self.o_loc}")
-  
+
         self.output_manager.print_timings()
-        
+
         if save_meta_data:
-            return self.output_manager.data['observables'], self.output_manager.data['metadata']
-        
+            return self.output_manager.data["observables"], self.output_manager.data[
+                "metadata"
+            ]
+
         return self.output_manager.data["observables"]
 
     def time_evolution(
-            self,
-            t_max,
-            objective_function: AbstractObjectiveFunction,
-            stepper: AbstractStepper,
-            observables: Dict[str, ObservableEntry] | None = None,
-            callback: List[Callable] | None = None,
-            save_meta_data: bool = False,
-            **kwargs
-        ):
+        self,
+        t_max,
+        objective_function: AbstractObjectiveFunction,
+        stepper: AbstractStepper,
+        observables: Dict[str, ObservableEntry] | None = None,
+        callback: List[Callable] | None = None,
+        save_meta_data: bool = False,
+        **kwargs,
+    ):
         """
         Integrate the equation of motion of the parameters with ``stepper`` up to the time \
         ``t_max``.
@@ -295,28 +329,32 @@ class AbstractOptimizer(ABC):
         pbar = tqdm.tqdm(total=t_max, disable=jax.process_index() != 0)
         t = 0
         while t < t_max:
-            new_parameters, dt = self.step(t, stepper, objective_function, **kwargs) 
-            self.sampler._samples, self.sampler._logPsi, self.sampler._weights = self._sampler_out
+            new_parameters, dt = self.step(t, stepper, objective_function, **kwargs)
+            self.sampler._samples, self.sampler._log_psi, self.sampler._weights = (
+                self._sampler_out
+            )
             dt = float(dt)
-            self.meta_data['dt'] = dt 
+            self.meta_data["dt"] = dt
             self._measure_and_store(t, observables, callback, save_meta_data)
             self.psi.parameters = new_parameters
 
             if t + dt >= t_max:
                 t += dt
                 break
-            t += dt            
+            t += dt
 
             pbar.update(1)
-            pbar.set_postfix({
-                "t": f"{t:.4f}/{t_max}",
-                "dt": f"{dt:.2e}",
-                "ETA": f"{(t_max - t) / dt * self._elapsed:.1f}s",
-                'Progress': f'{int(t / t_max * 100)}%',
-                'E': f"{self.o_loc}",
-            })
-        
-        self.meta_data['dt'] = dt
+            pbar.set_postfix(
+                {
+                    "t": f"{t:.4f}/{t_max}",
+                    "dt": f"{dt:.2e}",
+                    "ETA": f"{(t_max - t) / dt * self._elapsed:.1f}s",
+                    "Progress": f"{int(t / t_max * 100)}%",
+                    "E": f"{self.o_loc}",
+                }
+            )
+
+        self.meta_data["dt"] = dt
         self.sampler.sample()
         self._measure_and_store(t, observables, callback, save_meta_data)
 
@@ -324,16 +362,17 @@ class AbstractOptimizer(ABC):
         self.output_manager.print_timings()
 
         if save_meta_data:
-            return self.output_manager.data['observables'], self.output_manager.data['metadata']
-        
+            return self.output_manager.data["observables"], self.output_manager.data[
+                "metadata"
+            ]
+
         return self.output_manager.data["observables"]
-    
+
     def update_hyperparams(self, step):
         """
         Update the hyperparameters for the step ``step`` of ``ground_state_search()``. Does \
         nothing by default.
         """
-        pass
 
     @abstractmethod
     def get_update(self, objective_function_output: ObjectiveFunctionOutput):
@@ -350,23 +389,24 @@ class AbstractOptimizer(ABC):
         self._additional_info = None
 
     @abstractmethod
-    def cross_validation(self, objective_function: AbstractObjectiveFunction, **objective_function_kwargs):
+    def cross_validation(
+        self, objective_function: AbstractObjectiveFunction, **objective_function_kwargs
+    ):
         """Cross validation of the update at the first substep, see the subclasses."""
-        pass
 
     @abstractmethod
     def _update_meta_data(self):
-        '''
+        """
         Update the dictionary self.meta_data
-        '''
+        """
         self.meta_data = {}
 
     def _measure_and_store(self, t, observables, callback, save_meta_data):
         measures = {}
         energy = dict(
-            mean = jnp.real(self.o_loc.mean).squeeze(),
-            variance = jnp.real(self.o_loc.var).squeeze(),
-            MC_error = jnp.real(self.o_loc.error_of_mean).squeeze()
+            mean=jnp.real(self.o_loc.mean).squeeze(),
+            variance=jnp.real(self.o_loc.var).squeeze(),
+            MC_error=jnp.real(self.o_loc.error_of_mean).squeeze(),
         )
 
         if observables is not None:
@@ -379,13 +419,14 @@ class AbstractOptimizer(ABC):
         if callback is not None:
             if callable(callback):
                 callback = (callback,)
-            elif not hasattr(callback, '__len__'):
+            elif not hasattr(callback, "__len__"):
                 raise ValueError(
-                    'Callback has to be a callable or a list of callables, '
-                    f'got {callback}.'
+                    "Callback has to be a callable or a list of callables, "
+                    f"got {callback}."
                 )
             for cb in callback:
                 cb()
+
 
 class Evolution(AbstractOptimizer):
     """
@@ -405,7 +446,7 @@ class Evolution(AbstractOptimizer):
     ``make_real=False`` :math:`\\mathrm{Im}(S)\\dot\\theta=\\mathrm{Im}(cF)`.
 
     Before the solve, the diagonal of the (transformed) matrix is multiplied by \
-    ``1 + diagonalScale``, and ``diagonalShift`` is added to it. A solver that needs a dense \
+    ``1 + diagonal_scale``, and ``diagonal_shift`` is added to it. A solver that needs a dense \
     matrix (``solver._needs_dense_matrix``) gets :math:`S` as an array sharded across the \
     devices along its rows, with zero rows and columns appended so that the number of rows is \
     a multiple of the square of the number of devices. A matrix-free solver gets the function \
@@ -416,39 +457,52 @@ class Evolution(AbstractOptimizer):
           ``output_manager``: See ``AbstractOptimizer``.
         * ``imag_time``: Imaginary time, :math:`c=-1`, or real time, :math:`c=-i`.
         * ``make_real``: How the equation is made real for real parameters, see above.
-        * ``diagonalShift``: Constant added to the diagonal, or a callable ``step -> value``.
-        * ``diagonalScale``: Relative increase of the diagonal, or a callable ``step -> value``.
+        * ``diagonal_shift``: Constant added to the diagonal, or a callable ``step -> value``.
+        * ``diagonal_scale``: Relative increase of the diagonal, or a callable ``step -> value``.
         * ``solver``: Solver of ``jVMC_exp.solver``, called as \
           ``solver(A, b, grad_log_psi=..., o_loc=..., **solver_state)``.
         * ``store_qgt``: Whether to keep :math:`S`, see ``qgt``.
         * ``compute_tdvp_error``: Whether to compute the TDVP error of every update, which \
           requires ``store_qgt``, see ``get_update()``.
     """
+
     def __init__(
-            self, sampler: AbstractSampler, psi: NQS, resample_stepper: bool,
-            imag_time: bool, make_real: bool, use_cross_valiadation: bool=False, 
-            diagonalShift: float | Callable=1e-3, diagonalScale: float | Callable=0., 
-            solver: AbstractSolver=PinvSNR(), output_manager: OutputManager | None = None,
-            store_qgt: bool = False, compute_tdvp_error: bool = False
-        ):
-        self.rhsPrefactor = -1 if imag_time else -1j 
+        self,
+        sampler: AbstractSampler,
+        psi: NQS,
+        resample_stepper: bool,
+        imag_time: bool,
+        make_real: bool,
+        use_cross_valiadation: bool = False,
+        diagonal_shift: float | Callable = 1e-3,
+        diagonal_scale: float | Callable = 0.0,
+        solver: AbstractSolver = PinvSNR(),
+        output_manager: OutputManager | None = None,
+        store_qgt: bool = False,
+        compute_tdvp_error: bool = False,
+    ):
+        self.rhs_prefactor = -1 if imag_time else -1j
         if psi.holomorphic:
             self._lhs_trans_fn = lambda x: x
         elif make_real:
             self._lhs_trans_fn = lambda x: jnp.real(x)
         else:
             self._lhs_trans_fn = lambda x: 1j * jnp.imag(x)
-        self._rhs_trans_fn = lambda x: self._lhs_trans_fn(self.rhsPrefactor * x)
+        self._rhs_trans_fn = lambda x: self._lhs_trans_fn(self.rhs_prefactor * x)
 
-        self.diag_scale = diagonalScale
-        self.diag_shift = diagonalShift
+        self.diag_scale = diagonal_scale
+        self.diag_shift = diagonal_shift
 
-        self._make_cmplx_fn = jax.jit(partial(make_cmplx_array, params_shape=psi.paramShapes))
-        self._make_real_fn = jax.jit(partial(make_real_array, params_shape=psi.paramShapes))
-        remove_double_fn = partial(remove_double, params_shape=psi.paramShapes)
+        self._make_cmplx_fn = jax.jit(
+            partial(make_cmplx_array, params_shape=psi.param_shapes)
+        )
+        self._make_real_fn = jax.jit(
+            partial(make_real_array, params_shape=psi.param_shapes)
+        )
+        remove_double_fn = partial(remove_double, params_shape=psi.param_shapes)
         self._remove_double_trans = jax.vmap(remove_double_fn)
         self._remove_double_fn = jax.jit(remove_double_fn)
-        
+
         if jax.process_index() == 0:
             warnings.warn(
                 "Naming convention changed: "
@@ -459,28 +513,34 @@ class Evolution(AbstractOptimizer):
             )
 
         self._solver = solver
-        self._get_lhs = self._get_lhs_dense if solver._needs_dense_matrix else self._get_lhs_lazy
-       
-        super().__init__(
-            sampler, psi, resample_stepper, use_cross_valiadation, output_manager=output_manager
+        self._get_lhs = (
+            self._get_lhs_dense if solver._needs_dense_matrix else self._get_lhs_lazy
         )
 
-        double_params = (not psi.realParams) and (not psi.holomorphic)
-        num_params = psi.numParameters * (2 if double_params  else 1)
+        super().__init__(
+            sampler,
+            psi,
+            resample_stepper,
+            use_cross_valiadation,
+            output_manager=output_manager,
+        )
+
+        double_params = (not psi.real_params) and (not psi.holomorphic)
+        num_params = psi.num_parameters * (2 if double_params else 1)
         # S is built one block of rows per device at a time (see _add_qgt),
         # which needs the number of parameters to be divisible by the number of devices squared
-        self._params_pad_size = (- num_params) % MESH.shape["devices"] ** 2
+        self._params_pad_size = (-num_params) % MESH.shape["devices"] ** 2
         self._pad_obs = jax.jit(
             lambda x: jnp.pad(x, ((0, 0), (0, self._params_pad_size)), mode="constant")
         )
         self._unpad_obs = jax.jit(
-            lambda x: x[:, :-self._params_pad_size] if self._params_pad_size else x
+            lambda x: x[:, : -self._params_pad_size] if self._params_pad_size else x
         )
 
         self._solver_state = dict(
             exact_sampler=isinstance(self.sampler, ExactSampler),
             pad_size=self._params_pad_size,
-            transformation=self._rhs_trans_fn
+            transformation=self._rhs_trans_fn,
         )
 
         self._qgt = None
@@ -506,7 +566,7 @@ class Evolution(AbstractOptimizer):
     def solver(self):
         """The solver."""
         return self._solver
-    
+
     @property
     def solver_state(self):
         """
@@ -514,7 +574,7 @@ class Evolution(AbstractOptimizer):
         ``transformation``, the function that makes the right hand side real.
         """
         return self._solver_state
-    
+
     @property
     def diag_scale(self):
         """
@@ -522,10 +582,12 @@ class Evolution(AbstractOptimizer):
         a callable ``step -> value``, evaluated by ``update_hyperparams()``.
         """
         return self._diag_scale
-    
+
     @diag_scale.setter
     def diag_scale(self, value):
-        self._diag_scale_fn = value if isinstance(value, Callable) else lambda step: value
+        self._diag_scale_fn = (
+            value if isinstance(value, Callable) else lambda step: value
+        )
         self._diag_scale = self._diag_scale_fn(0)
 
     @property
@@ -535,12 +597,14 @@ class Evolution(AbstractOptimizer):
         callable ``step -> value``, evaluated by ``update_hyperparams()``.
         """
         return self._diag_shift
-    
+
     @diag_shift.setter
     def diag_shift(self, value):
-        self._diag_shift_fn = value if isinstance(value, Callable) else lambda step: value
+        self._diag_shift_fn = (
+            value if isinstance(value, Callable) else lambda step: value
+        )
         self._diag_shift = self._diag_shift_fn(0)
-    
+
     @property
     def _needs_grad(self):
         return True
@@ -549,7 +613,7 @@ class Evolution(AbstractOptimizer):
         """Evaluate ``diag_shift`` and ``diag_scale`` for the step ``step``."""
         self._diag_shift = self._diag_shift_fn(step)
         self._diag_scale = self._diag_scale_fn(step)
-    
+
     def get_update(self, objective_function_output: ObjectiveFunctionOutput):
         """
         Solve the equation for the output of the objective function.
@@ -579,19 +643,24 @@ class Evolution(AbstractOptimizer):
 
         b = self._get_rhs(objective_function_output.grad)
         A = self._get_lhs(objective_function_output.grad_log_psi)
-        
+
         update, self._additional_info = self.solver(
-            A, b, 
-            grad_log_psi=objective_function_output.grad_log_psi, 
+            A,
+            b,
+            grad_log_psi=objective_function_output.grad_log_psi,
             o_loc=objective_function_output.o_loc,
-            **self.solver_state
+            **self.solver_state,
         )
-        self.update = self._make_real_fn(update) if self.psi.holomorphic else jnp.real(update)
+        self.update = (
+            self._make_real_fn(update) if self.psi.holomorphic else jnp.real(update)
+        )
 
         if self.compute_tdvp_error:
             self._additional_info["tdvp_error"] = self._get_tdvp_error(
-                self.update, objective_function_output.grad, objective_function_output.o_loc.var
-            ).item() 
+                self.update,
+                objective_function_output.grad,
+                objective_function_output.o_loc.var,
+            ).item()
 
         return self.update
 
@@ -602,29 +671,31 @@ class Evolution(AbstractOptimizer):
             Sv = self.qgt(update)
         else:
             Sv = self.qgt.dot(jnp.pad(update, (0, self._params_pad_size)))
-            Sv = Sv[:-self._params_pad_size] if self._params_pad_size else Sv
+            Sv = Sv[: -self._params_pad_size] if self._params_pad_size else Sv
 
         return jnp.abs(
-            1. 
-            + (jnp.real(jnp.vdot(update, Sv))
-            - 2 * jnp.real(jnp.vdot(update, self.rhsPrefactor  * F)))
+            1.0
+            + (
+                jnp.real(jnp.vdot(update, Sv))
+                - 2 * jnp.real(jnp.vdot(update, self.rhs_prefactor * F))
+            )
             / (var + 1e-14)
         )
-    
+
     def _get_lhs_dense(self, grad_log_psi: SampledObs | LazySampledObs):
-        '''
+        """
         Returns left hand side of the TDVP equation with shape (n_parameters, n_parameters)
         and sharded across devices on the first dimension.
         If n_parameters is not divisible by the number of devices, the output is padded.
-        '''
+        """
         if self._params_pad_size != 0:
             grad_log_psi.transform(self._pad_obs)
-        
+
         if isinstance(grad_log_psi, SampledObs):
             S = self._add_qgt(
-                _init_qgt(grad_log_psi._normalized_obs), 
+                _init_qgt(grad_log_psi._normalized_obs),
                 grad_log_psi._normalized_obs,
-                batch_size=None
+                batch_size=None,
             )
         else:
             mean = 0
@@ -679,7 +750,13 @@ class Evolution(AbstractOptimizer):
         # autotunes a matrix product on its own copies of the operands, which would otherwise be as
         # large as grad_log_psi
         row_bytes = n_params * grad_log_psi.dtype.itemsize
-        chunk = max(1, min(n_samples, (global_defs.MATMUL_CHUNK_BYTES or n_samples * row_bytes) // row_bytes))
+        chunk = max(
+            1,
+            min(
+                n_samples,
+                (global_defs.MATMUL_CHUNK_BYTES or n_samples * row_bytes) // row_bytes,
+            ),
+        )
 
         def add_block(j, S):
             # Block j of the rows of every device, in device order
@@ -689,10 +766,10 @@ class Evolution(AbstractOptimizer):
 
             def add_chunk(k, local, size=chunk):
                 r, g = (
-                    jax.lax.dynamic_slice_in_dim(x, k * chunk, size) 
+                    jax.lax.dynamic_slice_in_dim(x, k * chunk, size)
                     for x in (rows, grad_log_psi)
                 )
-                # Materialized: XLA would otherwise fuse the slices 
+                # Materialized: XLA would otherwise fuse the slices
                 # into the product and autotune it on whole operands
                 r, g = jax.lax.optimization_barrier((r, g))
                 return local + jnp.tensordot(jnp.conj(r), g, axes=(0, 0))
@@ -700,10 +777,14 @@ class Evolution(AbstractOptimizer):
             local = jax.lax.fori_loop(1, n_samples // chunk, add_chunk, add_chunk(0, 0))
             if n_samples % chunk:
                 local = add_chunk(n_samples // chunk, local, n_samples % chunk)
-            local = jax.lax.psum_scatter(local, "devices", scatter_dimension=0, tiled=True)
+            local = jax.lax.psum_scatter(
+                local, "devices", scatter_dimension=0, tiled=True
+            )
             S_block = jax.lax.dynamic_slice_in_dim(S, j * block, block, axis=0)
 
-            return jax.lax.dynamic_update_slice_in_dim(S, S_block + local, j * block, axis=0)
+            return jax.lax.dynamic_update_slice_in_dim(
+                S, S_block + local, j * block, axis=0
+            )
 
         return jax.lax.fori_loop(0, n_devices, add_block, S)
 
@@ -721,17 +802,15 @@ class Evolution(AbstractOptimizer):
     def _weight_and_mean(self, batch, weights, *, batch_size):
         weighted_batch = jnp.einsum("i, i... -> i...", jnp.sqrt(weights), batch)
         mean = jax.lax.psum_scatter(
-            jnp.tensordot(weights, batch, axes=(0, 0)), 
-            "devices",
-            tiled=True
+            jnp.tensordot(weights, batch, axes=(0, 0)), "devices", tiled=True
         )
 
         return weighted_batch, mean
-    
+
     def _get_lhs_lazy(self, grad_log_psi: SampledObs | LazySampledObs):
-        '''
+        """
         Returns a function that computes the matrix vector product with the left hand side of the TDVP equation
-        '''
+        """
         if isinstance(grad_log_psi, LazySampledObs):
             raise ValueError(
                 f"Solver '{type(self.solver).__name__}' is matrix-free (_needs_dense_matrix=False) "
@@ -742,9 +821,9 @@ class Evolution(AbstractOptimizer):
             )
 
         grad = grad_log_psi._normalized_obs
-        
+
         def raw_matvec(v):
-            return (grad.conj().T @ (grad @ v))
+            return grad.conj().T @ (grad @ v)
 
         if self.store_qgt:
             self._qgt = raw_matvec
@@ -760,7 +839,7 @@ class Evolution(AbstractOptimizer):
             return Sv
 
         return matvec
-    
+
     def _get_rhs(self, grad):
         b = self._rhs_trans_fn(grad)
         b.block_until_ready()

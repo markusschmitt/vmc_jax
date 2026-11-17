@@ -1,10 +1,12 @@
-import jax.numpy as jnp
-import jax
 from typing import Literal
+
+import jax
+import jax.numpy as jnp
 
 from jVMC_exp.solver.base import AbstractSolver
 from jVMC_exp.solver.util import diagonalize, smooth_cutoff_fn
 from jVMC_exp.stats import LazySampledObs, SampledObs
+
 
 @jax.jit
 def _get_snr(Vtb, Vtb_var, num_samples):
@@ -12,18 +14,23 @@ def _get_snr(Vtb, Vtb_var, num_samples):
         jnp.abs(num_samples * (jnp.conj(Vtb) * Vtb) / (Vtb_var + 1e-14))
     ).ravel()
 
+
 @jax.jit
 def _get_snr_gaussian(Vtb, ev, num_samples, var):
     return jnp.sqrt(
         jnp.abs(num_samples * (jnp.conj(Vtb) * Vtb) / (jnp.abs(var * ev) + 1e-14))
     ).ravel()
 
+
 @jax.jit(static_argnums=(4, 5))
-def _get_vtb_var(centered_data_1, centered_data_2, weights, eigenvectors, transformation, pad_size):
+def _get_vtb_var(
+    centered_data_1, centered_data_2, weights, eigenvectors, transformation, pad_size
+):
     """
     Weighted variance over the samples of ``V^H transformation(conj(O_n) E_n)``, for centered
     observations ``O_n`` and ``E_n``, without the ``pad_size`` modes of the padding.
     """
+
     @jax.vmap
     def _get_covar_per_sample(A, B):
         return jnp.outer(jnp.conj(A), B)
@@ -34,17 +41,17 @@ def _get_vtb_var(centered_data_1, centered_data_2, weights, eigenvectors, transf
     rho = jnp.einsum("ij, ki -> kj", jnp.conjugate(eigenvectors), x)
     rho = rho - jnp.tensordot(weights, rho, axes=(0, 0))
 
-    var = jnp.tensordot(weights, jnp.abs(rho)**2, axes=(0, 0))
+    var = jnp.tensordot(weights, jnp.abs(rho) ** 2, axes=(0, 0))
 
-    return var[:var.shape[0] - pad_size]
+    return var[: var.shape[0] - pad_size]
+
 
 def _unpad(x, pad_size):
     return x[:-pad_size] if pad_size else x
 
-def _snr_step_gaussian(
-        Vtb, ev, o_loc: SampledObs      
-    ):
-    if o_loc is None: 
+
+def _snr_step_gaussian(Vtb, ev, o_loc: SampledObs):
+    if o_loc is None:
         raise ValueError(
             "PinvSNR has snr_tol != 0, but o_loc for the "
             "Pass grad_log_psi, o_loc, and transformation to PinvSNR.__call__, "
@@ -53,10 +60,10 @@ def _snr_step_gaussian(
 
     return _get_snr_gaussian(Vtb, ev, o_loc.effective_num_samples, o_loc.var)
 
+
 def _snr_step(
-        grad_log_psi: SampledObs, o_loc: SampledObs, 
-        V, Vtb, transformation, pad_size
-    ):
+    grad_log_psi: SampledObs, o_loc: SampledObs, V, Vtb, transformation, pad_size
+):
     if isinstance(grad_log_psi, LazySampledObs):
         raise NotImplementedError(
             "PinvSNR's signal-to-noise regularization (snr_tol != 0) requires a densely "
@@ -67,9 +74,13 @@ def _snr_step(
         )
     if grad_log_psi is None or o_loc is None or transformation is None:
         missing = [
-            name for name, value in (
-                ("grad_log_psi", grad_log_psi), ("o_loc", o_loc), ("transformation", transformation)
-            ) if value is None
+            name
+            for name, value in (
+                ("grad_log_psi", grad_log_psi),
+                ("o_loc", o_loc),
+                ("transformation", transformation),
+            )
+            if value is None
         ]
         raise ValueError(
             f"PinvSNR has snr_tol != 0, but the following required argument(s) for the "
@@ -84,10 +95,11 @@ def _snr_step(
         o_loc.weights,
         V,
         transformation,
-        pad_size
+        pad_size,
     )
 
     return _get_snr(Vtb, Vtb_var, o_loc.effective_num_samples)
+
 
 class Pinv(AbstractSolver):
     """
@@ -115,11 +127,13 @@ class Pinv(AbstractSolver):
         * ``T_A`` [optional]: Tile size of ``diagonalize()`` for \
           ``diagonalization_mode="distributed"``.
     """
+
     def __init__(
-            self, pinv_cutoff=1e-14,
-            diagonalization_mode: Literal["device", "distributed", "host"] = "device",
-            T_A: int | None = None
-        ):
+        self,
+        pinv_cutoff=1e-14,
+        diagonalization_mode: Literal["device", "distributed", "host"] = "device",
+        T_A: int | None = None,
+    ):
         self._pinv_cutoff = pinv_cutoff
         self._diagonalization_mode = diagonalization_mode
         self._T_A = T_A
@@ -128,25 +142,22 @@ class Pinv(AbstractSolver):
     def pinv_cutoff(self):
         """Relative cutoff of the eigenvalues; for ``PinvSNR``, the smallest adaptive cutoff."""
         return self._pinv_cutoff
-    
+
     @property
     def _needs_dense_matrix(self) -> bool:
         return True
 
     def _diagonalize(self, A, b, pad_size):
-        ev, V = diagonalize(
-            A, pad_size, mode=self._diagonalization_mode, T_A=self._T_A
-        )
+        ev, V = diagonalize(A, pad_size, mode=self._diagonalization_mode, T_A=self._T_A)
         ev = _unpad(ev, pad_size)
         if jnp.max(jnp.abs(ev)) < 1e-14:
             raise RuntimeError(
                 f"Largest eigenvalue of the matrix A to invert is {jnp.max(jnp.abs(ev))}. "
                 "A is most likely highly ill-conditioned/zero "
             )
-        
+
         Vtb = _unpad(
-            jnp.dot(jnp.transpose(jnp.conj(V)), jnp.pad(b, (0, pad_size))),
-            pad_size
+            jnp.dot(jnp.transpose(jnp.conj(V)), jnp.pad(b, (0, pad_size))), pad_size
         )
 
         return ev, V, Vtb
@@ -170,15 +181,12 @@ class Pinv(AbstractSolver):
         absolute value.
         """
         ev, V, Vtb = self._diagonalize(A, b, pad_size)
-        
-        inv_ev = jnp.where(jnp.abs(ev / ev[-1]) > self.pinv_cutoff, 1. / ev, 0.)
-        b_norm = jnp.linalg.norm(b) 
+
+        inv_ev = jnp.where(jnp.abs(ev / ev[-1]) > self.pinv_cutoff, 1.0 / ev, 0.0)
+        b_norm = jnp.linalg.norm(b)
         residual = jnp.linalg.norm((inv_ev * ev - 1) * Vtb) / b_norm
 
-        x = _unpad(
-            jnp.dot(V, jnp.pad((inv_ev * Vtb), (0, pad_size))),
-            pad_size
-        )
+        x = _unpad(jnp.dot(V, jnp.pad((inv_ev * Vtb), (0, pad_size))), pad_size)
 
         info = dict(
             condition_number=(ev[-1] / jnp.min(jnp.abs(ev))).item(),
@@ -186,6 +194,7 @@ class Pinv(AbstractSolver):
         )
 
         return x, info
+
 
 class PinvSNR(Pinv):
     """
@@ -244,12 +253,16 @@ class PinvSNR(Pinv):
         * ``snr_mode``: ``"empiric"`` or ``"gaussian"``, not case sensitive.
         * ``diagonalization_mode``, ``T_A``: Diagonalization, see ``Pinv``.
     """
+
     def __init__(
-            self, snr_tol=0, pinv_tol=1e-14, pinv_cutoff=1e-8,
-            snr_mode: Literal["empiric", "gaussian"] = "empiric", 
-            diagonalization_mode: Literal["device", "distributed", "host"] = "device",
-            T_A: int | None = None
-        ):
+        self,
+        snr_tol=0,
+        pinv_tol=1e-14,
+        pinv_cutoff=1e-8,
+        snr_mode: Literal["empiric", "gaussian"] = "empiric",
+        diagonalization_mode: Literal["device", "distributed", "host"] = "device",
+        T_A: int | None = None,
+    ):
         super().__init__(pinv_cutoff, diagonalization_mode, T_A)
 
         self._snr_tol = snr_tol
@@ -260,7 +273,7 @@ class PinvSNR(Pinv):
     def snr_tol(self):
         """Signal-to-noise ratio at which a mode gets half its weight, zero if off."""
         return self._snr_tol
-    
+
     @property
     def pinv_tol(self):
         """Target residual of the adaptive cutoff."""
@@ -277,9 +290,7 @@ class PinvSNR(Pinv):
     @snr_mode.setter
     def snr_mode(self, value: str):
         if not isinstance(value, str):
-            raise ValueError(
-                f"The snr_mode has to be given as a string. Got {value}"
-            )
+            raise ValueError(f"The snr_mode has to be given as a string. Got {value}")
         if value.lower() not in ["empiric", "gaussian"]:
             raise ValueError(
                 f"The snr_mode can only be 'empiric' or 'gaussian'. Got {value}"
@@ -288,12 +299,17 @@ class PinvSNR(Pinv):
         self._snr_mode = value.lower()
 
     def __call__(
-            self, A, b,
-            *,
-            grad_log_psi: None | SampledObs = None, o_loc: None | SampledObs = None,
-            transformation=None, pad_size=0, exact_sampler=False,
-            **kwargs
-        ):
+        self,
+        A,
+        b,
+        *,
+        grad_log_psi: None | SampledObs = None,
+        o_loc: None | SampledObs = None,
+        transformation=None,
+        pad_size=0,
+        exact_sampler=False,
+        **kwargs,
+    ):
         """
         Solve :math:`Ax=b` with the regularized pseudo-inverse.
 
@@ -326,26 +342,19 @@ class PinvSNR(Pinv):
         snr = None
         if not exact_sampler and self.snr_tol:
             if self.snr_mode == "empiric":
-                snr = _snr_step(
-                    grad_log_psi, o_loc, V, Vtb, transformation, pad_size
-                )
+                snr = _snr_step(grad_log_psi, o_loc, V, Vtb, transformation, pad_size)
             elif self.snr_mode == "gaussian":
-                snr = _snr_step_gaussian(
-                    Vtb, ev, o_loc
-                )
+                snr = _snr_step_gaussian(Vtb, ev, o_loc)
 
         # Discard eigenvalues below numerical precision
-        invEv = jnp.where(jnp.abs(ev / ev[-1]) > 1e-14, 1. / ev, 0.)
+        inv_ev = jnp.where(jnp.abs(ev / ev[-1]) > 1e-14, 1.0 / ev, 0.0)
 
-        b_norm = jnp.linalg.norm(b) 
-        residual, cutoff, pinvEv, effective_rank = self._regularize(
-            snr, ev, invEv, Vtb, b_norm, exact_sampler
+        b_norm = jnp.linalg.norm(b)
+        residual, cutoff, pinv_ev, effective_rank = self._regularize(
+            snr, ev, inv_ev, Vtb, b_norm, exact_sampler
         )
 
-        x = _unpad(
-            jnp.dot(V, jnp.pad((pinvEv * Vtb), (0, pad_size))),
-            pad_size
-        )
+        x = _unpad(jnp.dot(V, jnp.pad((pinv_ev * Vtb), (0, pad_size))), pad_size)
 
         info = dict(
             residual=residual.item(),
@@ -353,24 +362,26 @@ class PinvSNR(Pinv):
             snr=snr,
             condition_number=(ev[-1] / jnp.min(jnp.abs(ev))).item(),
             spectrum=ev,
-            effective_rank=effective_rank.item()
+            effective_rank=effective_rank.item(),
         )
 
         return x, info
 
     @jax.jit(static_argnums=(0, 6))
-    def _regularize(self, snr, eigenvalues, invEv, Vtb, b_norm, exact_sampler):
+    def _regularize(self, snr, eigenvalues, inv_ev, Vtb, b_norm, exact_sampler):
         def _step(cutoff):
             cutoff = jnp.maximum(0.8 * cutoff, self.pinv_cutoff)
-            regularizer = smooth_cutoff_fn(jnp.abs(eigenvalues / eigenvalues[-1]), cutoff)
+            regularizer = smooth_cutoff_fn(
+                jnp.abs(eigenvalues / eigenvalues[-1]), cutoff
+            )
 
             if not exact_sampler and snr is not None:
                 regularizer = regularizer * smooth_cutoff_fn(snr, self.snr_tol)
-            
-            pinvEv = invEv * regularizer
-            residual = jnp.linalg.norm((pinvEv * eigenvalues - 1) * Vtb) / b_norm
 
-            return residual, cutoff, pinvEv, jnp.mean(regularizer)
+            pinv_ev = inv_ev * regularizer
+            residual = jnp.linalg.norm((pinv_ev * eigenvalues - 1) * Vtb) / b_norm
+
+            return residual, cutoff, pinv_ev, jnp.mean(regularizer)
 
         def _cond(state):
             residual, cutoff, _, _ = state

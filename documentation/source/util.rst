@@ -32,7 +32,7 @@ Every optimizer records the measurements of its steps in an ``OutputManager``. W
 are written to an HDF5 file at every step, and an ``InputManager`` reads them back::
 
     outp = jVMC_exp.util.OutputManager("results.h5", append=False)
-    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonalShift=1e-3, output_manager=outp)
+    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=1e-3, output_manager=outp)
     opt.ground_state_search(500, energy, jVMC_exp.stepper.Euler(5e-2), observables={"X0": op.SigmaX(0)})
     outp.write_parameters(500, psi.parameters)
 

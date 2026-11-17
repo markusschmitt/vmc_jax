@@ -23,15 +23,15 @@ Usage
 
 A sampler is bound to a variational state. Calling ``sample()`` returns the configurations, their
 logarithmic wave function coefficients and their normalized weights, and stores them in the
-``samples``, ``logPsi`` and ``weights`` properties. Calling the sampler evaluates an observable on
+``samples``, ``log_psi`` and ``weights`` properties. Calling the sampler evaluates an observable on
 these samples::
 
-    psi = jVMC_exp.vqs.NQS(net, L, batchSize=2**10, seed=1234)
+    psi = jVMC_exp.vqs.NQS(net, L, batch_size=2**10, seed=1234)
     sampler = jVMC_exp.sampler.MCSampler(
-        psi, jVMC_exp.propose.SpinFlip(), key=123, numChains=2**6, numSamples=2**12
+        psi, jVMC_exp.propose.SpinFlip(), key=123, num_chains=2**6, num_samples=2**12
     )
 
-    s, logPsi, p = sampler.sample()
+    s, log_psi, p = sampler.sample()
     energy = sampler(hamiltonian)
     energy = sampler(hamiltonian, resample=True)    # after changing psi.parameters
 

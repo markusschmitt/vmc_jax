@@ -1,23 +1,25 @@
 import unittest
+
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
 from flax import nnx
 
 import jVMC_exp
-import jVMC_exp.global_defs as global_defs
 import jVMC_exp.nets.activation_functions as act_funs
 import jVMC_exp.nets.initializers
+from jVMC_exp import global_defs
 from jVMC_exp.nets.initializers import init_fn_args
 
+
 class RBMNN(nn.Module):
-    numHidden: int = 2
+    num_hidden: int = 2
     bias: bool = False
 
     @nn.compact
     def __call__(self, s):
         layer = nn.Dense(
-            self.numHidden,
+            self.num_hidden,
             use_bias=self.bias,
             **init_fn_args(
                 kernel_init=jVMC_exp.nets.initializers.cplx_init,
@@ -29,10 +31,10 @@ class RBMNN(nn.Module):
 
 
 class RBMNNX(nnx.Module):
-    def __init__(self, in_features, numHidden, bias=False, *, rngs: nnx.Rngs):
+    def __init__(self, in_features, num_hidden, bias=False, *, rngs: nnx.Rngs):
         self.layer = nnx.Linear(
             in_features,
-            out_features=numHidden,
+            out_features=num_hidden,
             use_bias=bias,
             param_dtype=global_defs.DT_OPERATORS_CPX,
             bias_init=jax.nn.initializers.zeros,
@@ -44,31 +46,34 @@ class RBMNNX(nnx.Module):
     def __call__(self, x):
         return jnp.sum(self.activation(self.layer(2 * x.ravel() - 1)))
 
+
 L = 10
 SEED = 123
-NNX_INIT = dict(in_features=L, numHidden=2, bias=True)
+NNX_INIT = dict(in_features=L, num_hidden=2, bias=True)
+
 
 def _make_nqs_nnx(**kwargs):
     return jVMC_exp.vqs.NQS(
         RBMNNX,
         L,
-        batchSize=2**5,
+        batch_size=2**5,
         seed=SEED,
         nnx_init=NNX_INIT,
         **kwargs,
     )
 
+
 def _make_nqs_nn(**kwargs):
     return jVMC_exp.vqs.NQS(
-        RBMNN(numHidden=2, bias=True),
+        RBMNN(num_hidden=2, bias=True),
         L,
-        batchSize=2**5,
+        batch_size=2**5,
         seed=SEED,
         **kwargs,
     )
 
-class TestNNXWrapper(unittest.TestCase):
 
+class TestNNXWrapper(unittest.TestCase):
     def test_nqs_accepts_nnx_class(self):
         """NQS should construct without error when given an NNX class + nnx_init."""
         psi = _make_nqs_nnx()
@@ -81,9 +86,9 @@ class TestNNXWrapper(unittest.TestCase):
 
     def test_nqs_rejects_nnx_instance(self):
         """Passing an NNX *instance* (not a class) should raise a clear ValueError."""
-        instance = RBMNNX(in_features=L, numHidden=2, bias=True, rngs=nnx.Rngs(SEED))
+        instance = RBMNNX(in_features=L, num_hidden=2, bias=True, rngs=nnx.Rngs(SEED))
         with self.assertRaises((ValueError, TypeError)):
-            jVMC_exp.vqs.NQS(instance, L, batchSize=2**5, seed=SEED)
+            jVMC_exp.vqs.NQS(instance, L, batch_size=2**5, seed=SEED)
 
     def test_nnx_forward_pass(self):
         """NQS built from an NNX class should produce a scalar output."""
@@ -104,7 +109,7 @@ class TestNNXWrapper(unittest.TestCase):
         psi = _make_nqs_nnx()
         proposer = jVMC_exp.propose.SpinFlip()
         sampler = jVMC_exp.sampler.MCSampler(
-            psi, proposer, numChains=2**5, numSamples=2**7
+            psi, proposer, num_chains=2**5, num_samples=2**7
         )
         sampler.sample()
         self.assertIsNotNone(sampler.samples)
@@ -114,7 +119,7 @@ class TestNNXWrapper(unittest.TestCase):
         psi = _make_nqs_nn()
         proposer = jVMC_exp.propose.SpinFlip()
         sampler = jVMC_exp.sampler.MCSampler(
-            psi, proposer, numChains=2**5, numSamples=2**7
+            psi, proposer, num_chains=2**5, num_samples=2**7
         )
         sampler.sample()
         self.assertIsNotNone(sampler.samples)
@@ -124,7 +129,7 @@ class TestNNXWrapper(unittest.TestCase):
         psi = _make_nqs_nnx()
         proposer = jVMC_exp.propose.SpinFlip()
         sampler = jVMC_exp.sampler.MCSampler(
-            psi, proposer, numChains=2**5, numSamples=2**7
+            psi, proposer, num_chains=2**5, num_samples=2**7
         )
         sampler.sample()
         log_amps = psi(sampler.samples)
@@ -133,9 +138,10 @@ class TestNNXWrapper(unittest.TestCase):
     def test_nnx_and_linen_output_dtype_match(self):
         """NNX and Linen models should return the same output dtype."""
         psi_nnx = _make_nqs_nnx()
-        psi_nn  = _make_nqs_nn()
+        psi_nn = _make_nqs_nn()
         sample = jnp.ones((1, L))
         self.assertEqual(psi_nnx(sample).dtype, psi_nn(sample).dtype)
+
 
 if __name__ == "__main__":
     unittest.main()

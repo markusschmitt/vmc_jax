@@ -31,7 +31,7 @@ Usage
     opt.meta_data["pinv_cutoff"], opt.meta_data["residual"], opt.meta_data["snr"]
 
     # Ground state search with the matrix-free conjugate gradient
-    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonalShift=1e-3, solver=jVMC_exp.solver.CG(tol=1e-8))
+    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=1e-3, solver=jVMC_exp.solver.CG(tol=1e-8))
 
     # A solver can also be called directly
     x, info = jVMC_exp.solver.Pinv(pinv_cutoff=1e-10)(A, b)

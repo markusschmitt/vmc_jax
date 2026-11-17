@@ -1,5 +1,7 @@
+from typing import Callable, Literal
+
 import jax.numpy as jnp
-from typing import Literal, Callable
+
 
 def avg_coefficients_exp(log_amplitudes, weights):
     """
@@ -29,6 +31,7 @@ def avg_coefficients_exp(log_amplitudes, weights):
         jnp.asarray(-jnp.inf + 0.0j, dtype=jnp.complex128),
     )
 
+
 def avg_coefficients_log(log_amplitudes, weights):
     """
     Mean of the logarithmic coefficients, :math:`\\frac{1}{n}\\sum_g l_g`. The weights are not used.
@@ -42,6 +45,7 @@ def avg_coefficients_log(log_amplitudes, weights):
     """
     del weights
     return jnp.mean(jnp.asarray(log_amplitudes, dtype=jnp.complex128))
+
 
 def avg_coefficients_sep(log_amplitudes, weights):
     """
@@ -61,18 +65,22 @@ def avg_coefficients_sep(log_amplitudes, weights):
     re = jnp.real(log_amplitudes)
     im = jnp.imag(log_amplitudes)
 
-    return 0.5 * jnp.log(jnp.mean(jnp.exp(2 * re))) + 1j * jnp.angle(jnp.mean(jnp.exp(1j * im)))
+    return 0.5 * jnp.log(jnp.mean(jnp.exp(2 * re))) + 1j * jnp.angle(
+        jnp.mean(jnp.exp(1j * im))
+    )
+
 
 #: Built-in averages, by name.
 average_coefficients_table = {
     "exp": avg_coefficients_exp,
     "log": avg_coefficients_log,
-    "sep": avg_coefficients_sep
+    "sep": avg_coefficients_sep,
 }
 #: Names of the built-in averages.
 BuiltinSymmetryAverage = Literal["exp", "log", "sep"]
 #: A built-in average, or a callable ``f(log_amplitudes, weights)``.
 SymmetryAverage = BuiltinSymmetryAverage | Callable
+
 
 def average_coefficients(log_amplitudes, weights, average: SymmetryAverage):
     """
@@ -98,9 +106,7 @@ def average_coefficients(log_amplitudes, weights, average: SymmetryAverage):
 
     fn = average_coefficients_table.get(average)
     if fn is None:
-        allowed = ", ".join(k for k in average_coefficients_table.keys())
-        raise ValueError(
-            f"symmetry_average must be one of {allowed}, or a callable."
-        )
+        allowed = ", ".join(k for k in average_coefficients_table)
+        raise ValueError(f"symmetry_average must be one of {allowed}, or a callable.")
 
     return fn(log_amplitudes, weights)

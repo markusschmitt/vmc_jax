@@ -60,7 +60,6 @@ class InputManager:
             raise FileNotFoundError(self.path)
         self.data = self.load_from_h5(self.path, group=self.group)
 
-
     def get_network_checkpoint(self, time: float = None, idx: int = None):
         """
         A checkpoint written by ``OutputManager.write_network_checkpoint()``.
@@ -89,7 +88,7 @@ class InputManager:
             idx = -1
 
         return times[idx], checkpoints[idx]
-    
+
     @staticmethod
     def load_from_h5(path: str | Path, group: str = "/") -> dict:
         """
@@ -102,6 +101,7 @@ class InputManager:
         Returns:
             Dictionary with a dictionary for every subgroup and an array for every dataset.
         """
+
         def read_recursive(h5_group):
             out = {}
             for key, item in h5_group.items():
@@ -138,7 +138,9 @@ class InputManager:
         """
         with h5py.File(self.path, "r") as handle:
             params_root = self._root(handle)["parameters"]
-            group_name = params_root.attrs["latest"] if step == "latest" else f"{int(step):08d}"
+            group_name = (
+                params_root.attrs["latest"] if step == "latest" else f"{int(step):08d}"
+            )
             if isinstance(group_name, bytes):
                 group_name = group_name.decode("utf-8")
             state = self._read_param_tree(params_root[group_name])

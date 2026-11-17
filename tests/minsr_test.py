@@ -1,31 +1,32 @@
 import unittest
+
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
 import numpy as np
 
 import jVMC_exp
-import jVMC_exp.nets as nets
-from jVMC_exp.vqs import NQS
 import jVMC_exp.operator.discrete as op
-import jVMC_exp.sampler as sampler
-from jVMC_exp.stats import SampledObs, LazySampledObs
+from jVMC_exp import nets, sampler
 from jVMC_exp.objective_function.base import ObjectiveFunctionOutput
+from jVMC_exp.stats import LazySampledObs, SampledObs
+from jVMC_exp.vqs import NQS
+
 
 class TestGsSearch(unittest.TestCase):
     def test_gs_search_cpx(self):
         L = 4
         J = -1.0
         hxs = [-1.3, -0.3]
-        exEs = [-6.10160339, -4.09296160]
-        
-        batch_size = int(2 ** L)
+        exact_energies = [-6.10160339, -4.09296160]
+
+        batch_size = int(2**L)
         learning_rate = 1e-2
         num_steps = 300
 
-        for hx, exE in zip(hxs, exEs):
+        for hx, exact_energy in zip(hxs, exact_energies):
             # Set up variational wave function
-            rbm = nets.CpxRBM(numHidden=3, bias=False)
+            rbm = nets.CpxRBM(num_hidden=3, bias=False)
             psi = NQS(rbm, L, batch_size, seed=1234)
 
             # Set up hamiltonian for ground state search
@@ -35,17 +36,20 @@ class TestGsSearch(unittest.TestCase):
 
             # Set up exact sampler
             exact_sampler = sampler.ExactSampler(psi)
-            
+
             loss_function = jVMC_exp.objective_function.Observable(H)
-            stepper = jVMC_exp.stepper.Euler(timeStep=learning_rate)
+            stepper = jVMC_exp.stepper.Euler(time_step=learning_rate)
             solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-6)
-            opt = jVMC_exp.optimizer.MinSR(exact_sampler, psi, solver=solver, diagonalShift=1e-3)
+            opt = jVMC_exp.optimizer.MinSR(
+                exact_sampler, psi, solver=solver, diagonal_shift=1e-3
+            )
 
             opt.ground_state_search(num_steps, loss_function, stepper)
 
             E = exact_sampler(H)
-            print(jnp.abs((E.mean.item() - exE) / exE))
-            self.assertTrue(jnp.max(jnp.abs((E.mean.item() - exE) / exE)) < 1e-3)
+            print(jnp.abs((E.mean.item() - exact_energy) / exact_energy))
+            self.assertTrue(jnp.max(jnp.abs((E.mean.item() - exact_energy) / exact_energy)) < 1e-3)
+
 
 class TestGsSearchBatchedJacobian(unittest.TestCase):
     def test_gs_search_batched_jacobian(self):
@@ -58,13 +62,13 @@ class TestGsSearchBatchedJacobian(unittest.TestCase):
         L = 4
         J = -1.0
         hx = -0.3
-        exE = -4.09296160
+        exact_energy = -4.09296160
 
         batch_size = 3 * jax.device_count()
         learning_rate = 1e-2
         num_steps = 300
 
-        rbm = nets.CpxRBM(numHidden=3, bias=False)
+        rbm = nets.CpxRBM(num_hidden=3, bias=False)
         psi = NQS(rbm, L, batch_size, seed=1234)
 
         H = 0
@@ -74,22 +78,27 @@ class TestGsSearchBatchedJacobian(unittest.TestCase):
         exact_sampler = sampler.ExactSampler(psi)
 
         loss_function = jVMC_exp.objective_function.Observable(H, batched_jacobian=True)
-        stepper = jVMC_exp.stepper.Euler(timeStep=learning_rate)
+        stepper = jVMC_exp.stepper.Euler(time_step=learning_rate)
         solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-6)
-        opt = jVMC_exp.optimizer.MinSR(exact_sampler, psi, solver=solver, diagonalShift=1e-3)
+        opt = jVMC_exp.optimizer.MinSR(
+            exact_sampler, psi, solver=solver, diagonal_shift=1e-3
+        )
 
         opt.ground_state_search(num_steps, loss_function, stepper)
 
         E = exact_sampler(H)
-        eps_rel = jnp.abs((E.mean.item() - exE) / exE)
+        eps_rel = jnp.abs((E.mean.item() - exact_energy) / exact_energy)
         self.assertTrue(eps_rel < 1e-3)
+
 
 class _RealParamsComplexOut(nn.Module):
     """Real parameters and a complex output, i.e. a non-holomorphic network"""
+
     @nn.compact
     def __call__(self, s):
         x = nn.Dense(3)(2 * s.ravel() - 1)
         return jnp.sum(jnp.log(jnp.cosh(x))) + 1j * jnp.sum(nn.Dense(1)(x))
+
 
 class TestUpdateBatchedJacobian(unittest.TestCase):
     """
@@ -98,6 +107,7 @@ class TestUpdateBatchedJacobian(unittest.TestCase):
     consecutive samples, so this checks that the tangent kernel, the local energies and the
     solution are lined up sample by sample, for real, holomorphic and non-holomorphic networks.
     """
+
     def test_update_matches_dense(self):
         L = 4
         H = 0
@@ -105,25 +115,34 @@ class TestUpdateBatchedJacobian(unittest.TestCase):
             H += -1.0 * op.SigmaZ(l) * op.SigmaZ((l + 1) % L) - 0.7 * op.SigmaX(l)
 
         for name, net in (
-            ("real", nets.RBM(numHidden=3, bias=True)),
-            ("holomorphic", nets.CpxRBM(numHidden=3, bias=True)),
+            ("real", nets.RBM(num_hidden=3, bias=True)),
+            ("holomorphic", nets.CpxRBM(num_hidden=3, bias=True)),
             ("non-holomorphic", _RealParamsComplexOut()),
         ):
             with self.subTest(net=name):
                 psi = NQS(net, L, 3 * jax.device_count(), seed=1234)
                 exact_sampler = sampler.ExactSampler(psi)
                 opt = jVMC_exp.optimizer.MinSR(
-                    exact_sampler, psi, solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8), diagonalShift=1e-3
+                    exact_sampler,
+                    psi,
+                    solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8),
+                    diagonal_shift=1e-3,
                 )
 
                 updates = []
                 for batched_jacobian in (False, True):
-                    loss_function = jVMC_exp.objective_function.Observable(H, batched_jacobian=batched_jacobian)
-                    updates.append(opt.get_update(loss_function.value_and_grad(exact_sampler)))
+                    loss_function = jVMC_exp.objective_function.Observable(
+                        H, batched_jacobian=batched_jacobian
+                    )
+                    updates.append(
+                        opt.get_update(loss_function.value_and_grad(exact_sampler))
+                    )
 
                 self.assertTrue(np.allclose(updates[0], updates[1], atol=1e-10), name)
 
-    @unittest.skipIf(jax.device_count() == 1, "Every number of samples is divisible by one device")
+    @unittest.skipIf(
+        jax.device_count() == 1, "Every number of samples is divisible by one device"
+    )
     def test_update_matches_dense_indivisible_samples(self):
         """
         A number of samples that is not divisible by the number of devices is padded with
@@ -132,20 +151,43 @@ class TestUpdateBatchedJacobian(unittest.TestCase):
         L = 4
         num_samples = 5 * jax.device_count() + 1
         k1, k2, k3, k4 = jax.random.split(jax.random.PRNGKey(0), 4)
-        s = jax.random.randint(k1, (num_samples, L), 0, 2).astype(jVMC_exp.global_defs.DT_SAMPLES)
+        s = jax.random.randint(k1, (num_samples, L), 0, 2).astype(
+            jVMC_exp.global_defs.DT_SAMPLES
+        )
         weights = jax.random.uniform(k2, (num_samples,))
-        o_loc = SampledObs(jax.random.normal(k3, (num_samples,)) + 1j * jax.random.normal(k4, (num_samples,)), weights)
+        o_loc = SampledObs(
+            jax.random.normal(k3, (num_samples,))
+            + 1j * jax.random.normal(k4, (num_samples,)),
+            weights,
+        )
 
-        for name, net in (("holomorphic", nets.CpxRBM(numHidden=3, bias=True)), ("non-holomorphic", _RealParamsComplexOut())):
+        for name, net in (
+            ("holomorphic", nets.CpxRBM(num_hidden=3, bias=True)),
+            ("non-holomorphic", _RealParamsComplexOut()),
+        ):
             with self.subTest(net=name):
                 psi = NQS(net, L, 2 * jax.device_count(), seed=1234)
                 opt = jVMC_exp.optimizer.MinSR(
-                    sampler.ExactSampler(psi), psi, solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8), diagonalShift=1e-3
+                    sampler.ExactSampler(psi),
+                    psi,
+                    solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8),
+                    diagonal_shift=1e-3,
                 )
-                dense = ObjectiveFunctionOutput(o_loc=o_loc, grad_log_psi=SampledObs(psi.gradients(s), weights))
-                lazy = ObjectiveFunctionOutput(o_loc=o_loc, grad_log_psi=LazySampledObs(psi.lazy_gradients(s), weights))
+                dense = ObjectiveFunctionOutput(
+                    o_loc=o_loc, grad_log_psi=SampledObs(psi.gradients(s), weights)
+                )
+                lazy = ObjectiveFunctionOutput(
+                    o_loc=o_loc,
+                    grad_log_psi=LazySampledObs(psi.lazy_gradients(s), weights),
+                )
 
-                self.assertTrue(np.allclose(opt.get_update(dense), opt.get_update(lazy), atol=1e-10), name)
+                self.assertTrue(
+                    np.allclose(
+                        opt.get_update(dense), opt.get_update(lazy), atol=1e-10
+                    ),
+                    name,
+                )
+
 
 class TestPinvSolve(unittest.TestCase):
     """
@@ -153,10 +195,12 @@ class TestPinvSolve(unittest.TestCase):
     energies. ``Pinv`` instead solves in the eigenbasis, ``V (ev^-1 * (V^H b))``, which
     avoids reassembling ``A^+`` but must give the same answer.
     """
+
     def test_matches_explicit_pseudo_inverse(self):
         rng = np.random.default_rng(0)
 
         for N, complex_valued in ((64, True), (65, False), (128, True)):
+
             def draw(*shape):
                 x = rng.standard_normal(shape)
                 return x + 1j * rng.standard_normal(shape) if complex_valued else x
@@ -171,9 +215,7 @@ class TestPinvSolve(unittest.TestCase):
                     expected = jnp.linalg.pinv(A, rtol=cutoff, hermitian=True) @ b
                     x, info = jVMC_exp.solver.Pinv(pinv_cutoff=cutoff)(A, b)
 
-                    self.assertTrue(
-                        jnp.allclose(x, expected, rtol=1e-10, atol=1e-10)
-                    )
+                    self.assertTrue(jnp.allclose(x, expected, rtol=1e-10, atol=1e-10))
                     self.assertGreater(info["condition_number"], 1.0)
 
     def test_reports_discarded_residual(self):
@@ -192,10 +234,11 @@ class TestPinvSolve(unittest.TestCase):
         self.assertLess(loose, 1e-12)
         self.assertGreater(tight, loose)
 
+
 class TestSolverCompatibility(unittest.TestCase):
     def _psi_and_sampler(self):
         L = 4
-        psi = NQS(nets.CpxRBM(numHidden=3, bias=False), L, 2 ** L, seed=1234)
+        psi = NQS(nets.CpxRBM(num_hidden=3, bias=False), L, 2**L, seed=1234)
         return psi, sampler.ExactSampler(psi)
 
     def test_rejects_matrix_free_solver(self):
@@ -226,12 +269,15 @@ class TestSolverCompatibility(unittest.TestCase):
         opt = jVMC_exp.optimizer.MinSR(
             exact_sampler, psi, solver=jVMC_exp.solver.PinvSNR(pinv_cutoff=1e-6)
         )
-        new_parameters, _ = opt.step(0, jVMC_exp.stepper.Euler(timeStep=1e-2), loss_function)
+        new_parameters, _ = opt.step(
+            0, jVMC_exp.stepper.Euler(time_step=1e-2), loss_function
+        )
 
         self.assertEqual(new_parameters.shape, psi.parameters_flat.shape)
         self.assertTrue(bool(jnp.all(jnp.isfinite(jnp.abs(new_parameters)))))
         # info from the solve must reach the metadata MinSR reports
         self.assertIn("residual", opt.meta_data)
+
 
 if __name__ == "__main__":
     unittest.main()

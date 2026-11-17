@@ -5,10 +5,10 @@ from typing import Any
 import flax.linen as nn
 import jax.numpy as jnp
 
-import jVMC_exp.global_defs as global_defs
+from jVMC_exp import global_defs
+from jVMC_exp.nets.vit import ViterittiEncoderBlock, ViterittiOutputHead
 from jVMC_exp.symmetry import ProjectedOrbitNet, SymmetryProjector
 from jVMC_exp.symmetry.projector import split_spinful_site_state
-from jVMC_exp.nets.vit import ViterittiEncoderBlock, ViterittiOutputHead
 
 
 def _param_dtype(param_dtype):
@@ -92,21 +92,39 @@ class SingletPfaffianSpinful(nn.Module):
         param_dtype = _param_dtype(self.param_dtype)
         out_dtype = _out_cpx_dtype()
         n_sites = self.Lx * self.Ly
-        n = self.particles_per_spin if self.particles_per_spin is not None else n_sites // 2
+        n = (
+            self.particles_per_spin
+            if self.particles_per_spin is not None
+            else n_sites // 2
+        )
         up_raw, dn_raw = split_spinful_site_state(s, n_sites)
         up = up_raw > 0
         dn = dn_raw > 0
         idx_up = jnp.nonzero(up, size=n, fill_value=0)[0]
         idx_dn = jnp.nonzero(dn, size=n, fill_value=0)[0]
         valid = (jnp.sum(up) == n) & (jnp.sum(dn) == n)
-        f_re = self.param("F_up_down_re", nn.initializers.normal(stddev=0.05), (n_sites, n_sites), param_dtype)
-        f_im = self.param("F_up_down_im", nn.initializers.normal(stddev=0.05), (n_sites, n_sites), param_dtype)
+        f_re = self.param(
+            "F_up_down_re",
+            nn.initializers.normal(stddev=0.05),
+            (n_sites, n_sites),
+            param_dtype,
+        )
+        f_im = self.param(
+            "F_up_down_im",
+            nn.initializers.normal(stddev=0.05),
+            (n_sites, n_sites),
+            param_dtype,
+        )
         F = f_re.astype(out_dtype) + 1j * f_im.astype(out_dtype)
         F_occ = F[idx_up[:, None], idx_dn[None, :]]
         sign, logabs = jnp.linalg.slogdet(F_occ)
         singlet_sign = (-1) ** (n * (n - 1) // 2)
-        log_value = jnp.log(sign.astype(out_dtype) * singlet_sign) + logabs.astype(out_dtype)
-        return jnp.where(valid, log_value, jnp.asarray(-jnp.inf + 0.0j, dtype=out_dtype))
+        log_value = jnp.log(sign.astype(out_dtype) * singlet_sign) + logabs.astype(
+            out_dtype
+        )
+        return jnp.where(
+            valid, log_value, jnp.asarray(-jnp.inf + 0.0j, dtype=out_dtype)
+        )
 
 
 class HiddenPfaffianViT(nn.Module):

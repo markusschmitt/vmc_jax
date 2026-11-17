@@ -18,7 +18,7 @@ covariances give the quantum geometric tensor
 :math:`S_{k,k'}=\langle(\partial_{\theta_k}\ln\psi)^*\partial_{\theta_{k'}}\ln\psi\rangle_c` and the
 force :math:`F_k=\langle(\partial_{\theta_k}\ln\psi)^*E_{\rm loc}\rangle_c`::
 
-    s, logPsi, p = sampler.sample()
+    s, log_psi, p = sampler.sample()
     energy = sampler(hamiltonian)           # SampledObs of the local energy
     print(energy)                           # mean ± error of the mean (Var = variance)
 
@@ -30,8 +30,8 @@ The error of the mean treats the samples as independent. For samples of Markov c
 integrated autocorrelation time :math:`\tau` makes the error larger by a factor of about
 :math:`\sqrt{\tau}`, and the Gelman-Rubin diagnostic :math:`\hat R` compares the chains::
 
-    tau = energy.get_autocorrelation_time(sampler.numChains)
-    r_hat = energy.get_R_hat(sampler.numChains)
+    tau = energy.get_autocorrelation_time(sampler.num_chains)
+    r_hat = energy.get_R_hat(sampler.num_chains)
 
 The observations are sharded across the devices along the sample axis. If the number of samples is
 not a multiple of the number of devices, they are padded with rows of zeros of weight zero, which

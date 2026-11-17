@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class AbstractSolver(ABC):
     """
     Solver of the linear equation :math:`Ax=b` of an optimizer.
@@ -18,11 +19,11 @@ class AbstractSolver(ABC):
     ``grad_log_psi`` and ``o_loc`` of the objective function. A solver takes the ones it needs \
     and ignores the others.
     """
+
     @property
     @abstractmethod
     def _needs_dense_matrix(self) -> bool:
         """Whether :math:`A` is passed as a matrix (``True``) or as a function (``False``)."""
-        pass
 
     @abstractmethod
     def __call__(self, A, b, **kwargs):
@@ -37,4 +38,3 @@ class AbstractSolver(ABC):
         Returns:
             ``x, info``: The solution, a vector without padding, and a dictionary of diagnostics.
         """
-        pass

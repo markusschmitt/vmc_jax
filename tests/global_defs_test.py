@@ -1,13 +1,20 @@
 import unittest
+
 import jax.numpy as jnp
-import numpy as np
 
 from jVMC_exp import global_defs
 
 _SETTINGS = (
-    "DT_PARAMS_REAL", "DT_PARAMS_CPX", "DT_OUT_REAL", "DT_OUT_CPX",
-    "DT_OPERATORS_REAL", "DT_OPERATORS_CPX", "BATCH_LOOP", "MATMUL_CHUNK_BYTES",
+    "DT_PARAMS_REAL",
+    "DT_PARAMS_CPX",
+    "DT_OUT_REAL",
+    "DT_OUT_CPX",
+    "DT_OPERATORS_REAL",
+    "DT_OPERATORS_CPX",
+    "BATCH_LOOP",
+    "MATMUL_CHUNK_BYTES",
 )
+
 
 class TestUpdate(unittest.TestCase):
     def setUp(self):
@@ -43,16 +50,20 @@ class TestUpdate(unittest.TestCase):
         with self.assertRaises(TypeError):
             global_defs.update(use_distributed=True)
 
+
 class TestReadDtype(unittest.TestCase):
     def test_names_count_bits(self):
         self.assertEqual(global_defs._read_dtype("f16", True), jnp.dtype(jnp.float16))
         self.assertEqual(global_defs._read_dtype("F32", True), jnp.dtype(jnp.float32))
-        self.assertEqual(global_defs._read_dtype("c64", False), jnp.dtype(jnp.complex64))
+        self.assertEqual(
+            global_defs._read_dtype("c64", False), jnp.dtype(jnp.complex64)
+        )
 
     def test_rejects_wrong_kind_and_unknown_names(self):
         for name, real in (("c64", True), ("f32", False), ("f8", True), ("", False)):
             with self.assertRaises(ValueError):
                 global_defs._read_dtype(name, real)
+
 
 if __name__ == "__main__":
     unittest.main()

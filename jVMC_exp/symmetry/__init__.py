@@ -1,3 +1,3 @@
-from .projector import SymmetryProjector, ProjectedOrbitNet, compose_projectors
+from . import lattice_symmetries
 from .average_fun import average_coefficients
-from . import lattice_symetries
+from .projector import ProjectedOrbitNet, SymmetryProjector, compose_projectors

@@ -2,19 +2,22 @@
 Measurements, the conversion of dense matrices into operators, the norm of the quantum geometric
 tensor for the adaptive steppers and the parameter layouts of the optimizers.
 """
+
 from __future__ import annotations
-import jax.numpy as jnp
+
 import collections
-from typing import Dict, Union, Any, TYPE_CHECKING
-import numpy as np
 from functools import partial
+from typing import TYPE_CHECKING, Any, Dict, Union
+
 import jax
+import jax.numpy as jnp
+import numpy as np
 
 from jVMC_exp import global_defs
 
 if TYPE_CHECKING:
-    from jVMC_exp.sampler.base import AbstractMCSampler
     from jVMC_exp.optimizer import TDVP
+    from jVMC_exp.sampler.base import AbstractMCSampler
 
 #: An operator, or a callable returning a ``SampledObs``, with the keyword arguments to measure it
 #: with, e.g. ``(hamiltonian, {"t": 0.1})``.
@@ -22,13 +25,15 @@ OperatorWithKwargs = tuple[Any, dict[str, Any]]
 #: A value of the ``observables`` dictionary of ``measure()``: an operator, a callable returning a
 #: ``SampledObs``, or an ``OperatorWithKwargs``.
 ObservableEntry = Union[Any, OperatorWithKwargs]
-    
+
+
 def has_callable_attr(cls, attr: str):
     """
     Whether ``cls`` has a callable attribute ``attr``, e.g. whether a network has a ``sample`` \
     method.
     """
     return callable(getattr(cls, attr, None))
+
 
 def remove_double(arr, params_shape):
     """
@@ -41,7 +46,7 @@ def remove_double(arr, params_shape):
 
     Args:
         * ``arr``: Flat array with a block of ``2 * size`` entries per leaf.
-        * ``params_shape``: ``NQS.paramShapes``, the ``(size, shape)`` of every leaf.
+        * ``params_shape``: ``NQS.param_shapes``, the ``(size, shape)`` of every leaf.
 
     Returns:
         Flat array with the first ``size`` entries of every block.
@@ -49,10 +54,11 @@ def remove_double(arr, params_shape):
     new_arr = []
     start = 0
     for s in params_shape:
-        new_arr.append(arr[start:start + s[0]])
+        new_arr.append(arr[start : start + s[0]])
         start += 2 * s[0]
-    
+
     return jnp.concatenate(new_arr)
+
 
 def make_real_array(arr, params_shape):
     """
@@ -61,7 +67,7 @@ def make_real_array(arr, params_shape):
 
     Args:
         * ``arr``: Complex flat array with ``size`` entries per leaf.
-        * ``params_shape``: ``NQS.paramShapes``, the ``(size, shape)`` of every leaf.
+        * ``params_shape``: ``NQS.param_shapes``, the ``(size, shape)`` of every leaf.
 
     Returns:
         Real flat array with ``2 * size`` entries per leaf. ``make_cmplx_array()`` is the inverse.
@@ -69,12 +75,13 @@ def make_real_array(arr, params_shape):
     new_arr = []
     start = 0
     for s in params_shape:
-        cmplx_arr = arr[start:start + s[0]]
+        cmplx_arr = arr[start : start + s[0]]
         new_arr.append(jnp.real(cmplx_arr))
         new_arr.append(jnp.imag(cmplx_arr))
         start += s[0]
-    
+
     return jnp.concatenate(new_arr)
+
 
 def make_cmplx_array(arr, params_shape):
     """
@@ -83,7 +90,7 @@ def make_cmplx_array(arr, params_shape):
 
     Args:
         * ``arr``: Real flat array with ``2 * size`` entries per leaf.
-        * ``params_shape``: ``NQS.paramShapes``, the ``(size, shape)`` of every leaf.
+        * ``params_shape``: ``NQS.param_shapes``, the ``(size, shape)`` of every leaf.
 
     Returns:
         Complex flat array with ``size`` entries per leaf.
@@ -91,10 +98,13 @@ def make_cmplx_array(arr, params_shape):
     new_arr = []
     start = 0
     for s in params_shape:
-        new_arr.append((arr[start:start + s[0]] + 1.j * arr[start + s[0]:start + 2 * s[0]]))
+        new_arr.append(
+            arr[start : start + s[0]] + 1.0j * arr[start + s[0] : start + 2 * s[0]]
+        )
         start += 2 * s[0]
-    
+
     return jnp.concatenate(new_arr)
+
 
 def get_iterable(x):
     """``x`` if it is iterable, otherwise the tuple ``(x,)``."""
@@ -103,10 +113,11 @@ def get_iterable(x):
     else:
         return (x,)
 
+
 def measure(
     observables: Dict[str, ObservableEntry],
-    sampler: AbstractMCSampler, 
-    num_samples: int = None
+    sampler: AbstractMCSampler,
+    num_samples: int = None,
 ):
     """
     Measure observables with a sampler.
@@ -138,21 +149,24 @@ def measure(
         kwargs = {}
         if isinstance(op, tuple):
             if len(op) != 2:
-                raise ValueError("If an operator takes kwargs it has to be passed as tuple: (operator, dict_of_kwargs)")
+                raise ValueError(
+                    "If an operator takes kwargs it has to be passed as tuple: (operator, dict_of_kwargs)"
+                )
             kwargs = op[1]
             op = op[0]
 
         if isinstance(op, AbstractOperator):
-            Oloc = sampler(op, num_samples=num_samples, **kwargs)
+            O_loc = sampler(op, num_samples=num_samples, **kwargs)
         else:
-            Oloc = op(**kwargs)
-        
+            O_loc = op(**kwargs)
+
         result[name] = {}
-        result[name]["mean"] = jnp.real(Oloc.mean).squeeze()
-        result[name]["variance"] = jnp.real(Oloc.var).squeeze()
-        result[name]["MC_error"] = jnp.real(Oloc.error_of_mean).squeeze()
+        result[name]["mean"] = jnp.real(O_loc.mean).squeeze()
+        result[name]["variance"] = jnp.real(O_loc.var).squeeze()
+        result[name]["MC_error"] = jnp.real(O_loc.error_of_mean).squeeze()
 
     return result
+
 
 def matrix_to_jvmc_operator(
     matrix: np.ndarray,
@@ -235,10 +249,11 @@ def matrix_to_jvmc_operator(
         return build_from(matrix), build_from(matrix.conj().T)
     return build_from(matrix)
 
+
 def s_norm_fn(opt: TDVP):
     """
     Norm induced by the quantum geometric tensor, :math:`\\|v\\|_S = \\sqrt{|v^\\dagger S v|}`, \
-    for the ``normFunction`` of the adaptive steppers.
+    for the ``norm_function`` of the adaptive steppers.
 
     ``v`` is in the layout of ``psi.parameters_flat``; for a holomorphic network it is converted \
     to the complex parameters first. :math:`S` is ``opt.qgt``, the quantum geometric tensor of the \
@@ -259,7 +274,7 @@ def s_norm_fn(opt: TDVP):
         opt = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=False)
         opt.time_evolution(
             t_max, jVMC_exp.objective_function.Observable(H),
-            jVMC_exp.stepper.RK23(timeStep=1e-3), normFunction=jVMC_exp.util.s_norm_fn(opt)
+            jVMC_exp.stepper.RK23(time_step=1e-3), norm_function=jVMC_exp.util.s_norm_fn(opt)
         )
     """
     if not opt.store_qgt:
@@ -270,7 +285,9 @@ def s_norm_fn(opt: TDVP):
         )
 
     pad_size = opt._params_pad_size
-    make_cmplx_array_fn = jax.jit(partial(make_cmplx_array, params_shape=opt.psi.paramShapes))
+    make_cmplx_array_fn = jax.jit(
+        partial(make_cmplx_array, params_shape=opt.psi.param_shapes)
+    )
 
     @jax.jit
     def _mat_vec(v, S):

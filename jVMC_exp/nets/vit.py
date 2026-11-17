@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import cmath
 import math
 from typing import Any
 
@@ -8,8 +7,7 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-import jVMC_exp.global_defs as global_defs
-
+from jVMC_exp import global_defs
 
 PATCH_MIXING_ATTENTION = "patch-mixing-attention"
 VITERITTI_DISTANCE_ATTENTION = "viteritti-distance-attention"
@@ -80,9 +78,13 @@ def _translation_project_log_square(
     else:
         rep_x, rep_y = int(representative_shape[0]), int(representative_shape[1])
         if rep_x <= 0 or rep_y <= 0 or Lx % rep_x != 0 or Ly % rep_y != 0:
-            raise ValueError("translation representative shape must divide the lattice.")
+            raise ValueError(
+                "translation representative shape must divide the lattice."
+            )
         if (qx, qy) != (0, 0) and (rep_x, rep_y) != (Lx, Ly):
-            raise ValueError("Reduced translation representatives are only valid in the q=(0,0) sector.")
+            raise ValueError(
+                "Reduced translation representatives are only valid in the q=(0,0) sector."
+            )
     a = jnp.asarray(s01).reshape(Ly, Lx)
     vals = []
     for sy in range(rep_y):
@@ -90,7 +92,9 @@ def _translation_project_log_square(
             phase_arg = (qx * sx / Lx) + (qy * sy / Ly)
             phase = -2j * jnp.pi * phase_arg
             shifted = jnp.roll(a, shift=(sy, sx), axis=(0, 1)).reshape(Lx * Ly)
-            vals.append(jnp.asarray(phase, dtype=_out_cpx_dtype()) + eval_log_one(shifted))
+            vals.append(
+                jnp.asarray(phase, dtype=_out_cpx_dtype()) + eval_log_one(shifted)
+            )
     return _complex_logmeanexp(jnp.asarray(vals, dtype=_out_cpx_dtype()))
 
 
@@ -113,12 +117,18 @@ def _stable_log_cosh_complex(z):
 def _translation_invariant_attention_alpha(alpha, n_patches: int):
     side = math.isqrt(int(n_patches))
     if side * side != n_patches:
-        raise ValueError("Translation-invariant ViT attention requires a square patch grid.")
+        raise ValueError(
+            "Translation-invariant ViT attention requires a square patch grid."
+        )
     alpha_map = alpha.reshape(alpha.shape[0], side, side)
     rows = []
     for iy in range(side):
         for ix in range(side):
-            rows.append(jnp.roll(jnp.roll(alpha_map, iy, axis=-2), ix, axis=-1).reshape(alpha.shape[0], n_patches))
+            rows.append(
+                jnp.roll(jnp.roll(alpha_map, iy, axis=-2), ix, axis=-1).reshape(
+                    alpha.shape[0], n_patches
+                )
+            )
     return jnp.stack(rows, axis=1)
 
 
@@ -127,7 +137,9 @@ def canonical_vit_attention_kind(attention_kind: str) -> str:
     try:
         return _VIT_ATTENTION_ALIASES[key]
     except KeyError as exc:
-        allowed = ", ".join(sorted({PATCH_MIXING_ATTENTION, VITERITTI_DISTANCE_ATTENTION}))
+        allowed = ", ".join(
+            sorted({PATCH_MIXING_ATTENTION, VITERITTI_DISTANCE_ATTENTION})
+        )
         raise ValueError(f"attention_kind must be one of: {allowed}.") from exc
 
 
@@ -143,7 +155,9 @@ def _periodic_patch_distance_matrix(n_patches: int):
     side = math.isqrt(int(n_patches))
     if side * side != n_patches:
         raise ValueError("Viteritti distance attention requires a square patch grid.")
-    coords = jnp.asarray([(iy, ix) for iy in range(side) for ix in range(side)], dtype=jnp.float32)
+    coords = jnp.asarray(
+        [(iy, ix) for iy in range(side) for ix in range(side)], dtype=jnp.float32
+    )
     dy = jnp.abs(coords[:, None, 0] - coords[None, :, 0])
     dx = jnp.abs(coords[:, None, 1] - coords[None, :, 1])
     dy = jnp.minimum(dy, side - dy)
@@ -173,7 +187,9 @@ class ViterittiFactoredAttention(nn.Module):
         param_dtype = _param_dtype(self.param_dtype)
         compute_dtype = _compute_dtype(self.compute_dtype, param_dtype)
         if self.embed_dim % self.heads != 0:
-            raise ValueError("ViterittiFactoredAttention requires embed_dim divisible by heads.")
+            raise ValueError(
+                "ViterittiFactoredAttention requires embed_dim divisible by heads."
+            )
         head_dim = self.embed_dim // self.heads
         x = jnp.asarray(x, dtype=compute_dtype)
         attention_kind = canonical_vit_attention_kind(self.attention_kind)
@@ -184,7 +200,9 @@ class ViterittiFactoredAttention(nn.Module):
                 (self.heads, self.n_patches),
                 param_dtype,
             )
-            weights = _translation_invariant_attention_alpha(jnp.asarray(alpha, dtype=compute_dtype), self.n_patches)
+            weights = _translation_invariant_attention_alpha(
+                jnp.asarray(alpha, dtype=compute_dtype), self.n_patches
+            )
         elif attention_kind == VITERITTI_DISTANCE_ATTENTION:
             alpha = self.param(
                 "alpha",
@@ -192,16 +210,24 @@ class ViterittiFactoredAttention(nn.Module):
                 (self.heads, self.n_patches),
                 param_dtype,
             )
-            alpha_weights = _translation_invariant_attention_alpha(jnp.asarray(alpha, dtype=compute_dtype), self.n_patches)
+            alpha_weights = _translation_invariant_attention_alpha(
+                jnp.asarray(alpha, dtype=compute_dtype), self.n_patches
+            )
             raw_gamma = self.param(
                 "raw_gamma",
-                _constant_init(jnp.full((self.heads,), _inverse_softplus(self.distance_gamma_init))),
+                _constant_init(
+                    jnp.full((self.heads,), _inverse_softplus(self.distance_gamma_init))
+                ),
                 (self.heads,),
                 param_dtype,
             )
             gamma = jax.nn.softplus(jnp.asarray(raw_gamma, dtype=compute_dtype))
-            distances = jnp.asarray(_periodic_patch_distance_matrix(self.n_patches), dtype=compute_dtype)
-            distance_kernel = jax.nn.softmax(-gamma[:, None, None] * distances[None, :, :], axis=-1)
+            distances = jnp.asarray(
+                _periodic_patch_distance_matrix(self.n_patches), dtype=compute_dtype
+            )
+            distance_kernel = jax.nn.softmax(
+                -gamma[:, None, None] * distances[None, :, :], axis=-1
+            )
             weights = distance_kernel * alpha_weights
         else:
             raise ValueError(f"Unsupported attention_kind: {self.attention_kind}")
@@ -216,7 +242,9 @@ class ViterittiFactoredAttention(nn.Module):
         values = values.reshape(self.n_patches, self.heads, head_dim)
         values = jnp.transpose(values, (1, 0, 2))
         attended = jnp.einsum("hij,hjr->hir", weights, values)
-        attended = jnp.transpose(attended, (1, 0, 2)).reshape(self.n_patches, self.embed_dim)
+        attended = jnp.transpose(attended, (1, 0, 2)).reshape(
+            self.n_patches, self.embed_dim
+        )
         return nn.Dense(
             self.embed_dim,
             param_dtype=param_dtype,
@@ -238,7 +266,9 @@ class ViterittiEncoderBlock(nn.Module):
     def __call__(self, x):
         param_dtype = _param_dtype(self.param_dtype)
         compute_dtype = _compute_dtype(self.compute_dtype, param_dtype)
-        y = nn.LayerNorm(param_dtype=param_dtype, name="ln_attn")(jnp.asarray(x, dtype=compute_dtype))
+        y = nn.LayerNorm(param_dtype=param_dtype, name="ln_attn")(
+            jnp.asarray(x, dtype=compute_dtype)
+        )
         y = ViterittiFactoredAttention(
             embed_dim=self.embed_dim,
             heads=self.heads,
@@ -289,10 +319,9 @@ class ViterittiOutputHead(nn.Module):
         )(z)
         out_real = nn.LayerNorm(param_dtype=param_dtype, name="out_real_ln")(out_real)
         if abs(float(self.phase_scale)) <= 0.0:
-            return (
-                jnp.sum(_stable_log_cosh_real(out_real, compute_dtype)).astype(_out_real_dtype())
-                + jnp.asarray(self.theta0, dtype=_out_real_dtype())
-            )
+            return jnp.sum(_stable_log_cosh_real(out_real, compute_dtype)).astype(
+                _out_real_dtype()
+            ) + jnp.asarray(self.theta0, dtype=_out_real_dtype())
         out_imag = nn.Dense(
             self.embed_dim,
             param_dtype=param_dtype,
@@ -301,8 +330,12 @@ class ViterittiOutputHead(nn.Module):
             name="out_imag_dense",
         )(z)
         out_imag = nn.LayerNorm(param_dtype=param_dtype, name="out_imag_ln")(out_imag)
-        out = out_real.astype(_out_cpx_dtype()) + 1j * jnp.asarray(self.phase_scale, dtype=_out_real_dtype()) * out_imag.astype(_out_cpx_dtype())
-        return jnp.sum(_stable_log_cosh_complex(out)) + jnp.asarray(self.theta0, dtype=_out_cpx_dtype())
+        out = out_real.astype(_out_cpx_dtype()) + 1j * jnp.asarray(
+            self.phase_scale, dtype=_out_real_dtype()
+        ) * out_imag.astype(_out_cpx_dtype())
+        return jnp.sum(_stable_log_cosh_complex(out)) + jnp.asarray(
+            self.theta0, dtype=_out_cpx_dtype()
+        )
 
 
 class CPMPhaseLayer(nn.Module):
@@ -337,7 +370,9 @@ class CPMPhaseLayer(nn.Module):
 
         s = jnp.asarray(s01, dtype=jnp.int32).reshape(self.Ly, self.Lx)
         local_terms = jnp.asarray(local_bias, dtype=compute_dtype)[s]
-        context_terms = jnp.einsum("...d,d->...", jnp.asarray(context_kernel, dtype=compute_dtype)[s], z)
+        context_terms = jnp.einsum(
+            "...d,d->...", jnp.asarray(context_kernel, dtype=compute_dtype)[s], z
+        )
 
         pair = jnp.asarray(0.0, dtype=compute_dtype)
         tables = jnp.asarray(pair_table, dtype=compute_dtype)
@@ -349,7 +384,9 @@ class CPMPhaseLayer(nn.Module):
                 pair = pair + jnp.sum(tables[dy, dx][s, shifted])
         pair = pair / jnp.asarray(2 * self.n_sites, dtype=compute_dtype)
 
-        phase = jnp.sum(local_terms + context_terms) / jnp.sqrt(jnp.asarray(self.n_sites, dtype=compute_dtype))
+        phase = jnp.sum(local_terms + context_terms) / jnp.sqrt(
+            jnp.asarray(self.n_sites, dtype=compute_dtype)
+        )
         phase = phase + pair
         return phase.astype(_out_real_dtype())
 
@@ -417,7 +454,9 @@ class ViterittiSpatialViTReal(nn.Module):
         if not self.cpm_phase_layer:
             return log_value
         if s01 is None:
-            raise ValueError("CPM phase layer requires the original 0/1 spin configuration.")
+            raise ValueError(
+                "CPM phase layer requires the original 0/1 spin configuration."
+            )
         phase = CPMPhaseLayer(
             Lx=self.Lx,
             Ly=self.Ly,
@@ -454,7 +493,9 @@ class LogViterittiSpatialViTJVMC(nn.Module):
         param_dtype = _param_dtype(self.param_dtype)
         compute_dtype = _compute_dtype(self.compute_dtype, param_dtype)
         s01 = jnp.asarray(s, dtype=compute_dtype)
-        parity = (jnp.indices((self.Ly, self.Lx)).sum(axis=0) % 2).reshape(self.Lx * self.Ly)
+        parity = (jnp.indices((self.Ly, self.Lx)).sum(axis=0) % 2).reshape(
+            self.Lx * self.Ly
+        )
         log_amplitude_net = ViterittiSpatialViTReal(
             Lx=self.Lx,
             Ly=self.Ly,
@@ -475,13 +516,18 @@ class LogViterittiSpatialViTJVMC(nn.Module):
         def eval_log_one(s01_one):
             sign_phase = jnp.asarray(0.0, dtype=_out_real_dtype())
             if self.sign_rule == "marshall":
-                exponent = jnp.sum(jnp.asarray(s01_one.reshape(self.Lx * self.Ly), dtype=jnp.int32) * parity)
+                exponent = jnp.sum(
+                    jnp.asarray(s01_one.reshape(self.Lx * self.Ly), dtype=jnp.int32)
+                    * parity
+                )
                 sign_phase = jnp.pi * jnp.asarray(exponent % 2, dtype=_out_real_dtype())
             elif self.sign_rule != "none":
                 raise ValueError("sign_rule must be 'none' or 'marshall'.")
             s_spin = (2.0 * s01_one - 1.0).reshape(self.Lx * self.Ly)
             log_value = log_amplitude_net(s_spin, s01_one)
-            return log_value.astype(_out_cpx_dtype()) + 1j * sign_phase.astype(_out_cpx_dtype())
+            return log_value.astype(_out_cpx_dtype()) + 1j * sign_phase.astype(
+                _out_cpx_dtype()
+            )
 
         def translation_project(s01_one, q):
             representative_shape = None
@@ -503,7 +549,9 @@ class LogViterittiSpatialViTJVMC(nn.Module):
             return translation_project(flat, self.translation_q)
         if self.symmetry_average == "d4":
             if tuple(self.translation_q) != (0, 0):
-                raise ValueError("D4 averaging and nonzero momentum projection cannot be combined in one sector.")
+                raise ValueError(
+                    "D4 averaging and nonzero momentum projection cannot be combined in one sector."
+                )
             vals = [
                 translation_project(t.reshape(self.Lx * self.Ly), (0, 0))
                 if self.translation_project

@@ -23,23 +23,24 @@ bits. Read the settings through the module, e.g., as ``global_defs.DT_OUT_REAL``
 values. A variational state keeps the output data type it was created with, so the data types should
 be set before creating it.
 """
+
 import jax
+
 jax.config.update("jax_enable_x64", True)
-import jax.numpy as jnp
 import os
+
+import jax.numpy as jnp
 
 #: Allowed real data types, by the names used in the environment variables.
 allowed_dtypes_real = {
     "f64": jnp.float64,
     "f32": jnp.float32,
     "f16": jnp.float16,
-    "bf16": jnp.bfloat16
+    "bf16": jnp.bfloat16,
 }
 #: Allowed complex data types, by the names used in the environment variables.
-allowed_dtypes_cpx = {
-    "c128": jnp.complex128,
-    "c64": jnp.complex64
-}
+allowed_dtypes_cpx = {"c128": jnp.complex128, "c64": jnp.complex64}
+
 
 def _read_dtype(dtype_str: str, real: bool):
     """Return the data type called ``dtype_str``, which has to be real if ``real``, and complex otherwise."""
@@ -52,31 +53,31 @@ def _read_dtype(dtype_str: str, real: bool):
             if dtype_cpx is not None:
                 raise ValueError("Trying to set a real variable with a complex dtype.")
 
-            allowed = ", ".join(k for k in allowed_dtypes_real.keys())
-            raise ValueError(
-                f"Allowed real dtypes are {allowed}. "
-                f"Got {dtype_str}."
-            )
+            allowed = ", ".join(k for k in allowed_dtypes_real)
+            raise ValueError(f"Allowed real dtypes are {allowed}. Got {dtype_str}.")
         return jnp.dtype(dtype_real)
 
     if dtype_cpx is None:
         if dtype_real is not None:
             raise ValueError("Trying to set a complex variable with a real dtype.")
 
-        allowed = ", ".join(k for k in allowed_dtypes_cpx.keys())
-        raise ValueError(
-            f"Allowed complex dtypes are {allowed}. "
-            f"Got {dtype_str}."
-        )
+        allowed = ", ".join(k for k in allowed_dtypes_cpx)
+        raise ValueError(f"Allowed complex dtypes are {allowed}. Got {dtype_str}.")
     return jnp.dtype(dtype_cpx)
+
 
 def _check_dtype(dtype, real: bool, label: str):
     """Return ``dtype`` as a ``jnp.dtype``, after checking that it is an allowed real or complex data type."""
     if isinstance(dtype, str):
-        raise TypeError(f"{label} has to be a data type, e.g., jnp.float32. Got the string '{dtype}'.")
+        raise TypeError(
+            f"{label} has to be a data type, e.g., jnp.float32. Got the string '{dtype}'."
+        )
 
     dtype = jnp.dtype(dtype)
-    allowed = [jnp.dtype(d) for d in (allowed_dtypes_real if real else allowed_dtypes_cpx).values()]
+    allowed = [
+        jnp.dtype(d)
+        for d in (allowed_dtypes_real if real else allowed_dtypes_cpx).values()
+    ]
     if dtype not in allowed:
         raise TypeError(
             f"Allowed dtypes for {label} are {', '.join(str(d) for d in allowed)}. "
@@ -84,6 +85,7 @@ def _check_dtype(dtype, real: bool, label: str):
         )
 
     return dtype
+
 
 #: Data type of continuous particle configurations.
 DT_SAMPLES_CONT = jnp.float64
@@ -103,21 +105,22 @@ DT_OPERATORS_REAL = DT_OUT_REAL
 DT_OPERATORS_CPX = DT_OUT_CPX
 
 #: Whether the library runs on several JAX processes. It can only be set through ``JVMC_USE_DISTRIBUTED``.
-USE_DISTRIBUTED = os.environ.get('JVMC_USE_DISTRIBUTED', 'false').lower() == 'true'
+USE_DISTRIBUTED = os.environ.get("JVMC_USE_DISTRIBUTED", "false").lower() == "true"
 
 #: Allowed values of ``BATCH_LOOP``.
 BATCH_LOOPS = ("python", "compiled")
+
 
 def _read_batch_loop(batch_loop: str):
     """Return ``batch_loop`` in lower case, after checking that it is one of ``BATCH_LOOPS``."""
     batch_loop = batch_loop.lower()
     if batch_loop not in BATCH_LOOPS:
         raise ValueError(
-            f"Allowed batch loops are {', '.join(BATCH_LOOPS)}. "
-            f"Got {batch_loop}."
+            f"Allowed batch loops are {', '.join(BATCH_LOOPS)}. Got {batch_loop}."
         )
 
     return batch_loop
+
 
 #: Where the loop over the batches of a sharded call runs (see ``jVMC_exp.sharding_config.sharded``):
 #: ``"python"`` makes one dispatch per batch, and the network is compiled once per batch size,
@@ -127,19 +130,26 @@ def _read_batch_loop(batch_loop: str):
 #: with ``update()``.
 BATCH_LOOP = _read_batch_loop(os.environ.get("JVMC_BATCH_LOOP", "python"))
 
+
 def _read_matmul_chunk_bytes(chunk_bytes):
     """Return ``chunk_bytes`` as an ``int``, after checking that it is not negative."""
     chunk_bytes = int(chunk_bytes)
     if chunk_bytes < 0:
-        raise ValueError(f"The matmul chunk size has to be non-negative, got {chunk_bytes}.")
+        raise ValueError(
+            f"The matmul chunk size has to be non-negative, got {chunk_bytes}."
+        )
 
     return chunk_bytes
+
 
 #: Largest chunk, in bytes, of the Jacobian that the products building the S matrix of SR/TDVP and
 #: the tangent kernel of MinSR handle at once (0: the whole Jacobian at once). When it compiles a
 #: matrix product, XLA autotunes it on its own copies of the operands, as large as the operands.
 #: It is read when a product is compiled, and it affects the memory use, not the result.
-MATMUL_CHUNK_BYTES = _read_matmul_chunk_bytes(os.environ.get("JVMC_MATMUL_CHUNK_BYTES", 2**30))
+MATMUL_CHUNK_BYTES = _read_matmul_chunk_bytes(
+    os.environ.get("JVMC_MATMUL_CHUNK_BYTES", 2**30)
+)
+
 
 def update(
     *,

@@ -1,7 +1,9 @@
+from abc import ABC, abstractmethod
+
+import jax
 import jax.numpy as jnp
 import numpy as np
-import jax
-from abc import ABC, abstractmethod
+
 
 class AbstractGeometry(ABC):
     """
@@ -24,29 +26,30 @@ class AbstractGeometry(ABC):
         * ``extent``: Tuple with the length of the system along each direction. If ``None``, the \
           length is 1 along every direction.
     """
+
     def __init__(self, n_particles, n_dim, PBC=True, extent=None):
         self._n_particles = n_particles
-        self._n_dim = n_dim 
+        self._n_dim = n_dim
 
         if np.ndim(PBC) == 0:
-            PBC = (PBC, ) * self.n_dim
+            PBC = (PBC,) * self.n_dim
         self._PBC = tuple(bool(p) for p in PBC)
 
         if extent is None:
             extent = (1,) * self.n_dim
         elif not isinstance(extent, tuple):
-            raise ValueError(f'Extent has to be a tuple, got {extent}.')
+            raise ValueError(f"Extent has to be a tuple, got {extent}.")
         self._extent = extent
 
     def __eq__(self, other):
         if not isinstance(other, AbstractGeometry):
             return NotImplemented
         return (
-            type(self) is type(other) and
-            self.n_particles == other.n_particles and
-            self.n_dim == other.n_dim and
-            self.PBC == other.PBC and
-            self.extent == other.extent
+            type(self) is type(other)
+            and self.n_particles == other.n_particles
+            and self.n_dim == other.n_dim
+            and self.PBC == other.PBC
+            and self.extent == other.extent
         )
 
     def __hash__(self):
@@ -56,22 +59,22 @@ class AbstractGeometry(ABC):
     def n_particles(self):
         """Number of particles."""
         return self._n_particles
-    
+
     @property
     def n_dim(self):
         """Number of spatial dimensions."""
         return self._n_dim
-    
+
     @property
     def PBC(self):
         """Tuple with one ``bool`` per direction, ``True`` where the boundary conditions are periodic."""
         return self._PBC
-    
+
     @property
     def extent(self):
         """Tuple with the length of the system along each direction."""
         return self._extent
-    
+
     def get_absolute_distance(self, x):
         """
         Distances between all pairs of particles, with the minimum image convention along the \
@@ -89,7 +92,7 @@ class AbstractGeometry(ABC):
         sqrd_dist = jnp.sum(diff**2, axis=-1)
 
         return jnp.sqrt(sqrd_dist[jnp.triu_indices(self.n_particles, 1)])
-    
+
     @property
     @abstractmethod
     def domain(self):
@@ -97,8 +100,7 @@ class AbstractGeometry(ABC):
         Region of space of the system, as an array of shape ``(n_dim, 2)`` with the lower and the \
         upper bound along each direction.
         """
-        pass
-    
+
     @abstractmethod
     def apply_PBC(self, x):
         """
@@ -112,7 +114,6 @@ class AbstractGeometry(ABC):
             Array of the same shape as ``x``, unchanged along the directions without periodic \
             boundary conditions.
         """
-        pass
 
     @abstractmethod
     def uniform_populate(self, key, shape, dtype):
@@ -130,7 +131,6 @@ class AbstractGeometry(ABC):
         Returns:
             Array of configurations of shape ``shape``.
         """
-        pass
 
     @abstractmethod
     def get_distance(self, x):
@@ -145,6 +145,7 @@ class AbstractGeometry(ABC):
             Array of shape ``(n_particles, n_particles, n_dim)`` whose entry ``[i, j]`` is \
             :math:`r_i - r_j`.
         """
+
 
 class HyperRectangle(AbstractGeometry):
     """
@@ -165,6 +166,7 @@ class HyperRectangle(AbstractGeometry):
 
             geometry = jVMC_exp.geometry.HyperRectangle(3, 2, PBC=(True, False), extent=(4., 2.))
     """
+
     @property
     def domain(self):
         """
@@ -174,7 +176,7 @@ class HyperRectangle(AbstractGeometry):
         ext = jnp.array(self.extent)
 
         return jnp.stack([-ext / 2, ext / 2], axis=1)
-    
+
     def apply_PBC(self, x):
         """
         Map the coordinates along the periodic directions into :math:`[-L_d/2, L_d/2)`.
@@ -190,8 +192,8 @@ class HyperRectangle(AbstractGeometry):
         extent = jnp.tile(jnp.array(self.extent), self.n_particles)
         PBC = jnp.tile(jnp.array(self.PBC, dtype=jnp.bool_), self.n_particles)
 
-        return jnp.where(PBC, ((x + extent/2) % extent) - extent/2, x)
-    
+        return jnp.where(PBC, ((x + extent / 2) % extent) - extent / 2, x)
+
     def uniform_populate(self, key, shape, dtype=jnp.float64):
         """
         Draw configurations with each coordinate distributed uniformly between the bounds of the \
@@ -212,7 +214,7 @@ class HyperRectangle(AbstractGeometry):
         extent_flat = jnp.tile(jnp.array(self.extent), self.n_particles)
 
         return self.apply_PBC(low_flat + samples * extent_flat)
-    
+
     def get_distance(self, x):
         x = x.reshape((self.n_particles, self.n_dim))
         diff = x[:, None, :] - x[None, :, :]
@@ -220,7 +222,7 @@ class HyperRectangle(AbstractGeometry):
         PBC = jnp.array(self.PBC, dtype=bool)
 
         return diff - PBC * extent * jnp.round(diff / extent)
-    
+
     def count_particles_in_cell(self, sample, linear_partition):
         """
         Count the particles in each cell of a regular grid over the domain.
@@ -239,20 +241,16 @@ class HyperRectangle(AbstractGeometry):
         """
         sample = sample.reshape((self.n_particles, self.n_dim))
         delta = jnp.array(self.extent) / jnp.array(linear_partition)
-        shifted = sample - self.domain[:, 0]              
-        cell_indices = jnp.floor(shifted / delta).astype(jnp.int32)      
+        shifted = sample - self.domain[:, 0]
+        cell_indices = jnp.floor(shifted / delta).astype(jnp.int32)
 
         # clip to handle particles on the upper boundary
-        cell_indices = jnp.clip(
-            cell_indices,
-            0,
-            jnp.array(linear_partition) - 1
-        )
+        cell_indices = jnp.clip(cell_indices, 0, jnp.array(linear_partition) - 1)
 
         flat_indices = jnp.ravel_multi_index(
-            cell_indices.T,
-            dims=linear_partition,
-            mode='clip'
+            cell_indices.T, dims=linear_partition, mode="clip"
         )
 
-        return jnp.bincount(flat_indices, length=np.prod(linear_partition)).reshape(linear_partition)
+        return jnp.bincount(flat_indices, length=np.prod(linear_partition)).reshape(
+            linear_partition
+        )

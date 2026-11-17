@@ -11,16 +11,16 @@ With an optimizer, the stepper is passed to ``ground_state_search()`` or ``time_
     opt = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=False)
     out = opt.time_evolution(
         t_max, jVMC_exp.objective_function.Observable(H),
-        jVMC_exp.stepper.RK23(timeStep=1e-3, rtol=1e-5, atol=1e-5)
+        jVMC_exp.stepper.RK23(time_step=1e-3, rtol=1e-5, atol=1e-5)
     )
 
     # Ground state search with a learning rate that decays from 5e-2 to 5e-3
-    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonalShift=1e-3)
+    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=1e-3)
     schedule = optax.exponential_decay(5e-2, transition_steps=500, decay_rate=0.1)
     out = opt.ground_state_search(500, energy, jVMC_exp.stepper.Euler(schedule))
 
 The keyword arguments of these methods go to ``stepper.step()``: the adaptive steppers take
-``normFunction`` and pass the others on to the right-hand side.
+``norm_function`` and pass the others on to the right-hand side.
 
 Steppers with a fixed time step
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

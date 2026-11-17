@@ -1,8 +1,10 @@
 """PRNG keys and seeds."""
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.experimental import multihost_utils
+
 
 def format_key(key):
     """
@@ -23,8 +25,9 @@ def format_key(key):
         return jax.random.PRNGKey(generate_seed())
     else:
         return jax.random.PRNGKey(int(key))
-    
+
+
 def generate_seed():
     """Random seed in ``[0, 2**32)``, from the entropy of the operating system."""
-    seed = np.random.SeedSequence().entropy % int(2 ** 32)
+    seed = np.random.SeedSequence().entropy % (2**32)
     return int(multihost_utils.broadcast_one_to_all(np.uint32(seed)))
