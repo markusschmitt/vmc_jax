@@ -125,13 +125,12 @@ class TestGradients(unittest.TestCase):
 
         _general_test_grad((rbmModel1, rbmModel2), num_samples, L, self)
 
-    # TODO: RNN is no longer working
-    # def test_gradients_nonholomorphic(self): 
-    #     L = 3
-    #     num_samples = 4
-    #     model = nets.RNN1DGeneral(L=L)
+    def test_gradients_nonholomorphic(self): 
+        L = 3
+        num_samples = 4
+        model = nets.RNN1DGeneral(L=L)
 
-    #     _general_test_grad(model, num_samples, L, self)
+        _general_test_grad(model, num_samples, L, self)
     
     def test_gradients_complex_nonholomorphic(self):
         L = 3

@@ -90,8 +90,8 @@ class RNN1DGeneral(nn.Module):
     cell: Union[str, list] = "RNN"
 
     def setup(self):
-        if isinstance(self.cell, str) and self.cell != "RNN":
-            ValueError("Complex parameters for LSTM/GRU not yet implemented.")
+        if isinstance(self.cell, str) and self.cell != "RNN" and not self.realValuedParams:
+            raise ValueError("Complex parameters for LSTM/GRU not yet implemented.")
 
         if self.realValuedParams:
             self.dtype = global_defs.DT_PARAMS_REAL
@@ -139,8 +139,14 @@ class RNN1DGeneral(nn.Module):
 
         return (self.logProbFactor * jax.nn.log_softmax(amp)).transpose() + phase 
 
+    def _initial_carry(self, axis_marker):
+        # Same method as in the RWKV to make the input device-varying, otherwise it doesn't work with shard_map
+        axis_marker = jnp.asarray(axis_marker, dtype=jnp.int32) * jnp.asarray(0, dtype=jnp.int32)
+        return (self.zero_carry + axis_marker, jnp.zeros(self.inputDim) + axis_marker)
+
     def __call__(self, x):
-        _, probs = self.rnn_cell((self.zero_carry, jnp.zeros(self.inputDim)), jax.nn.one_hot(x, self.inputDim))
+        x = jnp.asarray(x, dtype=jnp.int32)
+        _, probs = self.rnn_cell(self._initial_carry(x[0]), jax.nn.one_hot(x, self.inputDim))
 
         return jnp.sum(probs)
 
@@ -156,7 +162,7 @@ class RNN1DGeneral(nn.Module):
     def sample(self, key):
         myKeys = jax.random.split(key, self.L)
         _, sample = self.rnn_cell_sample(
-            (self.zero_carry, jnp.zeros(self.inputDim)),
+            self._initial_carry(key[0]),
             (myKeys)
         )
         return sample[1]

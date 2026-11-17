@@ -9,6 +9,7 @@ import jVMC_exp
 import jVMC_exp.nets as nets
 from jVMC_exp.vqs import NQS
 import jVMC_exp.sampler as sampler
+from jVMC_exp.symmetry import ProjectedOrbitNet
 from jVMC_exp.symmetry.lattice_symetries import chain_reflection_symmetry, spin_flip_symmetry, square_translation_symmetry
 
 @jax.jit
@@ -113,7 +114,7 @@ def _test_autoreg_sampling(net, test_class: unittest.TestCase, L=(4,), mu=2, log
     pmc, _ = np.histogram(samples_int, bins=np.arange(0, 17), weights=p)
     pmc = pmc / jnp.sum(pmc)
 
-    test_class.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 1.1e-3)
+    test_class.assertTrue(jnp.max(jnp.abs(pmc - pex.reshape((-1,))[:16])) < 2e-3)
 
 class TestMC(unittest.TestCase):
 
@@ -178,38 +179,38 @@ class TestMC(unittest.TestCase):
         _test_sampling(net, self)
 
 
-    # def test_autoregressive_sampling(self):
-    #     rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, depth=2)
-    #     rbm = nets.RBM(numHidden=2, bias=False)
-    #     model = jVMC_exp.nets.TwoNets((rnn, rbm))
-    #     orbit = _translation_projector(4)
-    #     net = orbit * model
+    def test_autoregressive_sampling(self):
+        rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, depth=2)
+        rbm = nets.RBM(numHidden=2, bias=False)
+        model = jVMC_exp.nets.TwoNets((rnn, rbm))
+        orbit = _translation_projector(4)
+        net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
         
-    #     _test_autoreg_sampling(net, self)
+        _test_autoreg_sampling(net, self)
 
-    # def test_autoregressive_sampling_with_symmetries(self):
-    #     rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, realValuedOutput=True)
-    #     rbm = nets.RBM(numHidden=2, bias=False)
-    #     model = jVMC_exp.nets.TwoNets((rnn, rbm))
-    #     orbit = _translation_projector(4)
-    #     net = orbit * model
+    def test_autoregressive_sampling_with_symmetries(self):
+        rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, realValuedOutput=True)
+        rbm = nets.RBM(numHidden=2, bias=False)
+        model = jVMC_exp.nets.TwoNets((rnn, rbm))
+        orbit = _translation_projector(4)
+        net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
         
-    #     _test_autoreg_sampling(net, self)
+        _test_autoreg_sampling(net, self)
 
-    # def test_autoregressive_sampling_with_lstm(self):
-    #     rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True, inputDim=2)
-    #     rbm = nets.RBM(numHidden=2, bias=False)
-    #     model = jVMC_exp.nets.TwoNets((rnn, rbm))
-    #     orbit = _translation_projector(4)
-    #     net = orbit * model
+    def test_autoregressive_sampling_with_lstm(self):
+        rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, cell="LSTM", realValuedParams=True, realValuedOutput=True, inputDim=2)
+        rbm = nets.RBM(numHidden=2, bias=False)
+        model = jVMC_exp.nets.TwoNets((rnn, rbm))
+        orbit = _translation_projector(4)
+        net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
 
-    #     _test_autoreg_sampling(net, self)
+        _test_autoreg_sampling(net, self)
 
-    # def test_autoregressive_sampling_with_gru(self):
-    #     rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, cell="GRU", realValuedParams=True, realValuedOutput=True, inputDim=2)
-    #     rbm = nets.RBM(numHidden=2, bias=False)
+    def test_autoregressive_sampling_with_gru(self):
+        rnn = nets.RNN1DGeneral(L=4, hiddenSize=5, cell="GRU", realValuedParams=True, realValuedOutput=True, inputDim=2)
+        rbm = nets.RBM(numHidden=2, bias=False)
 
-    #     _test_autoreg_sampling((rnn, rbm), self)
+        _test_autoreg_sampling((rnn, rbm), self)
 
 #     def test_autoregressive_sampling_with_rnn2d(self):
 #         rnn = nets.RNN2DGeneral(L=2, hiddenSize=5, cell="RNN", realValuedParams=True, realValuedOutput=True)

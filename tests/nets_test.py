@@ -1,6 +1,7 @@
 import unittest
 import jVMC_exp
 import jVMC_exp.nets as nets
+from jVMC_exp.symmetry import ProjectedOrbitNet
 from jVMC_exp.symmetry.lattice_symetries import square_translation_symmetry
 
 import jax
@@ -54,30 +55,30 @@ class TestProjectedOrbitNet(unittest.TestCase):
 
         self.assertTrue(jnp.max(jnp.abs(psiS)) < 1e-12)
 
-    # def test_projected_orbit_net_generative(self):
-    #     L=5
-    #     rnn = nets.RNN1DGeneral(L=5)
-    #     orbit = square_translation_symmetry(L, 1, "spin")
-    #     rnn_sym = orbit * rnn
-    #     params = rnn_sym.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
+    def test_projected_orbit_net_generative(self):
+        L=5
+        rnn = nets.RNN1DGeneral(L=5)
+        orbit = square_translation_symmetry(L, 1, "spin")
+        rnn_sym = ProjectedOrbitNet(base_net=rnn, symmetry=orbit, symmetry_average="sep")
+        params = rnn_sym.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
 
-    #     S0 = jnp.pad(jnp.array([1, 0, 1, 1, 0]), (0, 4), 'wrap')
-    #     S = jnp.array([S0[i:i + 5]for i in range(5)])
-    #     psiS = jax.vmap(lambda s: rnn_sym.apply(params, s))(S)
-    #     psiS = psiS - psiS[0]
+        S0 = jnp.pad(jnp.array([1, 0, 1, 1, 0]), (0, 4), 'wrap')
+        S = jnp.array([S0[i:i + 5]for i in range(5)])
+        psiS = jax.vmap(lambda s: rnn_sym.apply(params, s))(S)
+        psiS = psiS - psiS[0]
 
-    #     self.assertTrue(jnp.max(jnp.abs(psiS)) < 1e-12)
+        self.assertTrue(jnp.max(jnp.abs(psiS)) < 1e-12)
 
 
 class TesDT_PARAMS_CPXNet(unittest.TestCase):
 
-    # def test_cpx_rnn_1d(self):
-    #     rnn = nets.RNN1DGeneral(L=5, realValuedParams=False)
-    #     params = rnn.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
+    def test_cpx_rnn_1d(self):
+        rnn = nets.RNN1DGeneral(L=5, realValuedParams=False)
+        params = rnn.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
 
-    #     S0 = jnp.array([1, 0, 1, 1, 0])
-    #     psiS0 = rnn.apply(params, S0)
-    #     self.assertTrue(psiS0.dtype == np.complex128)
+        S0 = jnp.array([1, 0, 1, 1, 0])
+        psiS0 = rnn.apply(params, S0)
+        self.assertTrue(psiS0.dtype == np.complex128)
 
     # def test_cpx_rnn_2d(self):
     #     rnn = nets.RNN2DGeneral(L=4, realValuedParams=False)
