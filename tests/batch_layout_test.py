@@ -3,6 +3,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from jax.sharding import PartitionSpec
+
+from jVMC_exp import sharding_config
 from jVMC_exp.sharding_config import (
     BatchLayout, DEVICE_SHARDING, DEVICE_SPEC, REPLICATED_SHARDING, sharded, pad_to_devices,
     _take_batch, _trim_batch, _put_batch,
@@ -147,6 +150,14 @@ class TestShardedDecorator(unittest.TestCase):
         self.assertTrue(jnp.array_equal(out["sum"], x + y))
         self.assertTrue(jnp.array_equal(out["prod"], x * y))
 
+    def test_arguments_of_different_lengths_raise(self):
+        model = _Model()
+        x, y = _data(10 * D, seed=0), _data(6 * D, seed=1)
+        for a, b in ((x, y), (y, x)):
+            with self.subTest(lengths=(a.shape[0], b.shape[0])):
+                with self.assertRaises(ValueError):
+                    model.combine(a, b, batch_size=4 * D)
+
     def test_host_input(self):
         model = _Model()
         x = np.arange(10 * D * 3, dtype=np.float64).reshape(10 * D, 3)
@@ -199,6 +210,10 @@ class TestShardedDecorator(unittest.TestCase):
         self.assertEqual(iterable.layout, BatchLayout(len(pad_to_devices(x)), 4 * D))
         for piece, expected in zip(iterable, iterable.layout.split(pad_to_devices(2 * x))):
             self.assertTrue(jnp.array_equal(piece, expected))
+
+class TestModule(unittest.TestCase):
+    def test_P_is_partition_spec(self):
+        self.assertIs(sharding_config.P, PartitionSpec)
 
 if __name__ == "__main__":
     unittest.main()

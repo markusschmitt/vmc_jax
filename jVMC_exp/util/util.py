@@ -1,3 +1,7 @@
+"""
+Measurements, the conversion of dense matrices into operators, the norm of the quantum geometric
+tensor for the adaptive steppers and the parameter layouts of the optimizers.
+"""
 from __future__ import annotations
 import jax.numpy as jnp
 import collections
@@ -6,21 +10,42 @@ import numpy as np
 from functools import partial
 import jax
 
-import jVMC_exp
 from jVMC_exp import global_defs
-import jVMC_exp.nets.activation_functions as act_funs
 
 if TYPE_CHECKING:
     from jVMC_exp.sampler.base import AbstractMCSampler
     from jVMC_exp.optimizer import TDVP
 
+#: An operator, or a callable returning a ``SampledObs``, with the keyword arguments to measure it
+#: with, e.g. ``(hamiltonian, {"t": 0.1})``.
 OperatorWithKwargs = tuple[Any, dict[str, Any]]
+#: A value of the ``observables`` dictionary of ``measure()``: an operator, a callable returning a
+#: ``SampledObs``, or an ``OperatorWithKwargs``.
 ObservableEntry = Union[Any, OperatorWithKwargs]
     
 def has_callable_attr(cls, attr: str):
+    """
+    Whether ``cls`` has a callable attribute ``attr``, e.g. whether a network has a ``sample`` \
+    method.
+    """
     return callable(getattr(cls, attr, None))
 
 def remove_double(arr, params_shape):
+    """
+    Keep the first half of the block of every leaf of a flat array.
+
+    For a holomorphic network, ``NQS.gradients()`` holds for every leaf of the parameter tree a \
+    block of ``2 * size`` entries: the derivatives with respect to the real parts of the \
+    parameters, followed by those with respect to the imaginary parts, which are ``1j`` times \
+    the former. The first half of every block is the complex derivative.
+
+    Args:
+        * ``arr``: Flat array with a block of ``2 * size`` entries per leaf.
+        * ``params_shape``: ``NQS.paramShapes``, the ``(size, shape)`` of every leaf.
+
+    Returns:
+        Flat array with the first ``size`` entries of every block.
+    """
     new_arr = []
     start = 0
     for s in params_shape:
@@ -30,6 +55,17 @@ def remove_double(arr, params_shape):
     return jnp.concatenate(new_arr)
 
 def make_real_array(arr, params_shape):
+    """
+    Real layout of a flat complex array, the layout of ``NQS.parameters_flat``: for every leaf of \
+    the parameter tree, the real parts of its ``size`` entries followed by their imaginary parts.
+
+    Args:
+        * ``arr``: Complex flat array with ``size`` entries per leaf.
+        * ``params_shape``: ``NQS.paramShapes``, the ``(size, shape)`` of every leaf.
+
+    Returns:
+        Real flat array with ``2 * size`` entries per leaf. ``make_cmplx_array()`` is the inverse.
+    """
     new_arr = []
     start = 0
     for s in params_shape:
@@ -41,6 +77,17 @@ def make_real_array(arr, params_shape):
     return jnp.concatenate(new_arr)
 
 def make_cmplx_array(arr, params_shape):
+    """
+    Inverse of ``make_real_array()``: the complex flat array whose real and imaginary parts are \
+    the two halves of the block of every leaf.
+
+    Args:
+        * ``arr``: Real flat array with ``2 * size`` entries per leaf.
+        * ``params_shape``: ``NQS.paramShapes``, the ``(size, shape)`` of every leaf.
+
+    Returns:
+        Complex flat array with ``size`` entries per leaf.
+    """
     new_arr = []
     start = 0
     for s in params_shape:
@@ -50,99 +97,39 @@ def make_cmplx_array(arr, params_shape):
     return jnp.concatenate(new_arr)
 
 def get_iterable(x):
+    """``x`` if it is iterable, otherwise the tuple ``(x,)``."""
     if isinstance(x, collections.abc.Iterable):
         return x
     else:
         return (x,)
-
-def init_net(descr, dims, seed=0):
-    from jVMC_exp.vqs import NQS
-
-    def get_activation_functions(actFuns):
-        if type(actFuns) is list:
-            return tuple([act_funs.activationFunctions[fn] for fn in actFuns])
-
-        return act_funs.activationFunctions[actFuns]
-
-    netTypes = {
-        "RBM": jVMC_exp.nets.RBM,
-        "FFN": jVMC_exp.nets.FFN,
-        "CNN": jVMC_exp.nets.CNN,
-        "RNN": jVMC_exp.nets.RNN1DGeneral,
-        "RNN2D": jVMC_exp.nets.RNN2DGeneral,
-        "CpxRBM": jVMC_exp.nets.CpxRBM,
-        "CpxCNN": jVMC_exp.nets.CpxCNN
-    }
-
-    def get_net(descr, dims):
-        return netTypes[descr["type"]](**descr["parameters"])
-
-    if "actFun" in descr["net1"]["parameters"]:
-        descr["net1"]["parameters"]["actFun"] = get_activation_functions(descr["net1"]["parameters"]["actFun"])
-
-    symms = tuple()
-    for key in ["translation", "rotation", "reflection", "spinflip"]:
-        if key in descr:
-            symms = symms + (key,)
-    symm_factors = {}
-    for key in symms:
-        fac_key = key + "_factor"
-        symm_factors[fac_key] = descr[fac_key] if fac_key in descr else 1
-
-    if symms:
-        raise NotImplementedError(
-            "init_net no longer builds deprecated util.symmetries orbits. "
-            "Construct a jVMC_exp.symmetry.SymmetryProjector and apply it to the network explicitly."
-        )
-
-    if not "net2" in descr:
-        model = get_net(descr["net1"], dims)
-        isGenerator = "sample" in dir(model)
-
-    else:
-        if "actFun" in descr["net2"]["parameters"]:
-            descr["net2"]["parameters"]["actFun"] = get_activation_functions(descr["net2"]["parameters"]["actFun"])
-
-        model1 = get_net(descr["net1"], dims)
-        model2 = get_net(descr["net2"], dims)
-        model = jVMC_exp.nets.two_nets_wrapper.TwoNets(net1=model1, net2=model2)
-        isGenerator = "sample" in dir(model1)
-
-    psi = NQS(model, sampleShape=dims, batchSize=descr["batch_size"], seed=seed) # TODO: is dims = sampleShape?
-    psi(jnp.zeros((1,) + dims, dtype=np.int32))
-
-    return psi
 
 def measure(
     observables: Dict[str, ObservableEntry],
     sampler: AbstractMCSampler, 
     num_samples: int = None
 ):
-    ''' 
-    Measure expectation values of operators.
+    """
+    Measure observables with a sampler.
 
     Args:
-        observables: Dictionary with operator names as keys. Values can be:
-            - A single operator or a callable
-            - A single (operator or a callable, kwargs_dict) tuple  
-            - A list of operators and/or (operator, kwargs_dict) tuples
-
-            The callable has to return a jVMC.stats.SampledObs
-            
-            Examples:
-            
-            .. code-block:: python
-
-                {
-                    "energy": hamiltonian,
-                    "magnetization": (mag_op, {"direction": "z", "t": 0.1})
-                }
-        sampler: Monte Carlo sampler  
-        num_samples: Number of samples (optional)
+        * ``observables``: Dictionary from names to operators, to callables without arguments \
+          that return a ``jVMC_exp.stats.SampledObs``, or to tuples ``(operator, kwargs)`` or \
+          ``(callable, kwargs)``. The keyword arguments are passed to ``sampler(operator, ...)``, \
+          e.g. the time ``t`` of a time-dependent operator, or to the callable.
+        * ``sampler``: Sampler of the variational state. The operators are measured on its \
+          current samples, see ``sampler.__call__()``.
+        * ``num_samples`` [optional]: Number of samples, passed to ``sampler(operator, ...)``.
 
     Returns:
-        Dictionary with "mean", "variance", "MC_error" for each observable.
-    '''
+        Dictionary with, for every name, a dictionary with the real parts of the mean \
+        (``"mean"``), of the variance (``"variance"``) and of the statistical error of the mean \
+        (``"MC_error"``), with the axes of length one removed.
+
+    Example::
+
+        result = measure({"energy": hamiltonian, "X0": (op.SigmaX(0), {"t": 0.1})}, sampler)
+        result["energy"]["mean"], result["energy"]["MC_error"]
+    """
     # Local import to avoid circular import issues.
     from jVMC_exp.operator.base import AbstractOperator
 
@@ -173,33 +160,31 @@ def matrix_to_jvmc_operator(
     *,
     return_conjugate: bool = False,
 ):
+    """
+    Convert a dense one- or two-site matrix into a discrete operator of ``jVMC_exp``.
+
+    The matrix is expanded in the products of ``IdentityOperator``, ``SigmaX``, ``SigmaY`` and \
+    ``SigmaZ`` on ``sites``: 4 terms for one site, 16 for two sites. The expectation values \
+    measured with the returned operator, by ``sampler(operator)`` or in ``Infidelity``, are \
+    those of ``matrix``. Rows and columns of ``matrix`` are numbered by the local \
+    configurations, starting with the local state 0; for two sites the index is \
+    ``2 * s[sites[0]] + s[sites[1]]``.
+
+    Args:
+        * ``matrix``: Dense matrix, of shape ``(2, 2)`` for one site or ``(4, 4)`` for two sites.
+        * ``sites``: Site, or pair of sites.
+        * ``return_conjugate``: If ``True``, also return the operator of the conjugate \
+          transpose ``matrix.conj().T``.
+
+    Returns:
+        The operator, or ``(operator, conjugate_operator)`` with ``return_conjugate=True``.
+
+    Raises ``ValueError`` if ``sites`` has neither one nor two sites, if ``matrix`` is not \
+    square, or if its shape does not match the number of sites.
+    """
     # Local import to avoid circular import issues.
     import jVMC_exp.operator.discrete.branch_free as op
 
-    r"""Convert a dense one- or two-site matrix into a ``jVMC`` discrete operator.
-
-    The matrix is expanded in the local operator basis
-    :math:`\{I, \sigma_x, \sigma_y, \sigma_z\}` and mapped onto the
-    corresponding ``jVMC_exp.operator.discrete`` operators. For two-site
-    matrices, tensor products of the same basis are used on the specified sites.
-
-    Args:
-        matrix: Dense operator matrix. Supported shapes are ``(2, 2)`` for a
-            single-site operator and ``(4, 4)`` for a two-site operator.
-        sites: Target lattice site or pair of lattice sites. Pass either a
-            single integer or an iterable of length two.
-        return_conjugate: If ``True``, also return the operator constructed from
-            the conjugate transpose ``matrix.conj().T``.
-
-    Returns:
-        The discrete operator corresponding to ``matrix`` on ``sites``. If
-        ``return_conjugate=True``, returns ``(operator, conjugate_operator)``.
-
-    Raises:
-        ValueError: If ``sites`` does not specify one or two sites, if
-            ``matrix`` is not square, or if its shape is incompatible with the
-            number of sites.
-    """
     local_basis = [
         np.eye(2, dtype=global_defs.DT_OPERATORS_CPX),
         np.array([[0.0, 1.0], [1.0, 0.0]], dtype=global_defs.DT_OPERATORS_CPX),
@@ -252,7 +237,30 @@ def matrix_to_jvmc_operator(
 
 def s_norm_fn(opt: TDVP):
     """
-    Norm induced by the quantum geometric tensor, :math:`\\|v\\|_S = \\sqrt{|v^\\dagger S v|}`.
+    Norm induced by the quantum geometric tensor, :math:`\\|v\\|_S = \\sqrt{|v^\\dagger S v|}`, \
+    for the ``normFunction`` of the adaptive steppers.
+
+    ``v`` is in the layout of ``psi.parameters_flat``; for a holomorphic network it is converted \
+    to the complex parameters first. :math:`S` is ``opt.qgt``, the quantum geometric tensor of the \
+    last evaluation of ``opt``, i.e. of the last substep of the stepper. For a real ``v``, \
+    :math:`\\|v\\|_S^2` is the variance of :math:`\\sum_k v_k\\partial_k\\ln\\psi`, with the \
+    derivatives with respect to the real parameters.
+
+    Args:
+        * ``opt``: Optimizer derived from ``Evolution``, e.g. ``TDVP``, created with \
+          ``store_qgt=True``. Raises ``ValueError`` otherwise.
+
+    Returns:
+        The norm, a function of ``v``. It raises ``RuntimeError`` if ``opt`` has not been \
+        evaluated yet.
+
+    Example::
+
+        opt = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=False)
+        opt.time_evolution(
+            t_max, jVMC_exp.objective_function.Observable(H),
+            jVMC_exp.stepper.RK23(timeStep=1e-3), normFunction=jVMC_exp.util.s_norm_fn(opt)
+        )
     """
     if not opt.store_qgt:
         raise ValueError(

@@ -74,9 +74,32 @@ def _compose_local_signs(left: SymmetryProjector, right: SymmetryProjector):
     return jnp.bitwise_xor(left.local_sign_array[:, None], right.local_sign_array[None, :]).reshape(-1)
 
 def compose_projectors(
-        left: SymmetryProjector, right: SymmetryProjector, 
+        left: SymmetryProjector, right: SymmetryProjector,
         *, name: str = "composed"
     ) -> SymmetryProjector:
+    """
+    Product of two symmetry projectors.
+
+    The elements of the result are the pairs ``(l, r)`` of the elements of ``left`` and \
+    ``right``, with ``r`` running fastest: a configuration is transformed by the element ``l`` \
+    and then by the element ``r``, with the character :math:`\\chi_l\\chi_r`. The boundary signs \
+    of the element ``(l, r)`` on the site ``i`` are \
+    ``left.perm_sign[l, right.perm[r, i]] * right.perm_sign[r, i]``. Elements that coincide are \
+    merged, as in ``deduplicate_symmetry_arrays()``. Without boundary signs, the elements are \
+    the products :math:`A_lA_r` of the elements of ``left`` and ``right`` (see \
+    ``SymmetryProjector``), and the projection is the product :math:`P_lP_r` of the two \
+    projections, which is again a projection if they commute. ``left * right`` is a shorthand, \
+    with the name ``"<left>_x_<right>"``.
+
+    Args:
+        * ``left``: ``SymmetryProjector``.
+        * ``right``: ``SymmetryProjector`` on the same lattice, with the same particle type.
+        * ``name``: Name of the result.
+
+    Returns:
+        The composed ``SymmetryProjector``. Raises ``ValueError`` if the lattices or particle \
+        types differ.
+    """
     if (left.Lx, left.Ly, left.particle_type) != (right.Lx, right.Ly, right.particle_type):
         raise ValueError("Only compatible symmetries can be composed.")
     left_perm = left.perm_array
@@ -112,12 +135,19 @@ def compose_projectors(
     )
 
 def split_spinful_site_state(s, n_sites: int):
-    """Decode true ldim=4 site states into up/down occupation bits.
+    """
+    Split a spinful fermion configuration into its up and down occupations.
 
-    Local values are ``0=empty``, ``1=up``, ``2=down``, and ``3=up+down``.
-    The physical sample therefore has one integer per lattice site; fermionic
-    signs expand this representation internally to the jVMC_exp ordering
-    ``(N-1, down), (N-1, up), ..., (0, down), (0, up)``.
+    A spinful configuration has one local state per site: 0 for an empty site, 1 for spin up, \
+    2 for spin down and 3 for a doubly occupied site. The fermionic signs use this \
+    representation expanded into the modes ``(N-1, down), (N-1, up), ..., (0, down), (0, up)``.
+
+    Args:
+        * ``s``: Configuration with ``n_sites`` local states.
+        * ``n_sites``: Number of sites.
+
+    Returns:
+        ``up, down``: Occupations (0 or 1) of the two spins on each site, of shape ``(n_sites,)``.
     """
     site_state = jnp.asarray(s, dtype=jnp.int32).reshape(int(n_sites)) # flatten and adjust type
     up = jnp.bitwise_and(site_state, 1)
@@ -176,12 +206,62 @@ def _fermion_particle_hole_sign_from_occ(occ):
 
 @dataclass(frozen=True)
 class SymmetryProjector:
-    """Configuration-space symmetry projector compatible with fermionic signs.
+    """
+    Projector on a symmetry sector, acting on configurations, with fermionic signs.
 
-    ``perm[g, i]`` is used as ``s_g = s[perm[g]]``. Spinful fermions use
-    true local dimension 4 site states, with values ``0,1,2,3`` for
-    empty/up/down/double occupancy. Fermionic signs expand this to the
-    jVMC_exp ordering only inside the parity calculation.
+    The projector is defined by the ``nsymm`` elements :math:`g` of a symmetry group and their \
+    characters :math:`\\chi_g`. The element :math:`g` maps a configuration :math:`s` to \
+    :math:`g\\cdot s`: the sites are permuted, ``s[perm[g]]``, and then the local states are \
+    mapped by ``local_map[g]``. ``ProjectedOrbitNet`` projects a wave function as
+
+    .. math::
+
+        \\psi_P(s)=\\frac{1}{n_\\text{symm}}\\sum_g w_g(s)\\,\\psi(g\\cdot s),\\qquad
+        w_g(s)=\\chi_g\\,\\sigma_g(s).
+
+    For spins and bosons the sign :math:`\\sigma_g(s)` is one. For fermions it is the sign of \
+    the permutation of the occupied modes, in the mode order of the fermionic operators of \
+    ``jVMC_exp.operator``, ``(N-1, down), (N-1, up), ..., (0, down), (0, up)`` for ``N`` sites, \
+    times the boundary signs ``perm_sign``, the local phases ``local_phase`` and, for the \
+    elements with ``local_sign``, the particle-hole sign. Without local maps, the matrix \
+    :math:`A_g` with :math:`(A_g\\psi)(s)=\\sigma_g(s)\\psi(g\\cdot s)` then maps the fermion \
+    operators as :math:`A_g\\hat c_iA_g^\\dagger=\\hat c_{\\mathrm{perm}[g,i]}`, for each spin.
+
+    The functions of ``jVMC_exp.symmetry.lattice_symetries`` build the projectors of the usual \
+    lattice symmetries. ``projector_1 * projector_2`` composes two projectors (see \
+    ``compose_projectors()``), and ``projector * net`` returns the ``ProjectedOrbitNet`` of a \
+    network.
+
+    A configuration has one local state per site, with the sites of a two-dimensional lattice \
+    in the order of its site enumeration (see ``jVMC_exp.symmetry.lattice_symetries``). For \
+    spinful fermions the local states 0, 1, 2 and 3 stand for an empty site, a spin up, a spin \
+    down and a doubly occupied site.
+
+    The fields are stored as tuples, so that a projector is hashable and can be a field of a \
+    Flax module. The ``*_array`` properties return them as arrays.
+
+    Args:
+        * ``Lx``, ``Ly``: Size of the lattice.
+        * ``particle_type``: ``"spin"``, ``"boson"``, ``"spinless_fermion"`` or \
+          ``"spinful_fermion"``. The plural forms are accepted.
+        * ``perm``: Site permutations, of shape ``(nsymm, n_sites)``: the element ``g`` maps \
+          ``s`` to ``s[perm[g]]``.
+        * ``character``: Characters :math:`\\chi_g`, of shape ``(nsymm,)``.
+        * ``perm_sign`` [optional]: Boundary signs, +1 or -1, of shape ``(nsymm, n_sites)``: \
+          under the element ``g``, a fermion on the site ``i`` of ``s`` gets the sign \
+          ``perm_sign[g, i]``, e.g. -1 for the fermions that cross an antiperiodic boundary. \
+          All +1 by default.
+        * ``local_map`` [optional]: Maps of the local states, of shape ``(nsymm, local_dim)``, \
+          applied after the permutation: the local state ``v`` becomes ``local_map[g, v]``.
+        * ``local_phase`` [optional]: Phases of the local states, of shape \
+          ``(nsymm, local_dim)``: for fermions, the element ``g`` multiplies \
+          :math:`\\sigma_g(s)` by the product of ``local_phase[g, v]`` over the local states \
+          ``v`` of ``s[perm[g]]``.
+        * ``local_sign`` [optional]: 1 for the elements that include the fermionic \
+          particle-hole transformation, 0 for the others, of shape ``(nsymm,)``.
+        * ``name``: Name of the projector.
+
+    Raises ``ValueError`` if the shapes do not match, or if ``local_sign`` is not 0 or 1.
     """
     Lx: int
     Ly: int
@@ -242,47 +322,62 @@ class SymmetryProjector:
 
     @property
     def perm_array(self):
+        """``perm`` as an array of shape ``(nsymm, n_sites)``."""
         return jnp.asarray(self.perm, dtype=jnp.int32)
 
     @property
     def character_array(self):
+        """``character`` as an array of shape ``(nsymm,)``."""
         return jnp.asarray(self.character, dtype=jnp.complex128)
 
     @property
     def perm_sign_array(self):
+        """``perm_sign`` as an array of shape ``(nsymm, n_sites)``."""
         return jnp.asarray(self.perm_sign, dtype=jnp.int8)
 
     @property
     def local_map_array(self):
+        """``local_map`` as an array of shape ``(nsymm, local_dim)``, or ``None``."""
         if self.local_map is None:
             return None
         return jnp.asarray(self.local_map, dtype=jnp.int32)
 
     @property
     def local_phase_array(self):
+        """``local_phase`` as an array of shape ``(nsymm, local_dim)``, or ``None``."""
         if self.local_phase is None:
             return None
         return jnp.asarray(self.local_phase, dtype=jnp.complex128)
 
     @property
     def local_sign_array(self):
+        """``local_sign`` as an array of shape ``(nsymm,)``."""
         return jnp.asarray(self.local_sign, dtype=jnp.int8)
 
     @property
     def nsymm(self) -> int:
+        """Number of elements."""
         return int(len(self.perm))
 
     @property
     def nmodes(self) -> int:
+        """Number of sites ``n_sites``, i.e. of local states in a configuration."""
         return int(len(self.perm[0]))
 
     @property
     def is_fermion(self) -> bool:
+        """Whether the particles are fermions, spinless or spinful."""
         return self.particle_type in {"spinless_fermion", "spinful_fermion"}
 
     # Useful to determine if  autoregressive networks can be used
     @property
     def has_nontrivial_projector_weights(self) -> bool:
+        """
+        Whether a character, boundary sign or local phase differs from one, an element includes \
+        the particle-hole transformation, or the sites of fermions are permuted.
+
+        Autoregressive networks can then not be projected (see ``ProjectedOrbitNet``).
+        """
         character = np.asarray(self.character, dtype=np.complex128)
         perm = np.asarray(self.perm, dtype=np.int32)
         perm_sign = np.asarray(self.perm_sign, dtype=np.int8)
@@ -300,6 +395,7 @@ class SymmetryProjector:
     # Used to determine if autoregressive networks are egligible for symmetrization
     @property
     def has_nontrivial_factors(self) -> bool:
+        """Same as ``has_nontrivial_projector_weights``."""
         return self.has_nontrivial_projector_weights
 
     def _apply_local_map(self, states, idx=None):
@@ -312,18 +408,57 @@ class SymmetryProjector:
         return self.local_map_array[idx][states]
 
     def transformed_states(self, s):
+        """
+        All the transformed configurations :math:`g\\cdot s`.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+
+        Returns:
+            Array of shape ``(nsymm, n_sites)``.
+        """
         s = jnp.asarray(s).reshape(self.nmodes)
         return self._apply_local_map(s[self.perm_array])
 
     def transformed_state_at(self, s, idx):
+        """
+        Transformed configuration :math:`g\\cdot s` for the element ``idx``.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+            * ``idx``: Index of the element.
+
+        Returns:
+            Array of shape ``(n_sites,)``.
+        """
         s = jnp.asarray(s).reshape(self.nmodes)
         return self._apply_local_map(s[self.perm_array[idx]], idx)
 
     def random_transformed_state(self, s, key):
+        """
+        Transformed configuration :math:`g\\cdot s` for an element drawn uniformly at random.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+            * ``key``: ``jax.random`` key.
+
+        Returns:
+            Array of shape ``(n_sites,)``.
+        """
         idx = jax.random.randint(key, (), 0, self.nsymm)
         return self.transformed_state_at(s, idx)
 
     def random_transformed_states(self, samples, key):
+        """
+        ``random_transformed_state()`` for each configuration of a batch, with independent elements.
+
+        Args:
+            * ``samples``: Configurations, of shape ``(N, ...)``.
+            * ``key``: ``jax.random`` key.
+
+        Returns:
+            Array of shape ``(N, n_sites)``.
+        """
         keys = jax.random.split(key, samples.shape[0])
         return jax.vmap(self.random_transformed_state)(samples, keys)
 
@@ -376,6 +511,16 @@ class SymmetryProjector:
         return (phase * jnp.where(self.local_sign_array == 1, ph_sign, 1.0 + 0.0j)).astype(jnp.complex128)
 
     def fermion_sign_at(self, s, idx):
+        """
+        Sign :math:`\\sigma_g(s)` of the element ``idx``, one for spins and bosons.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+            * ``idx``: Index of the element.
+
+        Returns:
+            Complex scalar.
+        """
         if not self.is_fermion:
             return jnp.asarray(1.0 + 0.0j, dtype=jnp.complex128)
         occ, perm, perm_sign = self._fermion_occupancy_perm_sign(s, idx)
@@ -389,9 +534,28 @@ class SymmetryProjector:
         return (parity * boundary).astype(jnp.complex128) * self._fermion_local_sign_at(s, idx)
 
     def weight_at(self, s, idx):
+        """
+        Weight :math:`w_g(s)=\\chi_g\\sigma_g(s)` of the element ``idx``.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+            * ``idx``: Index of the element.
+
+        Returns:
+            Complex scalar.
+        """
         return self.character_array[idx] * self.fermion_sign_at(s, idx)
 
     def fermion_signs(self, s):
+        """
+        Signs :math:`\\sigma_g(s)` of all the elements, one for spins and bosons.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+
+        Returns:
+            Complex array of shape ``(nsymm,)``.
+        """
         if not self.is_fermion:
             return jnp.ones((self.nsymm,), dtype=jnp.complex128)
         occ, perm, perm_sign = self._fermion_occupancy_perm_sign(s, None)
@@ -405,9 +569,23 @@ class SymmetryProjector:
         return (parity * boundary).astype(jnp.complex128) * self._fermion_local_signs(s)
 
     def weights(self, s):
+        """
+        Weights :math:`w_g(s)=\\chi_g\\sigma_g(s)` of all the elements.
+
+        Args:
+            * ``s``: Configuration with ``n_sites`` local states, of any shape.
+
+        Returns:
+            Complex array of shape ``(nsymm,)``.
+        """
         return self.character_array * self.fermion_signs(s)
 
     def __mul__(self, other):
+        """
+        ``projector * other``: ``compose_projectors(projector, other)`` for another \
+        ``SymmetryProjector``, and ``ProjectedOrbitNet(base_net=other, symmetry=projector)`` \
+        for a Flax module.
+        """
         if isinstance(other, SymmetryProjector):
             return compose_projectors(self, other, name=f"{self.name}_x_{other.name}")
         if isinstance(other, nn.Module):
@@ -416,20 +594,47 @@ class SymmetryProjector:
 
 class ProjectedOrbitNet(nn.Module):
     """
-    Apply a ``SymmetryProjector`` orbit projector to a raw log-amplitude network.
+    Network projected on a symmetry sector.
 
-    ``symmetry_average`` selects how orbit values are combined:
-    ``"exp"`` averages complex amplitudes in log space and includes symmetry
-    weights, ``"log"`` averages log coefficients directly, and ``"sep"``
-    averages log-probabilities and phases separately. Autoregressive networks
-    require ``"sep"`` or a custom callable. The built-in ``"sep"`` average
-    assumes the pure-state convention ``logProbFactor=0.5``. Custom callables
-    receive ``(log_amplitudes, weights)``.
+    Evaluates ``base_net`` on all the transformed configurations :math:`g\\cdot s` of a \
+    ``SymmetryProjector`` and combines the logarithmic coefficients :math:`\\ln\\psi(g\\cdot s)` \
+    into :math:`\\ln\\psi_P(s)`, as set by ``symmetry_average``:
 
-    ``coefficient_net`` may return one log coefficient per symmetry element
-    from the original state. ``coefficient_state_net`` may instead return one
-    scalar log coefficient per transformed state and is vectorized over the
-    orbit. Use only one of the two coefficient interfaces.
+    * ``"exp"``: :math:`\\ln\\big(\\frac{1}{n_\\text{symm}}\\sum_g w_g(s)\\psi(g\\cdot s)\\big)`, \
+      the projection with the weights :math:`w_g(s)` of the projector \
+      (``SymmetryProjector.weights()``). If the terms cancel, the result is :math:`-\\infty`.
+    * ``"log"``: :math:`\\frac{1}{n_\\text{symm}}\\sum_g\\ln\\psi(g\\cdot s)`.
+    * ``"sep"``: \
+      :math:`\\frac12\\ln\\big(\\frac{1}{n_\\text{symm}}\\sum_g|\\psi(g\\cdot s)|^2\\big)+i\\arg\\sum_g e^{i\\,\\mathrm{Im}\\ln\\psi(g\\cdot s)}`, \
+      which averages the probabilities and the phases separately. For a network normalized \
+      with ``logProbFactor=0.5``, :math:`\\psi_P` is normalized too, and ``sample()`` draws \
+      configurations from :math:`|\\psi_P|^2`.
+    * A callable ``f(log_amplitudes, weights)``, which gets the arrays of the ``nsymm`` \
+      logarithmic coefficients and weights and returns :math:`\\ln\\psi_P(s)`.
+
+    ``"log"`` and ``"sep"`` do not use the weights, so for a projector whose weights are not all \
+    one (``SymmetryProjector.has_nontrivial_projector_weights``) they are not a linear \
+    projection, and a ``UserWarning`` is issued. A network with a ``sample()`` method (e.g. an \
+    autoregressive network) requires ``"sep"`` or a callable, and a projector whose weights are \
+    all one: otherwise a ``ValueError`` is raised when the module is set up.
+
+    The optional coefficient networks add a logarithmic coefficient :math:`c_g(s)` to each \
+    term, :math:`\\ln\\psi(g\\cdot s)\\to\\ln\\psi(g\\cdot s)+c_g(s)`: ``coefficient_net(s)`` \
+    returns the ``nsymm`` coefficients for the configuration :math:`s`, and \
+    ``coefficient_state_net(g·s)`` one coefficient for each transformed configuration. Only one \
+    of the two can be given.
+
+    The transformed configurations are passed to the networks with the shape of :math:`s`. The \
+    output is ``complex128``. ``NQS(net, ..., orbit=projector)`` wraps ``net`` into a \
+    ``ProjectedOrbitNet``, and so does ``projector * net``.
+
+    Attributes:
+        * ``base_net``: Network of :math:`\\ln\\psi`, for a single configuration.
+        * ``symmetry``: ``SymmetryProjector``.
+        * ``coefficient_net`` [optional]: Network of the ``nsymm`` coefficients :math:`c_g(s)`.
+        * ``coefficient_state_net`` [optional]: Network of the coefficient of one transformed \
+          configuration.
+        * ``symmetry_average``: ``"exp"``, ``"log"``, ``"sep"`` or a callable.
     """
     base_net: nn.Module
     symmetry: SymmetryProjector
@@ -462,8 +667,13 @@ class ProjectedOrbitNet(nn.Module):
 
     @nn.compact
     def __call__(self, s):
-        s = jnp.asarray(s).reshape(self.symmetry.nmodes)
-        states = self.symmetry.transformed_states(s)
+        """
+        Logarithmic coefficient :math:`\\ln\\psi_P(s)` of a single configuration.
+
+        :meta public:
+        """
+        s = jnp.asarray(s)
+        states = self.symmetry.transformed_states(s).reshape((self.symmetry.nsymm,) + s.shape)
 
         # TODO: This can create OOM issues since it is batched externally
         base_logs = jax.vmap(self.base_net)(states)
@@ -489,6 +699,20 @@ class ProjectedOrbitNet(nn.Module):
         )
 
     def sample(self, key):
+        """
+        Draw a configuration: ``base_net.sample()`` draws :math:`s'`, and an element :math:`g` \
+        drawn uniformly at random maps it to :math:`g\\cdot s'`.
+
+        With ``symmetry_average="sep"`` and without coefficient networks, the configurations \
+        are distributed as :math:`|\\psi_P|^2`.
+
+        Args:
+            * ``key``: ``jax.random`` key.
+
+        Returns:
+            Configuration of the shape returned by ``base_net.sample()``. Raises \
+            ``AttributeError`` if ``base_net`` has no ``sample()`` method.
+        """
         if not has_callable_attr(self.base_net, "sample"):
             raise AttributeError(
                 f"{type(self.base_net).__name__} does not have a 'sample' method. "
@@ -498,4 +722,4 @@ class ProjectedOrbitNet(nn.Module):
         sample_key, orbit_key = jax.random.split(key)
         sample = self.base_net.sample(sample_key)
 
-        return self.symmetry.random_transformed_state(sample, orbit_key)
+        return self.symmetry.random_transformed_state(sample, orbit_key).reshape(jnp.shape(sample))

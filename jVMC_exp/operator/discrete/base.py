@@ -9,6 +9,22 @@ from jVMC_exp.sharding_config import sharded, MESH
 from jVMC_exp.operator.base import AbstractOperator
 
 class Operator(AbstractOperator):
+    """
+    Base class of the operators acting on discrete computational basis configurations.
+
+    Operators are combined with ``+``, ``-``, ``*`` and ``/``. A product of two operators applies \
+    the right factor first, as for matrices. Operators can be multiplied by numbers, or by \
+    callables that accept arbitrary keyword arguments, e.g., ``lambda **kw: jnp.cos(kw["t"])``. \
+    These are evaluated with the keyword arguments given to ``get_O_loc()``, \
+    ``get_conn_elements()`` or ``to_sparse()``, which allows time-dependent prefactors. Adding a \
+    number is not supported: add a multiple of ``IdentityOperator`` instead. ``sum()`` of a list of \
+    operators works.
+
+    The operator is compiled into arrays when it is first used.
+
+    Args:
+        * ``ldim``: Local Hilbert space dimension.
+    """
     def __init__(self, ldim):
         self._ldim = ldim
         self._is_compiled = False
@@ -16,6 +32,7 @@ class Operator(AbstractOperator):
 
     @property
     def ldim(self):
+        """Local Hilbert space dimension of an elementary operator, ``None`` for combined operators."""
         return self._ldim
     
     def __add__(self, other) -> Operator:
@@ -25,7 +42,7 @@ class Operator(AbstractOperator):
         elif isinstance(other, Operator):
             return self._create_composite(self, other, 'sum')
         else:
-            raise NotImplemented
+            return NotImplemented
         
     def __radd__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
@@ -34,7 +51,7 @@ class Operator(AbstractOperator):
             # TODO: Same as previous todo
             raise NotImplementedError
         else:
-            raise NotImplemented
+            return NotImplemented
         
     def __neg__(self) -> Operator:
         return self._create_scaled(self, -1)
@@ -46,14 +63,14 @@ class Operator(AbstractOperator):
         elif isinstance(other, Operator):
             return self._create_composite(self, -other, 'sum')
         else:
-            raise NotImplemented
+            return NotImplemented
         
     def __rsub__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
             # TODO: Same as previous todo
             raise NotImplementedError
         else:
-            raise NotImplemented
+            return NotImplemented
         
     def __mul__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)) or callable(other):
@@ -61,13 +78,13 @@ class Operator(AbstractOperator):
         elif isinstance(other, Operator):
             return self._create_composite(self, other, 'mul')
         else:
-            raise NotImplemented
+            return NotImplemented
         
     def __rmul__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)) or callable(other):
             return self._create_scaled(self, other)
         else:
-            raise NotImplemented
+            return NotImplemented
         
     def __truediv__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
@@ -78,6 +95,13 @@ class Operator(AbstractOperator):
             return NotImplemented
 
     def get_O_loc(self, s, psi: NQS, *, logPsiS=None, **kwargs): 
+        """
+        Compute the local estimator of the operator, see ``AbstractOperator.get_O_loc()``.
+
+        The connected configurations are evaluated with ``psi.eval_ratio()`` if the network \
+        provides it, and from :math:`\\ln\\psi` otherwise. At most ``psi.batchSize`` network \
+        evaluations run at once.
+        """
         logPsiS = psi(s) if logPsiS is None else logPsiS
 
         if not self._is_compiled:
@@ -109,6 +133,17 @@ class Operator(AbstractOperator):
 
         The first entry along the connected axis is ``s`` itself, carrying the sum of
         all diagonal matrix elements; the remaining ones are the non-diagonal connections.
+
+        Args:
+            * ``s``: Configurations, of shape ``(N, *sampleShape)``.
+            * ``batch_size``: Number of configurations processed at once, a multiple of the \
+              number of devices.
+            * ``**kwargs``: Keyword arguments of the callable prefactors.
+
+        Returns:
+            ``s_primes, mat_els``: The connected configurations, of shape \
+            ``(N, n_conn + 1, *sampleShape)``, and the matrix elements, of shape \
+            ``(N, n_conn + 1)``.
         """
         if not self._is_compiled:
             self._compile()
@@ -116,35 +151,31 @@ class Operator(AbstractOperator):
         return self._get_conn_elements_sh(s, batch_size=batch_size, **kwargs)
 
     def to_dense(self, basis, *, zero_tolerance=0.0, **op_kwargs):
-        return self.to_sparse(basis, zero_tolerance=0.0, **op_kwargs).todense()
+        """
+        Return the dense matrix representation of this operator in the supplied ordered
+        computational basis, with the arguments of ``to_sparse()``.
+        """
+        return self.to_sparse(basis, zero_tolerance=zero_tolerance, **op_kwargs).todense()
 
     def to_sparse(self, basis, *, zero_tolerance=0.0, **op_kwargs):
         """
         Return the SciPy sparse matrix representation of this operator
         in the supplied ordered computational basis.
 
-        Parameters
-        ----------
-        basis : array_like
-            Ordered computational basis with shape
+        The entry in row ``i`` and column ``j`` is the matrix element \
+        :math:`\\langle b_i|\\hat O|b_j\\rangle` between the basis configurations ``b_i`` and ``b_j``.
 
-                (num_states, *sample_shape).
+        Args:
+            * ``basis``: Ordered computational basis with shape ``(num_states, *sampleShape)``. \
+              The basis must be closed under every nonzero action of the operator. Zero-weight \
+              padded connections returned by the operator are ignored.
+            * ``zero_tolerance``: Connections with absolute matrix element less than or equal \
+              to this value are discarded.
+            * ``**op_kwargs``: Keyword arguments of the callable prefactors, forwarded to \
+              ``get_conn_elements()``.
 
-            The basis must be closed under every nonzero action of the
-            operator. Zero-weight padded connections returned by the
-            operator are ignored.
-
-        zero_tolerance : float, optional
-            Connections with absolute matrix element less than or equal
-            to this value are discarded. Default is zero.
-
-        **op_kwargs
-            Runtime arguments forwarded to `get_conn_elements`.
-
-        Returns
-        -------
-        scipy.sparse.csr_matrix
-            Sparse matrix representation of the operator.
+        Returns:
+            Sparse matrix representation of the operator, as a ``scipy.sparse.csr_matrix``.
         """
         if zero_tolerance < 0:
             raise ValueError(
@@ -339,9 +370,11 @@ class Operator(AbstractOperator):
     @classmethod
     @abstractmethod
     def _create_composite(cls, O_1, O_2, label):
+        """Return the sum (``label="sum"``) or product (``label="mul"``) of two operators."""
         pass
 
     @classmethod
     @abstractmethod
     def _create_scaled(cls, O, scalar):
+        """Return the operator ``O`` multiplied by ``scalar``."""
         pass

@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import jVMC_exp.stepper as st
+from jVMC_exp import global_defs
 
 def _make_linear_ode(N: int, seed: int = 123):
     """Return a random complex matrix M and a random initial state y0."""
@@ -247,6 +248,51 @@ class TestRK45(unittest.TestCase):
         for _ in range(30):
             y, dt = stepper.step(0.0, f, y)
             self.assertLessEqual(float(dt), max_step + 1e-12)
+
+
+class TestDtype(unittest.TestCase):
+    """The steppers keep the data type DT_OUT_REAL of the flat parameters."""
+
+    def setUp(self):
+        saved = {name: getattr(global_defs, name) for name in ("DT_OUT_REAL", "DT_OPERATORS_REAL")}
+        self.addCleanup(lambda: [setattr(global_defs, k, v) for k, v in saved.items()])
+
+    def test_steppers_keep_the_data_type_of_the_parameters(self):
+        def f(y, t, **args):
+            return -y
+
+        for dtype in (jnp.float32, jnp.float64):
+            global_defs.update(dt_out_real=dtype)
+            steppers = (
+                st.Euler(1e-2), st.Heun(1e-2), st.AdaptiveHeun(1e-2), st.RK23(1e-2), st.RK45(1e-2)
+            )
+            for stepper in steppers:
+                with self.subTest(dtype=jnp.dtype(dtype).name, stepper=type(stepper).__name__):
+                    y = jnp.ones(4, dtype=dtype)
+                    for _ in range(3):
+                        y, _ = stepper.step(0.0, f, y)
+                    self.assertEqual(y.dtype, jnp.dtype(dtype))
+
+    def test_times_keep_double_precision(self):
+        """With 32-bit parameters the times passed to f, and the time steps, stay 64-bit."""
+        global_defs.update(dt_out_real=jnp.float32)
+
+        # timeStep=0.5 is rejected first, so that dt also comes from the step size control
+        for stepper in (st.AdaptiveHeun(timeStep=0.5), st.RK23(timeStep=0.5), st.RK45(timeStep=0.5)):
+            times = []
+
+            def f(y, t, **args):
+                times.append(t)
+                return -10 * y
+
+            y, t = jnp.ones(4, dtype=jnp.float32), 1.5
+            for _ in range(5):
+                y, dt = stepper.step(t, f, y)
+                t += dt
+
+            with self.subTest(stepper=type(stepper).__name__):
+                self.assertEqual({jnp.asarray(s).dtype for s in times}, {jnp.dtype(jnp.float64)})
+                self.assertEqual(y.dtype, jnp.dtype(jnp.float32))
 
 
 if __name__ == "__main__":

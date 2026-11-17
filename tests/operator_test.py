@@ -327,7 +327,7 @@ class TestOperator(unittest.TestCase):
         X = np.array([[0, 1], [1, 0]])
         Y = np.array([[0, -1j], [1j, 0]])
         Z = np.diag([1, -1])
-        P = np.array([[0, 0], [1, 0]])
+        P = np.array([[0, 1], [0, 0]])
         on = lambda site, A: _site_matrix(L_chain, site, A)
 
         # Strings acting more than once on the same site
@@ -346,6 +346,22 @@ class TestOperator(unittest.TestCase):
 
         basis = jnp.asarray(list(product((0, 1), repeat=L_chain)), dtype=global_defs.DT_SAMPLES)
         self.assertTrue(np.allclose(h.to_dense(basis), H_ref))
+
+    def test_pauli_and_ladder_operators_dense_matrix(self):
+        X = np.array([[0, 1], [1, 0]])
+        Y = np.array([[0, -1j], [1j, 0]])
+        Z = np.diag([1, -1])
+        basis = jnp.asarray([[0], [1]], dtype=global_defs.DT_SAMPLES)
+        dense = lambda operator: np.asarray(operator.to_dense(basis))
+
+        self.assertTrue(np.allclose(dense(op.SigmaX(0)), X))
+        self.assertTrue(np.allclose(dense(op.SigmaY(0)), Y))
+        self.assertTrue(np.allclose(dense(op.SigmaZ(0)), Z))
+        self.assertTrue(np.allclose(dense(op.SigmaPlus(0)), (X + 1j * Y) / 2))
+        self.assertTrue(np.allclose(dense(op.SigmaMinus(0)), (X - 1j * Y) / 2))
+        self.assertTrue(np.allclose(
+            dense(op.SigmaPlus(0) * op.SigmaMinus(0) - op.SigmaMinus(0) * op.SigmaPlus(0)), Z
+        ))
 
     def test_spinless_fermionic_strings_dense_matrix(self):
         L_chain = 4

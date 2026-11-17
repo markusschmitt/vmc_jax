@@ -9,14 +9,24 @@ import numpy as np
 
 
 class InputManager:
-    """Load data and parameter checkpoints written by OutputManager.
+    """
+    Read an HDF5 file written by ``OutputManager``.
 
-    Examples
-    --------
+    The group ``group`` of the file is read into ``data`` at construction, as nested \
+    dictionaries of NumPy arrays with the layout of ``OutputManager.data``. Strings are read as \
+    ``bytes``.
+
+    Args:
+        * ``path``: HDF5 file. Raises ``FileNotFoundError`` if it does not exist.
+        * ``group``: Group of the run in the file, the ``group`` of the ``OutputManager``.
+
+    Example::
+
         inp = InputManager("results.h5")
-        latest_params = inp.load_parameters(template_params, step="latest")
-        step_0_params = inp.load_parameters(template_params, step=0)
-        data = inp.load_from_h5()
+        inp.data["observables"]["energy"]["mean"]
+        psi.parameters = inp.load_parameters(psi.parameters)            # latest checkpoint
+        psi.parameters = inp.load_parameters(psi.parameters, step=0)
+        t, weights = inp.get_network_checkpoint(time=1.0)
     """
 
     def __init__(self, path: str | Path, group: str = "/"):
@@ -27,6 +37,7 @@ class InputManager:
 
     @property
     def get_data(self):
+        """The data read from the file, ``data``."""
         return self.data
 
     @staticmethod
@@ -40,6 +51,10 @@ class InputManager:
         return handle[self.group]
 
     def set_path(self, path: str | Path) -> None:
+        """
+        Read the group ``group`` of another file into ``data``. Raises ``FileNotFoundError`` if \
+        the file does not exist.
+        """
         self.path = Path(path).expanduser()
         if not self.path.exists():
             raise FileNotFoundError(self.path)
@@ -47,6 +62,18 @@ class InputManager:
 
 
     def get_network_checkpoint(self, time: float = None, idx: int = None):
+        """
+        A checkpoint written by ``OutputManager.write_network_checkpoint()``.
+
+        Args:
+            * ``time`` [optional]: Return the checkpoint closest to this time.
+            * ``idx`` [optional]: Return the checkpoint with this index. Without ``time`` and \
+              ``idx``, the last one is returned.
+
+        Returns:
+            ``time, weights`` of the checkpoint. Raises ``ValueError`` if both ``time`` and \
+            ``idx`` are given, and ``RuntimeError`` if no checkpoint was written.
+        """
         if time is not None and idx is not None:
             raise ValueError("Specify either 'time' or 'idx', not both.")
 
@@ -65,6 +92,16 @@ class InputManager:
     
     @staticmethod
     def load_from_h5(path: str | Path, group: str = "/") -> dict:
+        """
+        Read the group ``group`` of an HDF5 file into nested dictionaries of NumPy arrays.
+
+        Args:
+            * ``path``: HDF5 file.
+            * ``group``: Group to read.
+
+        Returns:
+            Dictionary with a dictionary for every subgroup and an array for every dataset.
+        """
         def read_recursive(h5_group):
             out = {}
             for key, item in h5_group.items():
@@ -88,6 +125,17 @@ class InputManager:
         return out
 
     def load_parameters(self, template_params, step: int | str = "latest"):
+        """
+        Parameters written by ``OutputManager.write_parameters()``.
+
+        Args:
+            * ``template_params``: Parameter tree with the structure of the saved one, e.g. \
+              ``psi.parameters``.
+            * ``step``: Step number of the checkpoint, or ``"latest"`` for the last one written.
+
+        Returns:
+            ``template_params`` with the saved values, as NumPy arrays.
+        """
         with h5py.File(self.path, "r") as handle:
             params_root = self._root(handle)["parameters"]
             group_name = params_root.attrs["latest"] if step == "latest" else f"{int(step):08d}"

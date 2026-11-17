@@ -9,10 +9,12 @@ from jVMC_exp import global_defs
 from jVMC_exp.sharding_config import MESH
 
 def _has_kwargs(fun):
+    """Whether ``fun`` accepts arbitrary keyword arguments."""
     sig = inspect.signature(fun)
     return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values())
 
 def _spin_index(spin):
+    """Return ``spin`` as 0 (up) or 1 (down), accepting ``"up"`` and ``"down"`` and their abbreviations."""
     if spin is not None:
         if isinstance(spin, str):
             spin = spin.lower()
@@ -39,9 +41,32 @@ class OperatorString(list):
 
     @property
     def diagonal(self):
+        """Whether the operator string is diagonal."""
         return self._diagonal
 
 class Operator(BaseOperator):
+    """
+    Operators assembled from branch-free elementary operators.
+
+    An elementary operator acts on the local state of a single site and is branch-free: it maps \
+    each local state ``j`` to a single local state ``map[j]``, with matrix element ``mat_els[j]``. \
+    When the operator is compiled, products and sums of elementary operators are expanded into a \
+    sum of operator strings, each of which maps a configuration to a single connected configuration.
+
+    Sites are indexed in the flattened configuration, ``s.ravel()``. Fermionic operators get the \
+    sign of a Jordan-Wigner string over all the sites with a larger index. For spinful fermions, \
+    with local dimension 4, the local states 0, 1, 2 and 3 stand for an empty site, a spin up, a \
+    spin down and a doubly occupied site, and the modes are ordered as \
+    (L-1, down), (L-1, up), ..., (0, down), (0, up).
+
+    Args:
+        * ``ldim``: Local Hilbert space dimension.
+        * ``idx``: Site the operator acts on.
+        * ``diag``: Whether the operator is diagonal.
+        * ``fermionic``: Whether the operator is fermionic.
+        * ``spin``: Spin the operator acts on, for spinful fermions: ``0`` or ``"up"``, ``1`` or \
+          ``"down"``. ``None`` otherwise.
+    """
     def __init__(
             self, ldim, idx, diag, 
             fermionic: bool=False, 
@@ -58,18 +83,22 @@ class Operator(BaseOperator):
 
     @property
     def idx(self):
+        """Site the operator acts on, ``None`` for combined operators."""
         return self._idx
     
     @property
     def fermionic(self):
+        """Whether the operator is fermionic."""
         return self._fermionic
     
     @property
     def spin(self):
+        """Spin the operator acts on, 0 (up) or 1 (down), or ``None``."""
         return self._spin
     
     @property
     def diag(self):
+        """Whether the operator is diagonal."""
         return self._diag
 
     @property
@@ -82,11 +111,13 @@ class Operator(BaseOperator):
     @property
     @abstractmethod
     def mat_els(self):
+        """Matrix elements ``mat_els[j]`` of the local states ``j``."""
         pass
     
     @property
     @abstractmethod
     def map(self):
+        """Images ``map[j]`` of the local states ``j``."""
         pass
         
     def _get_list_of_strings(self):
@@ -327,6 +358,10 @@ class Operator(BaseOperator):
         return ScaledOperator(O, scalar)
     
 class CompositeOperator(Operator):
+    """
+    Sum (``label="sum"``) or product (``label="mul"``) of two operators, as created by ``+`` and
+    ``*``. The local dimensions of the two operators must agree on the sites they share.
+    """
     def __init__(self, O_1: Operator, O_2: Operator, label: str):
         for site in O_1._site_ldim.keys():
             if (site in O_2._site_ldim.keys()) and (O_1._site_ldim[site] != O_2._site_ldim[site]):
@@ -348,6 +383,10 @@ class CompositeOperator(Operator):
         pass
 
 class ScaledOperator(Operator):
+    """
+    Operator ``O`` multiplied by ``scalar``, a number or a callable ``f(**kwargs)``, as created by
+    ``*`` and ``/``.
+    """
     def  __init__(self, O: Operator, scalar):
         if callable(scalar) and (not _has_kwargs(scalar)):
             raise ValueError(
@@ -368,6 +407,7 @@ class ScaledOperator(Operator):
         pass
 
 class IdentityOperator(Operator):
+    """Identity on site ``idx``, with local dimension ``ldim``. Its multiples add constants to operators."""
     def __init__(self, ldim, idx):
         super().__init__(ldim, idx, True, False)
 
@@ -404,6 +444,7 @@ class _Annihilation(Operator):
         return np.array([0, 0], dtype=np.int32)
     
 class SigmaX(Operator):
+    """Pauli operator :math:`\\sigma^x` on site ``idx``."""
     def __init__(self, idx):
         super().__init__(2, idx, False)
 
@@ -416,6 +457,7 @@ class SigmaX(Operator):
         return np.array([1, 0], dtype=np.int32)
 
 class SigmaY(Operator):
+    """Pauli operator :math:`\\sigma^y` on site ``idx``."""
     def __init__(self, idx):
         super().__init__(2, idx, False)
 
@@ -428,6 +470,7 @@ class SigmaY(Operator):
         return np.array([1, 0], dtype=np.int32)
     
 class SigmaZ(Operator):
+    """Pauli operator :math:`\\sigma^z` on site ``idx``: +1 for the local state 0, and -1 for 1."""
     def __init__(self, idx):
         super().__init__(2, idx, True)
 
@@ -439,11 +482,13 @@ class SigmaZ(Operator):
     def map(self):
         return np.arange(self.ldim, dtype=np.int32)
     
-class SigmaPlus(_Creation):
+class SigmaPlus(_Annihilation):
+    """Spin raising operator :math:`\\sigma^+=(\\sigma^x+i\\sigma^y)/2` on site ``idx``, which maps the local state 1 to 0."""
     def __init__(self, idx):
         super().__init__(idx, False)
 
-class SigmaMinus(_Annihilation):
+class SigmaMinus(_Creation):
+    """Spin lowering operator :math:`\\sigma^-=(\\sigma^x-i\\sigma^y)/2` on site ``idx``, which maps the local state 0 to 1."""
     def __init__(self, idx):
         super().__init__(idx, False)
     
@@ -506,16 +551,30 @@ class _SpinfulNumber(Operator):
         return np.arange(self.ldim, dtype=np.int32)
 
 def Creation(idx, spin=None):
+    """
+    Fermionic creation operator :math:`\\hat c^\\dagger` on site ``idx``.
+
+    Without ``spin``, it creates a spinless fermion, on a site with local dimension 2. With \
+    ``spin``, ``"up"`` or ``"down"``, it creates a spinful one, on a site with local dimension 4.
+    """
     if spin is None:
         return _Creation(idx, True)
     return _SpinfulCreation(idx, spin)
 
 def Annihilation(idx, spin=None):
+    """
+    Fermionic annihilation operator :math:`\\hat c` on site ``idx``, for a spinless fermion or, \
+    with ``spin``, a spinful one, as in ``Creation()``.
+    """
     if spin is None:
         return _Annihilation(idx, True)
     return _SpinfulAnnihilation(idx, spin)
 
 def Number(idx, spin=None):
+    """
+    Occupation number :math:`\\hat n=\\hat c^\\dagger\\hat c` on site ``idx``, for a spinless fermion \
+    or, with ``spin``, a spinful one, as in ``Creation()``.
+    """
     if spin is None:
         return _Number(idx)
     return _SpinfulNumber(idx, spin)

@@ -57,63 +57,93 @@ def _check_model(model, nnx_init_kwargs=None):
         
 class NQS:
     """
-    Initializes NQS class.
+    Variational quantum state.
 
-    This class can operate in two modi:
-        #. Single-network ansatz
-            Quantum state of the form :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, \
-            where the network :math:`r_\\theta` is
-            a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`.
-            b) non-holomorphic, i.e., parametrized by real valued parameters :math:`\\theta`.
-        #. Two-network ansatz
-            Quantum state of the form 
-            :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
-            with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
-            :math:`\\varphi_{\\theta_\\phi}` \
-            parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
+    The wave function is defined by a network, which is evaluated, differentiated and sampled \
+    through this class. It can take two forms:
+
+    #. Single-network ansatz: quantum state of the form \
+       :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, where the network :math:`r_\\theta` is \
+       either holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`, or \
+       non-holomorphic, parametrized by real or complex valued parameters.
+    #. Two-network ansatz: quantum state of the form \
+       :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` with an \
+       amplitude network :math:`r_{\\theta_{r}}` and a phase network \
+       :math:`\\varphi_{\\theta_\\phi}`, parametrized by real valued parameters \
+       :math:`\\theta_r,\\theta_\\phi`.
+
+    The type of parameters and holomorphicity are detected at construction, see ``realParams`` \
+    and ``holomorphic``.
+
+    The ``__call__`` method of a network takes a single configuration and returns a scalar. \
+    Vectorization, batching and the distribution across devices are handled by this class: all \
+    its methods take configurations as an array of shape ``(N, *sampleShape)``, with any ``N``, \
+    and return results in the same order. The attribute ``apply_fun(parameters, s)`` evaluates \
+    :math:`\\ln\\psi(s)` of a single configuration, without these steps.
+
+    A network keeps its variables in the ``params`` collection, with a single data type, and can \
+    provide these optional methods:
+
+    * ``sample(key)``: Returns a configuration drawn directly from the distribution of the network. \
+      Samplers then use direct sampling instead of MCMC, see ``is_generator``.
+    * ``eval_ratio(s, sp)``: Returns :math:`\\psi(s')/\\psi(s)`. MCMC and ``call_ratio()`` then use \
+      it instead of evaluating the two coefficients. It is not used if a symmetry projector is \
+      applied, see ``eval_ratio``.
+    * ``eval_real(s)``: Returns :math:`\\text{Re}\\ln\\psi(s)`. MCMC then uses it to compute \
+      probabilities.
 
     Args:
-        * ``net``: Variational network, tuple of networks, or ``flax.nnx.Module`` subclass. \
-            A network has to be registered as pytree node and provide \
-            a ``__call__`` function for evaluation. \
-            If a tuple of two networks is given, the first is used for the logarithmic \
-            amplitude and the second for the phase of the wave function coefficient. \
-            If a ``flax.nnx.Module`` subclass is given, it will be automatically wrapped \
-            into a ``flax.linen``-compatible module via ``flax.nnx.bridge.to_linen``. \
-            In this case, ``nnx_init`` must also be provided.
+        * ``net``: Variational network, tuple of two networks, or ``flax.nnx.Module`` subclass. \
+          If a tuple of two networks is given, the first is used for the logarithmic \
+          amplitude and the second for the phase of the wave function coefficient. \
+          If a ``flax.nnx.Module`` subclass is given, it will be automatically wrapped \
+          into a ``flax.linen``-compatible module via ``flax.nnx.bridge.to_linen``. \
+          In this case, its constructor arguments are given by ``nnx_init``.
+        * ``sampleShape``: Shape of a configuration. An ``int`` ``n`` stands for ``(n,)``.
+        * ``batchSize``: Total batch size for batched network evaluation, divisible by the number \
+          of devices. Choice of this parameter impacts performance: with too small values \
+          performance is limited by memory access overheads, too large values can lead \
+          to "out of memory" issues. Exactly one of ``batchSize`` and ``batchSize_per_device`` \
+          must be given.
+        * ``batchSize_per_device``: Batch size on each device, as an alternative to ``batchSize``.
         * ``logarithmic``: Boolean variable indicating, whether the ANN returns logarithmic \
-            (:math:`\\log\\psi_\\theta(s)`) or plain (:math:`\\psi_\\theta(s)`) wave function coefficients.
-        * ``batchSize``: Batch size for batched network evaluation. Choice \
-            of this parameter impacts performance: with too small values performance \
-            is limited by memory access overheads, too large values can lead \
-            to "out of memory" issues.
-        * ``seed``: Seed for the PRNG to initialize the network parameters.
-        * ``orbit``: Symmetry projector defining the symmetry operations (instance of ``jVMC_exp.symmetry.SymmetryProjector``). \
-            If this argument is given, the wave function is symmetrized to be invariant under symmetry operations.
-        * ``symmetry_average``: Built-in symmetry average name or callable passed to ``ProjectedOrbitNet``.
-        * ``mixed_precision``: If ``True``, low-precision parameter storage is allowed while public \
-            amplitudes, ratios, flattened parameters, and gradients are cast to operator precision. \
-            If ``False``, fp32/complex64 parameter storage raises an error.
+          (:math:`\\log\\psi_\\theta(s)`) or plain (:math:`\\psi_\\theta(s)`) wave function coefficients.
+        * ``seed``: Seed for the PRNG to initialize the network parameters. If ``None``, a random \
+          seed is generated.
+        * ``orbit``: Symmetry projector defining the symmetry operations (instance of \
+          ``jVMC_exp.symmetry.SymmetryProjector``). If this argument is given, the wave function is \
+          symmetrized to be invariant under symmetry operations.
+        * ``symmetry_average``: Built-in symmetry average name (``"exp"``, ``"log"`` or ``"sep"``) \
+          or callable passed to ``ProjectedOrbitNet``.
+        * ``sampler_dtype``: Data type of the parameters while sampling. If ``None``, the data \
+          type of the parameters is used.
+        * ``eval_dtype``: Data type of the parameters while evaluating coefficients. If ``None``, \
+          the data type of the parameters is used.
+        * ``grad_dtype``: Data type of the parameters while computing gradients. If ``None``, the \
+          data type of the parameters is used.
         * ``nnx_init``: Dictionary of keyword arguments passed to the ``flax.nnx.Module`` constructor, \
-            excluding ``rngs`` (which is handled internally). Required when ``net`` is a \
-            ``flax.nnx.Module`` subclass or a tuple thereof; ignored otherwise. \
-            If ``net`` is a tuple of two ``flax.nnx.Module`` subclasses, ``nnx_init`` must be \
-            a tuple of two dictionaries, one per network.
+          excluding ``rngs`` (which is handled internally). It is ignored for ``flax.linen`` \
+          networks. If ``net`` is a tuple of two ``flax.nnx.Module`` subclasses, ``nnx_init`` must be \
+          a tuple of two dictionaries, one per network.
+
+    The three data types allow to run these steps at lower precision than the stored parameters. \
+    They must be real for real parameters and complex for complex parameters. Coefficients and \
+    gradients are returned with data type ``out_dtype`` in any case.
 
     Example:
-        Using a ``flax.linen`` model (unchanged behavior)::
+        Using a ``flax.linen`` model::
 
             psi = NQS(RBMLinenModel(numHidden=4), sampleShape, batchSize=32, seed=0)
 
         Using a ``flax.nnx`` model::
 
             psi = NQS(RBMNNXModel, sampleShape, batchSize=32, seed=0,
-                    nnx_init=dict(in_features=10, numHidden=4, bias=True))
+                      nnx_init=dict(in_features=10, numHidden=4, bias=True))
 
         Using two ``flax.nnx`` models::
 
             psi = NQS((AmplitudeNNX, PhaseNNX), sampleShape, batchSize=32, seed=0,
-                    nnx_init=(dict(in_features=10, numHidden=4),
+                      nnx_init=(dict(in_features=10, numHidden=4),
                                 dict(in_features=10, numHidden=4)))
     """
     def __init__(
@@ -177,8 +207,10 @@ class NQS:
         if logarithmic:
             self.apply_fun = self.net.apply
         else:
-            def apply_fun(parameters, s, method=None):
-                return jnp.log(self.net.apply(parameters, s, method))
+            def apply_fun(parameters, s, *args, method=None, **kwargs):
+                out = self.net.apply(parameters, s, *args, method=method, **kwargs)
+
+                return jnp.log(out) if method is None else out
             self.apply_fun = apply_fun
         
         self.init_net(seed)
@@ -194,18 +226,20 @@ class NQS:
             lambda a, b: jnp.concatenate((a[:, :], 1.j * b[:, :]), axis=1), x, y
         )
         self._append_gradients_dict_jsh = jax.jit(
-            jax.shard_map(
-                self._append_gradients_dict, 
-                mesh=MESH, 
-                in_specs=(DEVICE_SPEC, DEVICE_SPEC), 
-                out_specs=DEVICE_SPEC
-            )
+            self._append_gradients_dict
         )
 
         self._frozen_params = None
 
     @property
     def parameters(self):
+        """
+        Variational parameters, as a dictionary with the parameter tree of the network under ``params``.
+
+        A new value can be a flat array, as given by ``parameters_flat``, or a parameter tree, with \
+        or without the ``params`` level. It is copied and cast to ``param_dtype``. The parameters \
+        listed in ``frozen_parameters`` keep their current value.
+        """
         return self._parameters
     
     @parameters.setter
@@ -228,6 +262,7 @@ class NQS:
             )
 
         if self._frozen_params is not None:
+            value = tree_map(lambda x: x, value)
             for frozen_path in self._frozen_params:
                 original = reduce(lambda d, key: d[key], frozen_path, self.params)
                 reduce(lambda d, k: d[k], frozen_path[:-1], value['params'])[frozen_path[-1]] = original
@@ -239,6 +274,7 @@ class NQS:
 
     @property
     def params(self):
+        """Parameter tree of the network. A new value can be given as for ``parameters``."""
         return self.parameters['params']
     
     @params.setter
@@ -249,9 +285,13 @@ class NQS:
     def parameters_flat(self):
         """
         Get variational parameters.
-        
+
+        Complex parameters are split into their real and imaginary parts: each leaf of the parameter \
+        tree contributes its real parts followed by its imaginary parts, so that the array has \
+        ``2 * numParameters`` entries. Real parameters give ``numParameters`` entries.
+
         Returns:
-            Array holding current values of all variational parameters.
+            Real array holding current values of all variational parameters.
         """
         if not self.realParams:
             flat = jnp.concatenate([
@@ -263,6 +303,13 @@ class NQS:
     
     @property
     def frozen_parameters(self):
+        """
+        Parameters that keep their value when ``parameters`` is assigned, as a list of paths.
+
+        A new value adds one path to the list: a ``str`` for an entry of the parameter tree, or a \
+        tuple or list of ``str`` for a nested one, e.g., ``("Dense_0", "kernel")``. ``None`` clears \
+        the list. Frozen parameters still appear in ``parameters_flat`` and in the gradients.
+        """
         return self._frozen_params
 
     @frozen_parameters.setter
@@ -284,49 +331,53 @@ class NQS:
 
     @property
     def sampler_parameters(self):
+        """Parameters cast to ``sampler_dtype``."""
         return _cast_pytree(self.parameters, self.sampler_dtype)
     
     @property
     def eval_parameters(self):
+        """Parameters cast to ``eval_dtype``."""
         return _cast_pytree(self.parameters, self.eval_dtype)
     
     @property
     def grad_parameters(self):
+        """Parameters cast to ``grad_dtype``."""
         return _cast_pytree(self.parameters, self.grad_dtype)
     
     @property
     def batchSize(self):
+        """Total batch size for batched network evaluation."""
         return self._batchSize
 
     @property
     def gradientBatchSize(self):
-        """Lazy gradient block size after reducing the symmetry orbit."""
+        """
+        Number of gradient rows per block of ``lazy_gradients()``: ``batchSize`` times the number of \
+        symmetry elements of the projector, if there is one.
+        """
         nsymm = self.net.symmetry.nsymm if isinstance(self.net, ProjectedOrbitNet) else 1
         return self.batchSize * nsymm
         
     @property
     def net(self):
+        """Network of the state, including the symmetry projector and the two-network wrapper."""
         return self._net
     
     @property
     def sampleShape(self):
+        """Shape of a configuration."""
         return self._sampleShape
 
-    def to_array(self, basis, *, normalize=True, log=True):
+    def to_array(self, basis, *, normalize=True):
         """
         Evaluate the variational state on an ordered computational basis.
 
-        Parameters
-        ----------
-        basis : array_like
-            Ordered basis with shape `(dimension, *sampleShape)`.
+        Args:
+            * ``basis``: Ordered basis with shape ``(dimension, *sampleShape)``.
+            * ``normalize``: Normalize the returned vector.
 
-        normalize : bool, optional
-            Normalize the returned vector. Default is True.
-
-        log : bool, optional
-            If True, interpret the NQS output as logarithmic
-            amplitudes and exponentiate it. Default is True.
+        Returns:
+            State vector with shape ``(dimension,)``.
         """
         basis = jnp.asarray(basis)
 
@@ -346,12 +397,9 @@ class NQS:
                 "the basis dimension."
             )
 
-        if log:
-            if normalize:
-                values -= jnp.max(jnp.real(values))
-            statevector = jnp.exp(values)
-        else:
-            statevector = values
+        if normalize:
+            values -= jnp.max(jnp.real(values))
+        statevector = jnp.exp(values)
 
         if normalize:
             norm = jnp.linalg.norm(statevector)
@@ -368,57 +416,78 @@ class NQS:
 
     @property
     def is_generator(self):
+        """Whether the network, or the one under the symmetry projector, provides ``sample()``."""
         return self._is_generator
 
     @property
     def eval_ratio(self):
+        """Whether the network provides ``eval_ratio()``. A symmetry projector does not."""
         return self._eval_ratio
     
     @property
     def holomorphic(self):
+        """Whether the network is holomorphic in its parameters, as detected at construction."""
         return self._holomorphic
     
     @property
     def realParams(self):
+        """Whether the parameters are real."""
         return self._realParams
     
     @property
     def flat_gradient_function(self):
+        """Called as ``f(apply_fun, parameters, s)`` to get the flat gradient for a single configuration."""
         return self._flat_gradient_function
     
     @property
     def dict_gradient_function(self):
+        """Called as ``f(apply_fun, parameters, s)`` to get the gradient tree for a single configuration."""
         return self._dict_gradient_function
     
     @property
     def paramShapes(self):
+        """List with ``(size, shape)`` of every leaf of the parameter tree."""
         return self._paramShapes
     
     @property
     def numParameters(self):
+        """Number of parameters. A complex parameter counts as one."""
         return self._numParameters
     
     @property
     def param_dtype(self):
+        """Data type of the stored parameters."""
         return self._param_dtype
     
     @property
     def sampler_dtype(self):
+        """Data type of the parameters while sampling."""
         return self._sampler_dtype
     
     @property
     def eval_dtype(self):
+        """Data type of the parameters while evaluating coefficients."""
         return self._eval_dtype
     
     @property
     def grad_dtype(self):
+        """Data type of the parameters while computing gradients."""
         return self._grad_dtype
     
     @property
     def out_dtype(self):
+        """Data type of the returned coefficients and gradients."""
         return self._out_dtype
         
     def init_net(self, seed: int | None):
+        """
+        Initialize the network parameters and detect the type of the network.
+
+        This is called at construction, on a random real configuration.
+
+        Args:
+            * ``seed``: Seed for the PRNG. If ``None``, a random seed is generated.
+        """
         if seed == None:
             seed = generate_seed()
 
@@ -451,10 +520,11 @@ class NQS:
         computational configurations :math:`s`.
         
         Args:
-            * ``s``: Array of computational basis states.
+            * ``s``: Array of computational basis states, of shape ``(N, *sampleShape)``.
+
         Returns:
-            Logarithmic wave function coefficients :math:`\\ln\\psi(s)`.
-        
+            Logarithmic wave function coefficients :math:`\\ln\\psi(s)`, of shape ``(N,)``.
+
         :meta public:
         """ 
         return self._apply_fun_sh(
@@ -466,6 +536,19 @@ class NQS:
         return self.apply_fun(parameters, s)
 
     def call_ratio(self, s, sp):
+        """
+        Compute the ratio of wave function coefficients :math:`\\psi(s')/\\psi(s)`.
+
+        The ``eval_ratio()`` method of the network is used if it exists. Otherwise, the ratio \
+        is computed from :math:`\\ln\\psi`.
+
+        Args:
+            * ``s``: Array of computational basis states, of shape ``(N, *sampleShape)``.
+            * ``sp``: Array of computational basis states :math:`s'`, of the same shape.
+
+        Returns:
+            Ratios of wave function coefficients, of shape ``(N,)``.
+        """
         if self.eval_ratio:
             return self._apply_ratio_sh(
                 s, sp, parameters=self.eval_parameters, batch_size=self.batchSize
@@ -485,11 +568,14 @@ class NQS:
         :math:`\\nabla\\ln\\psi(s)`, for computational configurations :math:`s`.
         
         Args:
-            * ``s``: Array of computational basis states.
+            * ``s``: Array of computational basis states, of shape ``(N, *sampleShape)``.
+
         Returns:
-            A vector containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
+            An array of shape ``(N, P)`` containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
             with respect to each variational parameter :math:`\\theta_k` for each \
-            input configuration :math:`s`.
+            input configuration :math:`s`. The columns follow ``parameters_flat``: ``P`` is \
+            ``numParameters`` for real parameters, and ``2 * numParameters`` for complex parameters, \
+            whose real and imaginary parts are separate columns.
         """
         return self._gradients_sh(
             s, parameters=self.grad_parameters, batch_size=self.batchSize
@@ -501,7 +587,7 @@ class NQS:
     
     def lazy_gradients(self, s):
         """
-        Lazy version of `gradients`: an iterable that recomputes one gradient block
+        Lazy version of ``gradients``: an iterable that recomputes one gradient block
         at a time. Network evaluations use ``batchSize`` configurations; projected
         networks collect up to ``gradientBatchSize = batchSize * nsymm`` gradient
         rows per block, capped at the padded number of samples. Symmetry is reduced
@@ -514,10 +600,16 @@ class NQS:
         zero padded and the batches include the gradients of the padding configurations.
 
         Args:
-            * ``s``: Array of computational basis states.
+            * ``s``: Array of computational basis states, of shape ``(N, *sampleShape)``.
+
+        Returns:
+            A ``jVMC_exp.sharding_config.SizedIterable`` yielding the gradient blocks, which can be \
+            iterated more than once.
         """
         if self.gradientBatchSize == self.batchSize:
-            return self._lazy_gradients_sh(s, parameters=self.grad_parameters, batch_size=self.batchSize)
+            return self._lazy_gradients_sh(
+                s, parameters=self.grad_parameters, batch_size=self.batchSize
+            )
 
         s = jax.device_put(pad_to_devices(s), DEVICE_SHARDING)
         layout = BatchLayout(s.shape[0], min(self.gradientBatchSize, s.shape[0]))
@@ -526,15 +618,30 @@ class NQS:
         def blocks():
             for i in range(layout.n_batches):
                 samples = layout.trim(layout.take(s, i), i)
-                yield self._gradients_sh(samples, parameters=parameters, batch_size=self.batchSize)
+                yield self._gradients_sh(
+                    samples, parameters=parameters, batch_size=self.batchSize
+                ).astype(self.out_dtype)
 
         return SizedIterable(blocks, layout.n_batches, layout.batch_size, layout)
     
     @sharded(automatic_sharding=True, yield_iter=True)
     def _lazy_gradients_sh(self, s, *, parameters, batch_size):
-        return self.flat_gradient_function(self.apply_fun, parameters, s)
+        return self.flat_gradient_function(
+            self.apply_fun, parameters, s
+        ).astype(self.out_dtype)
     
     def gradients_dict(self, s):
+        """
+        Compute gradients of logarithmic wave function, organized as a parameter tree.
+
+        Args:
+            * ``s``: Array of computational basis states, of shape ``(N, *sampleShape)``.
+
+        Returns:
+            A tree with the structure of ``params``, where each leaf has shape ``(N, n)`` and holds \
+            the derivatives with respect to the flattened leaf of the parameter tree. For a \
+            holomorphic network, ``n`` is twice the size of the leaf, as in ``gradients()``.
+        """
         result = self._gradients_dict_sh(s, parameters=self.grad_parameters, batch_size=self.batchSize)
         if self.holomorphic:
             result = self._append_gradients_dict_jsh(result, result)
@@ -546,11 +653,23 @@ class NQS:
         return self.dict_gradient_function(self.apply_fun, parameters, s)
     
     def sample(self, numSamples, key=None):
+        """
+        Draw configurations directly from the ``sample()`` method of the network.
+
+        Args:
+            * ``numSamples``: Number of configurations to draw.
+            * ``key``: An instance of ``jax.random.PRNGKey``, or an ``int`` used as seed. If \
+              ``None``, a random seed is generated. If several keys are given, the first one is used.
+
+        Returns:
+            Configurations of shape ``(numSamples, *sampleShape)``, or ``None`` if the network does \
+            not provide ``sample()``.
+        """
         if self.is_generator:
             key = format_key(key) 
             if len(key.shape) > 1:
                 key = key[0]
-            keys = jax.device_put(broadcast_split_key(key, numSamples), DEVICE_SHARDING)
+            keys = broadcast_split_key(key, numSamples)
 
             return self._sample(keys, parameters=self.sampler_parameters, batch_size=self.batchSize)
 

@@ -235,6 +235,53 @@ class TestMC(unittest.TestCase):
 
 #         _test_autoreg_sampling(net, self, L=(4, 4))
 
+class TestAcceptanceRatio(unittest.TestCase):
+    def test_raises_before_sampling(self):
+        psi = NQS(nets.CpxRBM(numHidden=2, bias=False), 4, 2 ** 6, seed=1234)
+        mc_sampler = sampler.MCSampler(
+            psi, updateProposer=jVMC_exp.propose.SpinFlip(), key=random.PRNGKey(0),
+            numChains=2 ** 4, numSamples=2 ** 6,
+        )
+
+        with self.assertRaises(RuntimeError):
+            mc_sampler.acceptance_ratio()
+
+        mc_sampler.sample()
+        ratio = mc_sampler.acceptance_ratio()
+        self.assertTrue(0 <= ratio <= 1)
+
+    def test_raises_when_sampling_directly(self):
+        psi = NQS(_PeakedGeneratorNet((1, 0, 0, 0)), 4, 2 ** 6, seed=1234)
+        mc_sampler = sampler.MCSampler(
+            psi, updateProposer=None, key=random.PRNGKey(0), numChains=4, numSamples=2 ** 6,
+        )
+
+        with self.assertRaises(RuntimeError):
+            mc_sampler.acceptance_ratio()
+
+        mc_sampler.sample()
+        with self.assertRaises(RuntimeError):
+            mc_sampler.acceptance_ratio()
+
+class _FlatNet(nn.Module):
+    @nn.compact
+    def __call__(self, s):
+        offset = self.param("offset", nn.initializers.zeros, ())
+        return offset * jnp.sum(s * 0.0)
+
+class TestMALA(unittest.TestCase):
+    def test_accepts_all_moves_on_flat_distribution_with_pbc(self):
+        """Moves across the periodic boundary must not be penalized by the proposal correction."""
+        geometry = jVMC_exp.geometry.HyperRectangle(1, 1, extent=(1.0,))
+        psi = NQS(_FlatNet(), 1, 2 ** 8, seed=1234)
+        proposer = jVMC_exp.propose.MALA(geometry, psi.apply_fun, tau=0.02, use_thermalization=False)
+        mc_sampler = sampler.MCSamplerCont(
+            psi, proposer, key=random.PRNGKey(0), numChains=2 ** 6, numSamples=2 ** 10,
+        )
+
+        mc_sampler.sample()
+        self.assertAlmostEqual(float(mc_sampler.acceptance_ratio()), 1.0)
+
 class TestExactSampler(unittest.TestCase):
     def test_exact_sampler(self):
         L = 4

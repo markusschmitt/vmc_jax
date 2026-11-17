@@ -2,6 +2,7 @@ from __future__ import annotations
 import unittest
 import warnings
 import flax.linen as nn
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -55,6 +56,35 @@ class _AutoregressiveLikeNet(nn.Module):
     def sample(self, numSamples: int, key):
         del key
         return jnp.zeros((int(numSamples), 4), dtype=jnp.int32)
+
+
+class _TwoDimensionalNet(nn.Module):
+    """Accepts only configurations of shape (Ly, Lx) = (2, 3), like a 2D convolutional network."""
+    @nn.compact
+    def __call__(self, s):
+        if jnp.shape(s) != (2, 3):
+            raise ValueError(f"expected a configuration of shape (2, 3), got {jnp.shape(s)}")
+        s = jnp.asarray(s, dtype=jnp.float64)
+        return 0.3 * jnp.sum(s[0]) + 0.2j * jnp.sum(s[:, 0]) + 0.1 * s[1, 2]
+
+
+class _TwoDimensionalOrbitCoefficientNet(nn.Module):
+    nsymm: int
+
+    @nn.compact
+    def __call__(self, s):
+        if jnp.shape(s) != (2, 3):
+            raise ValueError(f"expected a configuration of shape (2, 3), got {jnp.shape(s)}")
+        return 0.01 * jnp.sum(s[0]) + 0.05j * jnp.arange(self.nsymm, dtype=jnp.float64)
+
+
+class _TwoDimensionalGenerator(nn.Module):
+    @nn.compact
+    def __call__(self, s):
+        return jnp.asarray(0.0 + 0.0j, dtype=jnp.complex128)
+
+    def sample(self, key):
+        return jax.random.bernoulli(key, 0.5, (2, 3)).astype(jnp.int32)
 
 
 def _weighted_sum_average(log_amplitudes, weights):
@@ -655,6 +685,50 @@ class Test(unittest.TestCase):
             assert "Autoregressive" in str(exc)
         else:
             raise AssertionError("autoregressive projection with fermionic particle-hole sign should fail")
-        
+
+    def test_projected_orbit_net_keeps_the_shape_of_the_configurations(self):
+        """
+        A network for two-dimensional configurations, e.g. a CNN with sampleShape (Ly, Lx),
+        gets the transformed configurations with the shape of s, and so do the coefficient
+        networks.
+        """
+        Lx, Ly = 3, 2
+        state = jnp.asarray([[1, 0, 1], [0, 0, 1]], dtype=jnp.int32)
+        symm = square_translation_symmetry(Lx, Ly, "spinless_fermion", q=(1, 0))
+        base_net = _TwoDimensionalNet()
+
+        # With the direct site order, the flat index is x + Lx * y: a row reshaped to (Ly, Lx)
+        states = np.asarray(symm.transformed_states(state)).reshape(symm.nsymm, Ly, Lx)
+        weights = np.asarray(symm.weights(state))
+        base_logs = np.asarray([base_net.apply({}, jnp.asarray(row)) for row in states], dtype=np.complex128)
+        expected = np.log(np.mean(weights * np.exp(base_logs)))
+        projected = ProjectedOrbitNet(base_net=base_net, symmetry=symm)
+        _assert_allclose(projected.apply({}, state), expected)
+
+        coeff_logs = np.asarray([base_net.apply({}, jnp.asarray(row)) for row in states], dtype=np.complex128)
+        expected = np.log(np.mean(weights * np.exp(base_logs + coeff_logs)))
+        projected = ProjectedOrbitNet(base_net=base_net, symmetry=symm, coefficient_state_net=_TwoDimensionalNet())
+        _assert_allclose(projected.apply({}, state), expected)
+
+        coefficient_net = _TwoDimensionalOrbitCoefficientNet(symm.nsymm)
+        coeff_logs = np.asarray(coefficient_net.apply({}, state), dtype=np.complex128)
+        expected = np.log(np.mean(weights * np.exp(base_logs + coeff_logs)))
+        projected = ProjectedOrbitNet(base_net=base_net, symmetry=symm, coefficient_net=coefficient_net)
+        _assert_allclose(projected.apply({}, state), expected)
+
+    def test_projected_orbit_net_sample_keeps_the_shape_of_the_configurations(self):
+        symm = square_translation_symmetry(3, 2, "spin")
+        generator = _TwoDimensionalGenerator()
+        projected = ProjectedOrbitNet(base_net=generator, symmetry=symm, symmetry_average="sep")
+
+        for seed in range(4):
+            key = jax.random.PRNGKey(seed)
+            sample = np.asarray(projected.apply({}, key, method=ProjectedOrbitNet.sample))
+            base_sample = generator.apply({}, jax.random.split(key)[0], method=_TwoDimensionalGenerator.sample)
+            orbit = {tuple(row) for row in np.asarray(symm.transformed_states(base_sample)).tolist()}
+
+            self.assertEqual(sample.shape, (2, 3))
+            self.assertIn(tuple(sample.reshape(-1).tolist()), orbit)
+
 if __name__ == "__main__":
     unittest.main()

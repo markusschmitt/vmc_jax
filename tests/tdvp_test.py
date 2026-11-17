@@ -335,5 +335,98 @@ class TestNonHolomorphicUpdate(unittest.TestCase):
         self.assertTrue(jnp.iscomplexobj(raw))
         self.assertGreater(float(jnp.max(jnp.abs(jnp.imag(raw)))), 1e-6)
 
+_WEIGHTS = jnp.array(
+    [0.23898957, 0.12614753, 0.19479055, 0.17325271, 0.14619853, 0.21392751,
+     0.19648707, 0.17103704, -0.15457255, 0.10954413, 0.13228065, -0.14935214,
+     -0.09963073, 0.17610707, 0.13386381, -0.14836467]
+)
+
+def _tfim(L, J=-1.0, hx=-0.3):
+    hamiltonian = 0
+    for l in range(L):
+        hamiltonian += J * op.SigmaZ(l) * op.SigmaZ((l + 1) % L) + hx * op.SigmaX(l)
+    return hamiltonian
+
+class TestCrossValidation(unittest.TestCase):
+    """
+    The cross validation solves with the even samples and evaluates the update on the odd ones:
+    the reported validation TDVP error is the TDVP error of that update on the odd samples,
+    computed here with dense matrices.
+    """
+    def test_validation_tdvp_error_is_evaluated_on_the_other_half(self):
+        L = 4
+        # With biases, the state has no spin flip symmetry, which would map the even basis
+        # states onto the odd ones and make the two halves equivalent
+        psi = NQS(nets.CpxRBM(numHidden=2, bias=True), L, 2 ** L, seed=123)
+        psi.parameters = psi.parameters_flat + 0.3 * jnp.cos(jnp.arange(psi.parameters_flat.shape[0]))
+        exact_sampler = sampler.ExactSampler(psi)
+        hamiltonian = _tfim(L)
+        loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
+        solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-8)
+
+        opt = jVMC_exp.optimizer.TDVP(
+            exact_sampler, psi, make_real=False, diagonalShift=0, solver=solver, use_cross_valiadation=True
+        )
+        opt(psi.parameters_flat, 0.0, intStep=0, objective_function=loss_function)
+        reported = float(jnp.squeeze(opt.meta_data["tdvp_error_cross_validation_ratio"])) \
+            * float(opt.meta_data["tdvp_error"])
+
+        samples, weights = exact_sampler.samples, exact_sampler.weights
+
+        def half(start):
+            s, w = samples[start::2], weights[start::2]
+            w = np.asarray(w / jnp.sum(w))
+            grads = np.asarray(jax.vmap(opt._remove_double_fn)(psi.gradients(s)))
+            e_loc = np.asarray(hamiltonian.get_O_loc(s, psi))
+            return s, w, grads - w @ grads, e_loc - w @ e_loc
+
+        # The update of the even samples, as the cross validation computes it
+        s_even, w_even, _, _ = half(0)
+        exact_sampler._samples, exact_sampler._logPsi, exact_sampler._weights = s_even, psi(s_even), jnp.asarray(w_even)
+        reference_opt = jVMC_exp.optimizer.TDVP(exact_sampler, psi, make_real=False, diagonalShift=0, solver=solver)
+        update = np.asarray(reference_opt._make_cmplx_fn(
+            reference_opt.get_update(loss_function.value_and_grad(exact_sampler, t=0.0))
+        ))
+        exact_sampler.sample()
+
+        # Its TDVP error on the odd samples
+        _, w, grads, e_loc = half(1)
+        S = (np.conj(grads) * w[:, None]).T @ grads
+        F = (np.conj(grads) * w[:, None]).T @ e_loc
+        var = np.sum(w * np.abs(e_loc) ** 2)
+        expected = abs(1 + (np.real(np.vdot(update, S @ update)) - 2 * np.real(np.vdot(update, -1j * F))) / var)
+
+        self.assertAlmostEqual(reported, expected, delta=1e-8 * max(1.0, expected))
+
+class TestSubstepReweighting(unittest.TestCase):
+    """
+    With resample_stepper=False the samples of the first substep are reused, and their weights
+    have to be the ones of the sampling distribution |psi|^(1 / logProbFactor) at the
+    parameters of the later substeps.
+    """
+    def test_reweighted_samples_match_new_samples(self):
+        L = 4
+        for log_prob_factor in (0.5, 1.0):
+            with self.subTest(logProbFactor=log_prob_factor):
+                psi = NQS(nets.CpxRBM(numHidden=2, bias=False), L, 2 ** L, seed=123)
+                psi.parameters = _WEIGHTS
+                exact_sampler = sampler.ExactSampler(psi, 2, logProbFactor=log_prob_factor)
+                opt = jVMC_exp.optimizer.TDVP(
+                    exact_sampler, psi, make_real=False, diagonalShift=0,
+                    solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8), resample_stepper=False
+                )
+                loss_function = jVMC_exp.objective_function.Observable(_tfim(L))
+
+                theta_0 = psi.parameters_flat
+                theta_1 = theta_0 + 0.3 * jnp.cos(jnp.arange(theta_0.shape[0]))
+                opt(theta_0, 0.0, intStep=0, objective_function=loss_function)
+                opt(theta_1, 0.0, intStep=1, objective_function=loss_function)
+                reweighted = exact_sampler.weights / jnp.sum(exact_sampler.weights)
+
+                psi.parameters = theta_1
+                _, _, new_weights = exact_sampler.sample()
+
+                self.assertTrue(jnp.allclose(reweighted, new_weights, atol=1e-12))
+
 if __name__ == "__main__":
     unittest.main()

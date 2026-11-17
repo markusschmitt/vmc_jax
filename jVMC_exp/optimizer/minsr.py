@@ -129,27 +129,38 @@ def _blockwise_tangent_kernel(grad_l, grad_r=None):
 
 class MinSR(AbstractOptimizer):
     """
-    This class provides functionality for energy minimization via MinSR.
+    Ground state search with MinSR, see `[arXiv:2302.01941] <https://arxiv.org/abs/2302.01941>`_.
 
-    See `[arXiv:2302.01941] <https://arxiv.org/abs/2302.01941>`_ for details.
+    The update is
 
-    Initializer arguments:
-        * ``sampler``: A sampler object.
-        * ``psi``: The variational wave function (``NQS`` instance) being optimized.
-        * ``diagonalShift``: Regularization parameter :math:`\\lambda`, the diagonal shift added \
-        to the tangent kernel before inversion, see above. May be a constant or a callable \
-        ``step -> value``, updated at each step via ``update_hyperparams``.
-        * ``solver``: Solver used to invert the tangent kernel, e.g. \
-        :class:`jVMC_exp.solver.Pinv`. Its ``pinv_cutoff`` plays the role of the \
-        regularization parameter :math:`\\epsilon_{SVD}`, and its \
-        ``diagonalization_mode``/``T_A`` select the (optionally distributed) \
-        eigensolver backend. Only dense solvers are supported: MinSR materializes the \
-        tangent kernel, so a matrix-free solver such as :class:`jVMC_exp.solver.CG` is \
-        rejected at construction. The signal-to-noise regularization of \
-        :class:`jVMC_exp.solver.PinvSNR` is rejected as well, since it estimates the \
-        sampling variance of a Monte Carlo *average*, whereas MinSR's right hand side \
-        holds one local estimator per sample.
-        * ``resample_stepper``: Whether the sampler resamples at every stepper substep.
+    .. math::
+
+        \\dot\\theta=-\\bar O^\\dagger(\\bar O\\bar O^\\dagger+\\lambda)^{-1}\\bar\\epsilon,
+
+    with the normalized logarithmic derivatives \
+    :math:`\\bar O_{nk}=\\sqrt{w_n}(\\Gamma_k(s_n)-\\langle\\Gamma_k\\rangle)` and local losses \
+    :math:`\\bar\\epsilon_n=\\sqrt{w_n}(\\ell(s_n)-\\langle\\ell\\rangle)`. The tangent kernel \
+    :math:`\\bar O\\bar O^\\dagger` is a matrix over the samples instead of the parameters, \
+    and the update is the one of ``SR`` with the diagonal shift :math:`\\lambda`, since \
+    :math:`\\bar O^\\dagger(\\bar O\\bar O^\\dagger+\\lambda)^{-1}=(\\bar O^\\dagger\\bar O+\\lambda)^{-1}\\bar O^\\dagger`. \
+    For networks with real parameters and a complex output, the real and imaginary parts of \
+    each row of :math:`\\bar O` and :math:`\\bar\\epsilon` are separate rows, so that the update \
+    is real. The kernel is sharded across the devices along its rows, and with \
+    ``batched_jacobian=True`` it is assembled from pairs of batches of the logarithmic \
+    derivatives, which are never held in memory at once.
+
+    Args:
+        * ``sampler``: Sampler of ``psi``.
+        * ``psi``: Variational state.
+        * ``diagonalShift``: The shift :math:`\\lambda` added to the diagonal of the tangent \
+          kernel, or a callable ``step -> value``, evaluated by ``update_hyperparams()``.
+        * ``solver``: Dense solver of ``jVMC_exp.solver``, e.g. ``Pinv``: its ``pinv_cutoff`` \
+          plays the role of :math:`\\epsilon_\\mathrm{SVD}`. A matrix-free solver, like ``CG``, \
+          raises ``ValueError``, and so does the signal-to-noise regularization of ``PinvSNR`` \
+          (``snr_tol != 0``), which estimates the noise of a Monte Carlo average, whereas the \
+          right hand side of MinSR holds one local loss per sample.
+        * ``resample_stepper``: See ``AbstractOptimizer``.
+        * ``output_manager`` [optional]: See ``AbstractOptimizer``.
     """
     def __init__(
             self, sampler: AbstractSampler, psi: NQS,
@@ -173,6 +184,10 @@ class MinSR(AbstractOptimizer):
         self._concat = (not psi.holomorphic) and (jnp.issubdtype(psi.out_dtype, jnp.complexfloating))
         num_params = psi.numParameters * (2 if not psi.realParams else 1)
         self._params_pad_size = (- num_params) % MESH.shape["devices"]
+        self._pad_obs = jax.jit(
+            lambda x: jnp.pad(x, ((0, 0), (0, self._params_pad_size)), mode="constant")
+        )
+        self._unpad_obs = jax.jit(lambda x: x[:, :-self._params_pad_size])
 
         super().__init__(
             sampler, psi, resample_stepper, use_cross_valiadation=False, output_manager=output_manager
@@ -185,14 +200,20 @@ class MinSR(AbstractOptimizer):
 
     @property
     def solver_state(self):
+        """Keyword arguments passed to the solver: ``exact_sampler`` and ``pad_size``."""
         return self._solver_state
 
     @property
     def solver(self):
+        """The solver."""
         return self._solver
 
     @property
     def diag_shift(self):
+        """
+        The shift :math:`\\lambda` at the current step. It can be set to a number or to a \
+        callable ``step -> value``, evaluated by ``update_hyperparams()``.
+        """
         return self._diag_shift
 
     @diag_shift.setter
@@ -205,20 +226,26 @@ class MinSR(AbstractOptimizer):
         return False
 
     def update_hyperparams(self, step):
+        """Evaluate ``diag_shift`` for the step ``step``."""
         self._diag_shift = self._diag_shift_fn(step)
 
     def get_update(self, objective_function_output: ObjectiveFunctionOutput):
         """
-        Dispatches on the type of ``objective_function_output.grad_log_psi``: a dense
-        ``SampledObs`` is turned into a single tangent kernel via ``_get_tangent_kernel``, while a
-        ``LazySampledObs`` (``batched_jacobian=True``) is processed batch pair by batch pair so
-        that the full Jacobian is never materialized densely.
+        MinSR update for the output of the objective function, see the class description.
+
+        A dense ``SampledObs`` of logarithmic derivatives gives the tangent kernel in one \
+        product, a ``LazySampledObs`` (``batched_jacobian=True``) one pair of batches at a \
+        time. The information returned by the solver becomes ``meta_data``.
+
+        Args:
+            * ``objective_function_output``: ``ObjectiveFunctionOutput``, without the force.
+
+        Returns:
+            The update, in the layout of ``psi.parameters_flat``.
         """
         o_loc = objective_function_output.o_loc._normalized_obs.flatten()
         if self._params_pad_size != 0:
-            objective_function_output.grad_log_psi.transform(
-                lambda x: jnp.pad(x, ((0, 0), (0, self._params_pad_size)), mode="constant")
-            )
+            objective_function_output.grad_log_psi.transform(self._pad_obs)
 
         if isinstance(objective_function_output.grad_log_psi, SampledObs):
             grad = objective_function_output.grad_log_psi._normalized_obs
@@ -275,14 +302,13 @@ class MinSR(AbstractOptimizer):
                 update -= _adjoint_dot(grad_batch, solution_batch)
 
         if self._params_pad_size != 0:
-            objective_function_output.grad_log_psi.transform(
-                lambda x: x[:, :-self._params_pad_size]
-            )
+            objective_function_output.grad_log_psi.transform(self._unpad_obs)
             update = update[:-self._params_pad_size]
     
         return update
 
     def cross_validation(self, objective_function: AbstractObjectiveFunction, **objective_function_kwargs):
+        """Not implemented: raises ``NotImplementedError``."""
         raise NotImplementedError
     
     def _update_meta_data(self):

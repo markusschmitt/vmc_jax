@@ -5,18 +5,33 @@ from jVMC_exp.operator.continuous.base import Operator
 from jVMC_exp.geometry import AbstractGeometry
 
 def grad_real_to_cpx(f, x):
+    """Gradient of a complex function ``f`` of real variables, :math:`\\nabla\\text{Re}f+i\\nabla\\text{Im}f`, at ``x``."""
     grad_re = jax.grad(lambda t: jnp.real(f(t)))(x)
     grad_im = jax.grad(lambda t: jnp.imag(f(t)))(x)
     
     return grad_re + 1j * grad_im
 
 def laplacian(grad_f):
+    """Return the function giving the diagonal of the Jacobian of ``grad_f``, i.e., the second derivatives."""
     def lap(x):
         jac = jax.jacfwd(grad_f)(x)
         return jnp.diag(jac)
     return lap
 
 class TotalKineticOperator(Operator):
+    """
+    Kinetic energy :math:`-\\frac{1}{2}\\sum_i\\frac{1}{m_i}\\nabla_i^2`, with :math:`\\hbar=1`.
+
+    The local estimator is computed as \
+    :math:`-\\frac{1}{2}\\sum_i\\frac{1}{m_i}\\left[\\nabla_i^2\\ln\\psi+(\\nabla_i\\ln\\psi)^2\\right]`.
+
+    Args:
+        * ``geometry``: Geometry of the system.
+        * ``mass``: Mass of all the particles, or a sequence with one mass per particle.
+        * ``laplacian_mode``: ``"standard"`` computes the second derivatives with \
+          ``jax.jacfwd`` of the gradient. ``"forward"``, the forward Laplacian of the ``fwdlap`` \
+          package, is not available with the current version of JAX.
+    """
     def __init__(self, geometry: AbstractGeometry, mass: float | list = 1, laplacian_mode='standard'):
         super().__init__(geometry, is_diagonal=False)
 
@@ -37,10 +52,12 @@ class TotalKineticOperator(Operator):
 
     @property
     def mass(self):
+        """Masses of the particles."""
         return self._mass
 
     @property
     def laplacian_mode(self):
+        """How the second derivatives are computed."""
         return self._laplacian_mode
 
     @property
@@ -60,13 +77,6 @@ class TotalKineticOperator(Operator):
                 "The 'forward' laplacian mode is currently not compatible with the latest version of jax. " \
                 "Please use 'standard' mode instead."
             )
-            # from ._frwrd_lap_fix import lap as fwdlap, SymbolicZero
-            # _, grad_log_psi, lap_log_psi = fwdlap(
-            #     log_psi,
-            #     (s,),
-            #     (jnp.eye(s.size, dtype=s.dtype),),
-            #     (SymbolicZero(jax.core.get_aval(s).to_tangent_aval()),)
-            # )
         
         else:
             raise ValueError(f"Laplacian mode can only be set to 'standard' or 'forward', got {self.laplacian_mode}")

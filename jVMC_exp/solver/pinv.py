@@ -18,18 +18,25 @@ def _get_snr_gaussian(Vtb, ev, num_samples, var):
         jnp.abs(num_samples * (jnp.conj(Vtb) * Vtb) / (jnp.abs(var * ev) + 1e-14))
     ).ravel()
 
-@jax.jit(static_argnums=(4,))
-def _get_vtb_var(centered_data_1, centered_data_2, weights, eigenvectors, transformation):
+@jax.jit(static_argnums=(4, 5))
+def _get_vtb_var(centered_data_1, centered_data_2, weights, eigenvectors, transformation, pad_size):
+    """
+    Weighted variance over the samples of ``V^H transformation(conj(O_n) E_n)``, for centered
+    observations ``O_n`` and ``E_n``, without the ``pad_size`` modes of the padding.
+    """
     @jax.vmap
     def _get_covar_per_sample(A, B):
         return jnp.outer(jnp.conj(A), B)
 
     x = _get_covar_per_sample(centered_data_1, centered_data_2).squeeze(-1)
-    x = transformation(x)
+    # The eigenvectors have pad_size trailing rows of padding
+    x = jnp.pad(transformation(x), ((0, 0), (0, pad_size)))
     rho = jnp.einsum("ij, ki -> kj", jnp.conjugate(eigenvectors), x)
     rho = rho - jnp.tensordot(weights, rho, axes=(0, 0))
 
-    return jnp.tensordot(weights, jnp.abs(rho)**2, axes=(0, 0))
+    var = jnp.tensordot(weights, jnp.abs(rho)**2, axes=(0, 0))
+
+    return var[:var.shape[0] - pad_size]
 
 def _unpad(x, pad_size):
     return x[:-pad_size] if pad_size else x
@@ -71,54 +78,42 @@ def _snr_step(
             "or set snr_tol=0 to disable SNR regularization."
         )
 
-    if pad_size != 0:
-        grad_log_psi.transform(
-            lambda x: jnp.pad(x, ((0, 0), (0, pad_size)), mode="constant")
-        )
-
-    Vtb_var = _unpad(
-        _get_vtb_var(
-            grad_log_psi._centered_obs, 
-            o_loc._centered_obs, 
-            o_loc.weights, 
-            V, 
-            transformation
-        ),
+    Vtb_var = _get_vtb_var(
+        grad_log_psi._centered_obs,
+        o_loc._centered_obs,
+        o_loc.weights,
+        V,
+        transformation,
         pad_size
     )
-
-    if pad_size != 0:
-        grad_log_psi.transform(lambda x: x[:,:-pad_size])
 
     return _get_snr(Vtb, Vtb_var, o_loc.effective_num_samples)
 
 class Pinv(AbstractSolver):
     """
-    Pseudo-inverse solver based on an eigenvalue decomposition of `A`.
+    Pseudo-inverse solver, from the eigendecomposition :math:`A=V\\,\\mathrm{diag}(\\lambda)\\,V^\\dagger` \
+    of a dense Hermitian matrix.
 
-    Solves ``A @ x = b`` as ``V (ev^-1 * (V^H b))``, i.e. without ever assembling
-    ``A^+`` itself. Besides saving the extra ``V diag(ev^-1) V^H`` product, this keeps
-    the eigenvectors in whatever (possibly sharded, possibly padded) layout the
-    diagonalization produced them in; see :func:`jVMC_exp.solver.util.diagonalize`.
+    The solution is :math:`x=V\\,(\\lambda^+\\circ V^\\dagger b)`, without assembling the \
+    pseudo-inverse, with :math:`\\lambda^+_i=1/\\lambda_i` if \
+    :math:`|\\lambda_i/\\lambda_\\mathrm{max}|>` ``pinv_cutoff`` and :math:`\\lambda^+_i=0` \
+    otherwise, where :math:`\\lambda_\\mathrm{max}` is the largest eigenvalue. The eigenvectors \
+    stay in the layout of the diagonalization, sharded and padded, see \
+    ``jVMC_exp.solver.util.diagonalize()``.
 
-    Parameters
-    ----------
-    pinv_cutoff : float, default=1e-14
-        Relative eigenvalue cutoff. Eigenvalues with
-        :math:`|\\lambda_i / \\lambda_{max}| \\leq` `pinv_cutoff` are treated as zero
-        and dropped from the pseudo-inverse. Note that :class:`PinvSNR` uses this same
-        name for the *minimum* of its adaptively lowered cutoff, and reserves
-        ``pinv_tol`` for a target residual -- the two classes' ``pinv_tol`` are not
-        interchangeable.
+    The dictionary ``info`` of the solution holds
 
-    diagonalization_mode : {"device", "distributed", "host"}, default="device"
-        Backend used to diagonalize `A`; forwarded to
-        :func:`jVMC_exp.solver.util.diagonalize`.
+    * ``"residual"``: The fraction of :math:`b` that the solution does not reproduce, \
+      :math:`\\|(\\lambda^+\\circ\\lambda-1)\\circ V^\\dagger b\\|/\\|b\\|`,
+    * ``"condition_number"``: :math:`\\lambda_\\mathrm{max}/\\min_i|\\lambda_i|`, over all the \
+      eigenvalues.
 
-    T_A : int, optional
-        Tile size forwarded to :func:`jVMC_exp.solver.util.diagonalize`
-        for ``diagonalization_mode="distributed"``. If not given, a tile
-        size is chosen automatically.
+    Args:
+        * ``pinv_cutoff``: Relative cutoff of the eigenvalues.
+        * ``diagonalization_mode``: Backend of ``jVMC_exp.solver.util.diagonalize()``, \
+          ``"device"``, ``"host"`` or ``"distributed"``.
+        * ``T_A`` [optional]: Tile size of ``diagonalize()`` for \
+          ``diagonalization_mode="distributed"``.
     """
     def __init__(
             self, pinv_cutoff=1e-14,
@@ -131,6 +126,7 @@ class Pinv(AbstractSolver):
 
     @property
     def pinv_cutoff(self):
+        """Relative cutoff of the eigenvalues; for ``PinvSNR``, the smallest adaptive cutoff."""
         return self._pinv_cutoff
     
     @property
@@ -156,6 +152,23 @@ class Pinv(AbstractSolver):
         return ev, V, Vtb
 
     def __call__(self, A, b, *, pad_size=0, **kwargs):
+        """
+        Solve :math:`Ax=b` with the pseudo-inverse.
+
+        Args:
+            * ``A``: Hermitian matrix, with ``pad_size`` rows and columns of zero padding at \
+              the end.
+            * ``b``: Right hand side, without padding.
+            * ``pad_size``: Number of rows and columns of padding of :math:`A`.
+            * ``**kwargs``: Ignored.
+
+        Returns:
+            ``x, info``: The solution, without padding, and the dictionary of the class \
+            description.
+
+        Raises ``RuntimeError`` if all the eigenvalues are smaller than :math:`10^{-14}` in \
+        absolute value.
+        """
         ev, V, Vtb = self._diagonalize(A, b, pad_size)
         
         inv_ev = jnp.where(jnp.abs(ev / ev[-1]) > self.pinv_cutoff, 1. / ev, 0.)
@@ -176,50 +189,60 @@ class Pinv(AbstractSolver):
 
 class PinvSNR(Pinv):
     """
-    Pseudo-inverse solver based on an eigenvalue decomposition of the covariance
-    matrix.
+    Pseudo-inverse solver with a smooth, adaptive regularization.
 
-    The inverse is regularized using two smooth filters:
+    As in ``Pinv``, the solution is computed in the eigenbasis of :math:`A`, \
+    :math:`x=V\\,(\\lambda^+\\circ r\\circ V^\\dagger b)`, where :math:`\\lambda^+_i=1/\\lambda_i` if \
+    :math:`|\\lambda_i/\\lambda_\\mathrm{max}|>10^{-14}` and 0 otherwise, and the regularization \
+    factors are
 
-    - an eigenvalue cutoff controlled by ``pinv_cutoff``, which suppresses
-      ill-conditioned directions of the covariance matrix;
-    - a signal-to-noise ratio (SNR) cutoff controlled by ``snr_tol``, which
-      suppresses statistically unresolved update directions. This regularization
-      is skipped by default. Change snr_tol to activate it; doing so requires
-      passing ``grad_log_psi``, ``o_loc``, and ``transformation`` to
-      :meth:`__call__`, and requires a densely materialized (non-batched)
-      Jacobian.
+    .. math::
 
-    The effective eigenvalue cutoff is chosen adaptively such that the residual
-    force discarded by the regularization is below ``pinv_tol`` whenever
-    possible.
+        r_i=r\\left(\\left|\\lambda_i/\\lambda_\\mathrm{max}\\right|;\\epsilon\\right)\\,
+        r\\left(\\mathrm{SNR}_i;\\mathrm{snr\\_tol}\\right),\\qquad r(x;c)=\\frac{1}{1+(c/x)^6},
 
-    Parameters
-    ----------
-    snr_tol : float, default=0
-        Minimum signal-to-noise ratio of an eigenmode before it contributes
-        significantly to the update.
+    see ``jVMC_exp.solver.util.smooth_cutoff_fn()``: a mode with :math:`x=c` gets half its weight.
 
-    pinv_tol : float, default=1e-14
-        Target residual. The solver decreases the eigenvalue cutoff until the
-        fraction of discarded force falls below this threshold or the minimum
-        cutoff ``pinv_cutoff`` is reached.
+    The relative cutoff :math:`\\epsilon` is adaptive. It starts at the larger of \
+    :math:`8\\cdot10^{-3}` and ``pinv_cutoff``, and is multiplied by 0.8, but never lowered \
+    below ``pinv_cutoff``, until the residual \
+    :math:`\\|(\\lambda^+\\circ\\lambda\\circ r-1)\\circ V^\\dagger b\\|/\\|b\\|` is at most \
+    ``pinv_tol``. With the default ``pinv_tol`` it ends at ``pinv_cutoff``.
 
-    pinv_cutoff : float, default=1e-8
-        Minimum allowed relative eigenvalue cutoff.
+    The second factor suppresses the modes whose component of :math:`b` is not resolved by the \
+    samples. It is skipped if ``snr_tol`` is zero (default) or the samples are exact \
+    (``exact_sampler=True``). The signal-to-noise ratio of the component \
+    :math:`(V^\\dagger b)_i` is
 
-    diagonalization_mode : {"device", "distributed", "host"}, default="device"
-        Backend used to diagonalize the covariance matrix; forwarded to
-        :func:`jVMC_exp.solver.util.diagonalize`. ``"device"`` uses
-        ``jax.numpy.linalg.eigh``; ``"distributed"`` uses a distributed
-        eigensolver across the device mesh, falling back to ``"device"``
-        if the prerequisites for distributed execution aren't met;
-        ``"host"`` uses ``numpy.linalg.eigh``.
+    .. math::
 
-    T_A : int, optional
-        Tile size forwarded to :func:`jVMC_exp.solver.util.diagonalize`
-        for ``diagonalization_mode="distributed"``. If not given, a tile
-        size is chosen automatically.
+        \\mathrm{SNR}_i=\\sqrt{\\frac{N_\\mathrm{eff}\\,|(V^\\dagger b)_i|^2}{\\sigma_i^2}},
+
+    with the effective number of samples :math:`N_\\mathrm{eff}=1/\\sum_n w_n^2` of ``o_loc``. \
+    The variance :math:`\\sigma_i^2` depends on ``snr_mode``:
+
+    * ``"empiric"``: The variance over the samples of :math:`\\rho_{n,i}=(V^\\dagger b_n)_i`, \
+      where :math:`b_n=T\\big((\\Gamma(s_n)-\\langle\\Gamma\\rangle)^*(\\ell(s_n)-\\langle\\ell\\rangle)\\big)` \
+      are the contributions of the samples to \
+      :math:`b=T\\big(\\mathrm{Cov}(\\Gamma^*,\\ell)\\big)=\\sum_n w_n b_n`, with the logarithmic \
+      derivatives :math:`\\Gamma` (``grad_log_psi``), the local losses :math:`\\ell` (``o_loc``) \
+      and the function :math:`T` that gives the right hand side of the optimizer \
+      (``transformation``). It needs the logarithmic derivatives as a ``SampledObs``.
+    * ``"gaussian"``: :math:`\\sigma_i^2=\\mathrm{Var}(\\ell)\\,|\\lambda_i|`, which only needs \
+      ``o_loc``.
+
+    The dictionary ``info`` of the solution holds ``"residual"``, the final cutoff \
+    ``"pinv_cutoff"``, ``"snr"`` (the array of :math:`\\mathrm{SNR}_i`, or ``None`` if skipped), \
+    ``"condition_number"`` (as in ``Pinv``), the eigenvalues ``"spectrum"``, and \
+    ``"effective_rank"``, the mean of the regularization factors :math:`r_i`.
+
+    Args:
+        * ``snr_tol``: Signal-to-noise ratio at which a mode gets half its weight. Zero turns the \
+          signal-to-noise regularization off.
+        * ``pinv_tol``: Target residual of the adaptive cutoff.
+        * ``pinv_cutoff``: Smallest value of the adaptive cutoff :math:`\\epsilon`.
+        * ``snr_mode``: ``"empiric"`` or ``"gaussian"``, not case sensitive.
+        * ``diagonalization_mode``, ``T_A``: Diagonalization, see ``Pinv``.
     """
     def __init__(
             self, snr_tol=0, pinv_tol=1e-14, pinv_cutoff=1e-8,
@@ -235,14 +258,20 @@ class PinvSNR(Pinv):
 
     @property
     def snr_tol(self):
+        """Signal-to-noise ratio at which a mode gets half its weight, zero if off."""
         return self._snr_tol
     
     @property
     def pinv_tol(self):
+        """Target residual of the adaptive cutoff."""
         return self._pinv_tol
 
     @property
     def snr_mode(self):
+        """
+        Estimate of the noise, ``"empiric"`` or ``"gaussian"``. It can be set, not case \
+        sensitive: other values raise ``ValueError``.
+        """
         return self._snr_mode
 
     @snr_mode.setter
@@ -266,51 +295,30 @@ class PinvSNR(Pinv):
             **kwargs
         ):
         """
-        Solve ``A @ x = b`` for ``x`` via a regularized pseudo-inverse of `A`.
+        Solve :math:`Ax=b` with the regularized pseudo-inverse.
 
-        Parameters
-        ----------
-        A : array_like
-        b : array_like
-        grad_log_psi : SampledObs, optional
-            Dense per-sample log-derivatives :math:`O_k(s_n)`. Required,
-            together with `o_loc` and `transformation`, to compute the exact
-            SNR-based regularization whenever `snr_tol` is nonzero and
-            `exact_sampler` is False. Must be a dense `SampledObs` -- a
-            `LazySampledObs` (batched Jacobian) raises `NotImplementedError`,
-            since the exact SNR needs the materialized per-sample Jacobian.
-        o_loc : SampledObs, optional
-            Per-sample local estimator (e.g. local energies) that
-            `grad_log_psi` is correlated against to build `b`. Required
-            together with `grad_log_psi` and `transformation` for the SNR
-            regularization.
-        transformation : callable, optional
-            The same real/imaginary-part transform used to build `b` from
-            the raw force estimator (``Evolution._rhs_trans_fn``). Required
-            together with `grad_log_psi` and `o_loc` for the SNR
-            regularization; must be identical to the transform used
-            upstream to compute `b`, since applying the wrong transform (or
-            applying it after projecting onto `A`'s eigenbasis instead of
-            before) silently gives an incorrect variance whenever that
-            eigenbasis is complex.
-        pad_size : int
-            Number of trailing rows/columns `A` needs to be padded with so
-            that its size is compatible with the diagonalization backend;
-            see :func:`jVMC_exp.solver.util.diagonalize`.
-        exact_sampler : bool
-            If True, disables the SNR-based regularization.
-        **kwargs
-            Ignored; accepted for interface compatibility with other
-            solvers.
+        Args:
+            * ``A``: Hermitian matrix, with ``pad_size`` rows and columns of zero padding at \
+              the end.
+            * ``b``: Right hand side, without padding.
+            * ``grad_log_psi``: Logarithmic derivatives :math:`\\Gamma`, a ``SampledObs``, for \
+              ``snr_mode="empiric"``.
+            * ``o_loc``: Local losses :math:`\\ell`, a ``SampledObs``, for the \
+              signal-to-noise ratio.
+            * ``transformation``: The function :math:`T` with :math:`b=T(F)` for the force \
+              :math:`F`, for ``snr_mode="empiric"``.
+            * ``pad_size``: Number of rows and columns of padding of :math:`A`.
+            * ``exact_sampler``: Whether the samples are exact, which skips the \
+              signal-to-noise regularization.
+            * ``**kwargs``: Ignored.
 
-        Returns
-        -------
-        x : jax.Array
-            The regularized pseudo-inverse update ``A^+ @ b``.
-        info : dict
-            Diagnostic information about the solve: ``residual``,
-            ``pinv_cutoff``, ``snr``, ``condition_number``, ``spectrum``
-            (eigenvalues of `A`), and ``effective_rank``.
+        Returns:
+            ``x, info``: The solution, without padding, and the dictionary of the class \
+            description.
+
+        With the signal-to-noise regularization, raises ``ValueError`` if an argument it needs \
+        is ``None``, and ``NotImplementedError`` if ``snr_mode="empiric"`` and ``grad_log_psi`` \
+        is a ``LazySampledObs``.
         """
         # Keep V padded so that it doesn't get replicated on devices
         ev, V, Vtb = self._diagonalize(A, b, pad_size)

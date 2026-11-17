@@ -23,11 +23,18 @@
 
     vqs
     operator
+    geometry
     sampler
+    objective_function
+    optimizer
+    stepper
     nets
+    symmetry
     mpi
     stats
     util
+    global_defs
+    sharding_config
 
 .. toctree::
     :hidden:

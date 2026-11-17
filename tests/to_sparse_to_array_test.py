@@ -9,23 +9,15 @@ class FakeState:
     sampleShape = (3,)
     to_array = NQS.to_array
 
-    def __init__(self, return_log=True):
-        self.return_log = return_log
-
     def __call__(self, basis):
         basis = jnp.asarray(basis)
 
-        log_values = (
+        return (
             0.15 * basis[:, 0]
             - 0.07 * basis[:, 1]
             + 0.11 * basis[:, 2]
             + 0.2j * basis[:, 1]
         )
-
-        if self.return_log:
-            return log_values
-
-        return jnp.exp(log_values)
 
 class TestToSparseAndToArray(unittest.TestCase):
     def test_to_sparse_and_to_array(self):
@@ -69,26 +61,30 @@ class TestToSparseAndToArray(unittest.TestCase):
             atol=1.0e-6,
         ))
 
-        psi_log = FakeState(return_log=True)
-        statevector_log = psi_log.to_array(basis, log=True)
-        psi_direct = FakeState(return_log=False)
-        statevector_direct = psi_direct.to_array(basis, log=False)
+        psi = FakeState()
+        statevector = psi.to_array(basis)
+        amplitudes = jnp.exp(psi(basis))
 
         self.assertTrue(jnp.allclose(
-            statevector_log, statevector_direct,
+            statevector, amplitudes / jnp.linalg.norm(amplitudes),
             atol=1.0e-6,
         ))
 
         self.assertTrue(jnp.allclose(
-            jnp.linalg.norm(statevector_log), 1.0,
+            psi.to_array(basis, normalize=False), amplitudes,
+            atol=1.0e-6,
+        ))
+
+        self.assertTrue(jnp.allclose(
+            jnp.linalg.norm(statevector), 1.0,
             atol=1.0e-6,
         ))
 
         energy_sparse = jnp.vdot(
-            statevector_log, jnp.asarray(H_sparse @ statevector_log)
+            statevector, jnp.asarray(H_sparse @ statevector)
         )
         energy_expected = jnp.vdot(
-            statevector_log, expected_matrix @ statevector_log,
+            statevector, expected_matrix @ statevector,
         )
 
         self.assertTrue(jnp.allclose(energy_sparse, energy_expected, atol=1.0e-6))

@@ -16,9 +16,11 @@ from jVMC_exp import global_defs
 
 class MCSampler(AbstractMCSampler):
     """
-    A sampler class.
+    Sampler of discrete computational basis configurations.
 
-    This abstract class provides functionality to sample computationally basis.
+    Chains that do not get their initial configuration from ``initState`` start from random
+
+    See :class:`~jVMC_exp.sampler.base.AbstractMCSampler` for the sampled distribution and the initializer arguments.
     """
     def _init_state(self):
         initializer = lambda key, shape, dtype: jax.random.bernoulli(key, 0.5, shape).astype(dtype)
@@ -26,6 +28,20 @@ class MCSampler(AbstractMCSampler):
         return self._init_state_general(initializer, global_defs.DT_SAMPLES)
     
 class MCSamplerCont(AbstractMCSampler):
+    """
+    Sampler of continuous particle configurations.
+
+    Chains that do not get their initial configuration from ``initState`` start from particle \
+    positions drawn uniformly from the geometry of the proposer.
+
+    See :class:`~jVMC_exp.sampler.base.AbstractMCSampler` for the sampled distribution and the initializer arguments. \
+    They differ in the following:
+
+    Initializer arguments:
+        * ``updateProposer``: An instance of ``jVMC_exp.sampler.propose.AbstractProposeCont``. \
+        * ``sweepSteps``: Number of proposed updates per sweep. If ``None``, the number of \
+          particles times the number of spatial dimensions is used.
+    """
     def __init__(
         self, psi: NQS, updateProposer: None | AbstractProposeCont, key=None, 
         numChains=32, numSamples=128, thermalizationSweeps=10, sweepSteps=None, 
@@ -48,41 +64,55 @@ class CutoffSampler(MCSampler):
 
         :math:`p_{\\mu}(s)=\\frac{|\\psi(s)|^{\\mu}}{\\sum_s|\\psi(s)|^{\\mu}}`.
 
-    During the Markov chain update, the acceptance probability
+    During the Markov chain update, the log-probability
     :math:`\\mu \\, \\text{Re}(\\log\\psi)` is clipped from below at
-    ``cutoff = mu * max_s Re(log psi(s)) + log(eps)``. Configurations whose
-    target probability would otherwise be smaller than the cutoff are sampled
-    with the clipped probability instead. The returned weight for each
-    sample is multiplied by the importance ratio
+    ``cutoff = maxLogPsi + log(eps)``, so that the chains sample
+    :math:`q(s) \\propto \\max\\{|\\psi(s)|^{\\mu}, e^{\\text{cutoff}}\\}`.
+    The returned weight for each sample is multiplied by the importance ratio
     :math:`r(s) = |\\psi(s)|^{\\mu} / \\max\\{|\\psi(s)|^{\\mu}, e^{\\text{cutoff}}\\}`
     so that estimators stay unbiased.
+
+    ``maxLogPsi`` is an estimate of :math:`\\mu\\,\\max_s\\text{Re}(\\log\\psi(s))`. Every
+    ``sample()`` call replaces it with the maximum over the new samples, which
+    moves the cutoff for the next call: the weights of a call are computed with the
+    cutoff that was in place before it.
+
+    After sampling, ``ratio`` holds :math:`r(s)` of the last samples and ``renorm``
+    holds ``numSamples / sum(ratio)``.
 
     Sampling is automatically distributed across processes and locally
     available devices via JAX sharding (see ``jVMC_exp.sharding_config``).
 
+    .. warning::
+        Networks with an ``eval_ratio`` method are not supported: the
+        initializer raises an ``UnboundLocalError``.
+
     Initializer arguments:
-        * ``net``: Network defining the probability distribution.
+        * ``psi``: Variational state defining the probability distribution.
+          Generators are not supported.
         * ``updateProposer``: An instance of
-            :class:`jVMC_exp.propose.AbstractProposer`.
+          ``jVMC_exp.sampler.propose.AbstractProposer``, without custom
+          thermalization.
         * ``eps``: Cutoff parameter, in the closed interval :math:`[0, 1]`.
-            The cutoff is set to ``maxLogPsi + log(eps)``.
+          ``0`` disables the cutoff and ``1`` makes the chains sample uniformly.
         * ``key``: PRNG key (``jax.random.PRNGKey`` or seed ``int``).
         * ``numChains``: Number of Markov chains run in parallel.
-        * ``numSamples``: Default number of samples returned by
-            :meth:`sample`.
+        * ``numSamples``: Default number of samples returned by ``sample()``.
         * ``thermalizationSweeps``: Sweeps used for thermalization.
         * ``sweepSteps``: Proposed updates per sweep.
         * ``initState``: Optional initial chain configurations.
-        * ``mu``: Exponent of the target distribution :math:`|\\psi|^{\\mu}`.
+        * ``mu``: Exponent of the sampled distribution :math:`|\\psi|^{\\mu}`.
         * ``logProbFactor``: Factor for log-probabilities (``0.5`` for pure
-            wave functions, ``1.0`` for POVMs).
+          wave functions, ``1.0`` for POVMs).
         * ``maxLogPsi``: Optional initial value of
-            :math:`\\mu\\,\\max_s\\text{Re}(\\log\\psi(s))`. If ``None``, a
-            quick bootstrap MC run is used to estimate it.
+          :math:`\\mu\\,\\max_s\\text{Re}(\\log\\psi(s))`. If ``None``, a
+          quick bootstrap MC run is used to estimate it.
         * ``bootstrap_kwargs``: Optional dict of keyword arguments
-            forwarded to the bootstrap :class:`MCSampler`. Use this to
-            reduce the cost of the bootstrap (e.g., smaller
-            ``numSamples``) or to override its key.
+          forwarded to the bootstrap :class:`~jVMC_exp.sampler.mc_sampler.MCSampler`. Use this to
+          reduce the cost of the bootstrap (e.g., smaller
+          ``numSamples``) or to override its key. The bootstrap runs
+          25 chains by default, so a ``numSamples`` below 25 also
+          needs a smaller ``numChains`` here.
     """
     def __init__(
             self, psi: NQS, updateProposer: AbstractProposer, eps,
@@ -150,7 +180,8 @@ class CutoffSampler(MCSampler):
         self._get_ratio = get_ratio
 
     @property
-    def eps(self): 
+    def eps(self):
+        """Cutoff parameter. Setting it updates ``cutoff``."""
         return self._eps
 
     @eps.setter
@@ -162,6 +193,9 @@ class CutoffSampler(MCSampler):
 
     @property
     def maxLogPsi(self):
+        """
+        Estimate of :math:`\\mu\\,\\max_s\\text{Re}(\\log\\psi(s))`. Setting it updates ``cutoff``.
+        """
         return self._maxLogPsi
 
     @maxLogPsi.setter
@@ -171,6 +205,7 @@ class CutoffSampler(MCSampler):
 
     @property
     def cutoff(self):
+        """Lower bound of the log-probability for the next ``sample()`` call."""
         return self._cutoff
 
     def _update_cutoff(self):

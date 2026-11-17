@@ -16,12 +16,25 @@ def _moving_average_update(values, x):
     return values, jnp.mean(values)
 
 class MovingAverage:
-    """Simple moving average used for the adaptive control-variate coefficient."""
+    """
+    Moving average of the last ``width`` values, used for the coefficient of the adaptive
+    control variate.
+
+    Args:
+        * ``width``: Number of values in the average.
+        * ``init``: Value of the ``width`` entries the average starts from.
+    """
 
     def __init__(self, width=10, init=0.0):
         self.values = jnp.full((width,), init)
 
     def update(self, x):
+        """
+        Add ``x``, dropping the oldest value.
+
+        Returns:
+            The mean of the last ``width`` values.
+        """
         self.values, mean = _moving_average_update(self.values, x)
         return mean
 
@@ -40,8 +53,8 @@ def _get_control_variate(x):
 
 class Infidelity(AbstractObjectiveFunction):
     r"""
-    Infidelity between the trial state :math:`|\psi_\theta\rangle` (primary sampler)
-    and a reference state :math:`|\chi\rangle` (``reference_sampler``),
+    Infidelity between the variational state :math:`|\psi_\theta\rangle` and a reference state
+    :math:`|\chi\rangle` transformed by an operator :math:`\hat O`,
 
     .. math::
         \mathcal I = 1 - \frac{\langle\psi_\theta|\hat O|\chi\rangle\langle\chi|\hat O^\dagger|\psi_\theta\rangle}
@@ -56,7 +69,32 @@ class Infidelity(AbstractObjectiveFunction):
     .. math::
         F_k = -\,\mathrm{Cov}_p(\Gamma_k^*, R^\psi_{\rm loc})\,\langle R^\chi_{\rm loc}\rangle_\chi .
 
-    Control variates only modify the estimate of :math:`\mathcal I`, not the force.
+    The samples of :math:`\psi_\theta` come from the sampler passed to ``__call__()`` and
+    ``value_and_grad()``, those of :math:`\chi` from ``reference_sampler``. The operators act on
+    discrete configurations, see :ref:`Operator`; for one- and two-site matrices,
+    ``jVMC_exp.util.util.matrix_to_jvmc_operator(matrix, sites, return_conjugate=True)`` returns
+    :math:`\hat O` and :math:`\hat O^\dagger`.
+
+    Control variates reduce the variance of the estimate of :math:`\mathcal I`, and do not change
+    the force: the correction :math:`c\,(|R^\psi_{\rm loc}(s)|^2\langle|R^\chi_{\rm loc}|^2\rangle_\chi-1)`
+    is subtracted from the local loss. Its mean vanishes for a unitary :math:`\hat O`. With
+    ``"simple"``, :math:`c=-1/2`. With ``"adaptive"``,
+    :math:`c=-|\mathrm{Re}\,\mathrm{Cov}(A,|A|^2)|/\mathrm{Var}(|A|^2)`, with
+    :math:`A=R^\psi_{\rm loc}(x)R^\chi_{\rm loc}(y)` for independent :math:`x\sim|\psi_\theta|^2`
+    and :math:`y\sim|\chi|^2`, averaged over the last ``moving_average_width`` calls.
+
+    Args:
+        * ``reference_sampler``: Sampler of the reference state :math:`|\chi\rangle`. It draws
+          new samples at every call, unless ``sample_ref_state=False``.
+        * ``operator`` [optional]: Operator :math:`\hat O`. By default the identity.
+        * ``conjugated_operator`` [optional]: The adjoint :math:`\hat O^\dagger`. If ``None``,
+          :math:`\hat O` is taken as Hermitian, with a warning, and control variates are
+          disabled. Raises ``ValueError`` if given without ``operator``.
+        * ``control_variate``: ``None``, ``"simple"`` or ``"adaptive"``, in upper or lower case.
+        * ``moving_average_width``: Number of calls over which the coefficient of the adaptive
+          control variate is averaged. The average starts from zeros.
+        * ``l_dim``: Local dimension of the default identity operator.
+        * ``batched_jacobian``: See ``AbstractObjectiveFunction``.
     """
     def __init__(
         self,
@@ -98,18 +136,22 @@ class Infidelity(AbstractObjectiveFunction):
 
     @property
     def reference_sampler(self):
+        """Sampler of the reference state."""
         return self._reference_sampler
 
     @property
     def operator(self):
+        r"""The operator :math:`\hat O`."""
         return self._operator
 
     @property
     def conjugated_operator(self):
+        r"""The adjoint :math:`\hat O^\dagger`."""
         return self._conjugated_operator
 
     @property
     def control_variate(self):
+        """``None``, ``"simple"`` or ``"adaptive"``. Raises ``ValueError`` for another value."""
         return self._control_variate
 
     @control_variate.setter
@@ -125,6 +167,9 @@ class Infidelity(AbstractObjectiveFunction):
 
     @property
     def moving_average_width(self):
+        """
+        Width of the moving average of the adaptive coefficient. Setting it restarts the average.
+        """
         return self._moving_average_width
 
     @moving_average_width.setter
@@ -138,29 +183,30 @@ class Infidelity(AbstractObjectiveFunction):
             sample_ref_state: bool = True,
             *,
             control_variate_coeff=None,
-            **kwargs
+            **op_kwargs
         ) -> SampledObs:
         r"""
-        Compute the local infidelity estimator on the configurations held by ``sampler``.
+        Local infidelities on the samples of ``sampler``.
 
         Args:
-            sampler: Sampler of the trial state :math:`|\psi_\theta\rangle`.
-            sample_ref_state: Whether to resample the reference state before
-                estimating :math:`\langle R^\chi_{\rm loc}\rangle_\chi`.
-            control_variate_coeff: Optional override of the adaptive
-                control-variate coefficient.
+            * ``sampler``: Sampler of the variational state :math:`|\psi_\theta\rangle`.
+            * ``sample_ref_state``: Whether the reference sampler draws new samples before
+              :math:`\langle R^\chi_{\rm loc}\rangle_\chi` is estimated.
+            * ``control_variate_coeff`` [optional]: Coefficient :math:`c` of the adaptive control
+              variate for this call, instead of the moving average.
+            * ``**op_kwargs``: Keyword arguments of the operators, e.g. the time ``t``.
 
         Returns:
-            The local infidelity estimator
-            :math:`1 - R^\psi_{\rm loc}(s)\langle R^\chi_{\rm loc}\rangle_\chi`,
-            minus the control-variate correction if enabled.
+            The local infidelities
+            :math:`1 - R^\psi_{\rm loc}(s)\langle R^\chi_{\rm loc}\rangle_\chi`, minus the
+            correction of the control variate, as a ``SampledObs``.
         """
         if sample_ref_state:
             self.reference_sampler.sample()
 
         o_loc = self._get_f_loc(
             self.conjugated_operator, self.reference_sampler.samples,
-            self.reference_sampler.logPsi, sampler.psi
+            self.reference_sampler.logPsi, sampler.psi, **op_kwargs
         )
 
         if self.control_variate is not None:
@@ -172,7 +218,7 @@ class Infidelity(AbstractObjectiveFunction):
 
         o_loc = self._get_f_loc(
             self.operator, sampler.samples,
-            sampler.logPsi, self.reference_sampler.psi
+            sampler.logPsi, self.reference_sampler.psi, **op_kwargs
         )
 
         if self.control_variate is not None:
@@ -200,9 +246,23 @@ class Infidelity(AbstractObjectiveFunction):
             compute_grad: bool = True,
             *,
             sample_ref_state: bool = True,
-            **kwargs
+            **op_kwargs
         ) -> ObjectiveFunctionOutput:
-        value = self(sampler, sample_ref_state=sample_ref_state, **kwargs)
+        r"""
+        Local infidelities, logarithmic derivatives and force
+        :math:`F_k=-\mathrm{Cov}_p(\Gamma_k^*,R^\psi_{\rm loc})\langle R^\chi_{\rm loc}\rangle_\chi`.
+
+        Args:
+            * ``sampler``: Sampler of the variational state :math:`|\psi_\theta\rangle`.
+            * ``compute_grad``: Whether to compute the force.
+            * ``sample_ref_state``: As in ``__call__()``.
+            * ``**op_kwargs``: Keyword arguments of ``__call__()``: ``control_variate_coeff`` and
+              the keyword arguments of the operators, e.g. the time ``t``.
+
+        Returns:
+            ``ObjectiveFunctionOutput``.
+        """
+        value = self(sampler, sample_ref_state=sample_ref_state, **op_kwargs)
         grad_log_psi = self._grad_log_psi(sampler)
 
         if compute_grad:
@@ -215,7 +275,7 @@ class Infidelity(AbstractObjectiveFunction):
 
         return ObjectiveFunctionOutput(o_loc=value, grad_log_psi=grad_log_psi)
 
-    def _get_f_loc(self, operator: Operator, s, log_phi_s, psi: NQS):
+    def _get_f_loc(self, operator: Operator, s, log_phi_s, psi: NQS, **op_kwargs):
         r"""
         Returns the local estimator :math:`\sum_{s'} O_{s,s'} \psi(s') / \phi(s)` of
         :math:`\langle\phi|O|\psi\rangle / \langle\phi|\phi\rangle`, where ``s`` is sampled
@@ -230,15 +290,17 @@ class Infidelity(AbstractObjectiveFunction):
             operator=operator,
             psi=psi,
             chunk_size=chunk_size,
-            batch_size=MESH.size * (evals_per_device // chunk_size)
+            batch_size=MESH.size * (evals_per_device // chunk_size),
+            **op_kwargs
         )
 
     @sharded(static_kwarg_names=("operator", "psi", "chunk_size"))
     def _get_f_loc_sh(
         self, s, log_phi_s, *,
-        parameters, operator: Operator, psi: NQS, chunk_size, batch_size
+        parameters, operator: Operator, psi: NQS, chunk_size, batch_size,
+        **op_kwargs
     ):
-        s_p, mat_els, mat_el_diag = operator._get_conn_elements(s, {})
+        s_p, mat_els, mat_el_diag = operator._get_conn_elements(s, op_kwargs)
         s_p = jnp.concatenate([s[None], s_p], axis=0)
         mat_els = jnp.concatenate([mat_el_diag[None], mat_els], axis=0)
 

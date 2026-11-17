@@ -11,6 +11,21 @@ from jVMC_exp.util.output_manager import OutputManager
 from jVMC_exp.stepper import Euler
 
 class Adam(AbstractOptimizer):
+    """
+    Ground state search with the Adam optimizer of ``optax``.
+
+    Adam gets the gradient :math:`\\partial_{\\theta_k}L=2\\,\\mathrm{Re}\\,F_k` of the objective \
+    function, and every step of ``ground_state_search()`` adds its update to the parameters. \
+    ``time_evolution()`` raises ``NotImplementedError``.
+
+    Args:
+        * ``sampler``: Sampler of ``psi``.
+        * ``psi``: Variational state.
+        * ``learning_rate``: Learning rate.
+        * ``b1``, ``b2``: Decay rates of the first and second moments of the gradient.
+        * ``eps``: Constant added to the root of the second moment.
+        * ``output_manager`` [optional]: See ``AbstractOptimizer``.
+    """
     def __init__(
             self, sampler, psi,
             learning_rate: float=1e-3, b1: float=0.9, b2: float=0.999, eps: float=1e-8,
@@ -27,6 +42,16 @@ class Adam(AbstractOptimizer):
         return True
 
     def get_update(self, objective_function_out: ObjectiveFunctionOutput):
+        """
+        Adam update for the gradient :math:`2\\,\\mathrm{Re}\\,F`: the change of the flat \
+        parameters, learning rate included. It advances the state of Adam.
+
+        Args:
+            * ``objective_function_out``: ``ObjectiveFunctionOutput`` with the force.
+
+        Returns:
+            The update, with the shape of ``psi.parameters_flat``.
+        """
         grad = 2 * jnp.real(objective_function_out.grad)
         update, self._opt_state = self._adam.update(grad, self._opt_state, self.psi.parameters_flat)
 
@@ -36,6 +61,7 @@ class Adam(AbstractOptimizer):
         pass
 
     def cross_validation(self):
+        """Does nothing: Adam has no cross validation."""
         pass
 
     def ground_state_search(
@@ -47,6 +73,20 @@ class Adam(AbstractOptimizer):
             save_meta_data: bool = False,
             **objective_function_kwargs
         ):
+        """
+        Minimize ``objective_function`` with ``steps`` steps of Adam, as \
+        ``AbstractOptimizer.ground_state_search()`` without a stepper.
+
+        Args:
+            * ``steps``: Number of steps.
+            * ``objective_function``: ``AbstractObjectiveFunction`` to minimize.
+            * ``observables``, ``callback``, ``save_meta_data``: As in \
+              ``AbstractOptimizer.ground_state_search()``.
+            * ``**objective_function_kwargs``: Keyword arguments of the objective function.
+
+        Returns:
+            As ``AbstractOptimizer.ground_state_search()``.
+        """
         pbar = tqdm.tqdm(range(steps))
         for n in pbar: 
             self._stepper.update_dt(n)
@@ -78,6 +118,7 @@ class Adam(AbstractOptimizer):
             save_meta_data: bool = False,
             **kwargs
         ):
+        """Not available for Adam: raises ``NotImplementedError``."""
         raise NotImplementedError(
             "The Adam optimizer is intended for ground state search only and "
             "cannot be used for time evolution. Use jVMC_exp.optimizer.TDVP instead."

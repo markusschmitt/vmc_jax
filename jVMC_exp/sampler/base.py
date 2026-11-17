@@ -20,6 +20,17 @@ from jVMC_exp.stats import SampledObs
 from jVMC_exp import global_defs
 
 class AbstractSampler(ABC):
+    """
+    Interface shared by all samplers.
+
+    A sampler is bound to a variational state and keeps the result of its last ``sample()`` call
+    in ``samples``, ``logPsi`` and ``weights``. Reading one of these before the first call
+    triggers it. The stored values are not refreshed when ``psi.parameters`` changes: call
+    ``sample()`` again after updating the parameters.
+
+    Args:
+        * ``psi``: Variational state to sample from.
+    """
     def __init__(self, psi: NQS):
         self._psi = psi
         self._samples = None
@@ -29,14 +40,17 @@ class AbstractSampler(ABC):
 
     @property
     def psi(self):
+        """Variational state the sampler is bound to."""
         return self._psi
     
     @property
     def sampleShape(self):
+        """Shape of a single configuration."""
         return self.psi.sampleShape
     
     @property
     def logPsi(self):
+        """:math:`\\ln\\psi(s)` of the stored samples."""
         if self._samples is None:
             self.sample()
         
@@ -44,6 +58,7 @@ class AbstractSampler(ABC):
     
     @property
     def weights(self):
+        """Normalized weights of the stored samples."""
         if self._samples is None:
             self.sample()
 
@@ -51,6 +66,7 @@ class AbstractSampler(ABC):
     
     @property
     def samples(self):
+        """Configurations returned by the last ``sample()`` call."""
         if self._samples is None:
             self.sample()
 
@@ -59,28 +75,36 @@ class AbstractSampler(ABC):
     # TODO: make this method explicit
     @abstractmethod
     def __call__(self, observable: AbstractOperator, **obs_kwargs) -> SampledObs:
+        """
+        Evaluate an observable on the samples of the sampler.
+
+        Args:
+            * ``observable``: Operator to evaluate.
+            * ``**obs_kwargs``: Additional keyword arguments for ``observable.get_O_loc()``.
+
+        Returns:
+            The local estimator of ``observable`` together with the sample weights.
+        """
         pass
 
     @abstractmethod
     def sample(self, numSamples=None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        '''
+        """
         Sample configurations from the distribution defined by the network.
-        
-        Args.:
-            numSamples: Optional number of samples to generate. \
-            If None, the default number of samples is used.
+
+        Args:
+            * ``numSamples``: Number of samples to generate in this call. If ``None``, the \
+              default number of samples is used.
+
         Returns:
-            A tuple of (configs, logPsi, p), where:
-            - configs: Sampled configurations.
-            - logPsi: Logarithm of the wave function coefficients for \
-            the sampled configurations.
-            - p: Normalized probabilities of the sampled configurations.
-        '''
+            ``configs, logPsi, p``: The sampled configurations, their logarithmic wave function \
+            coefficients and their normalized weights.
+        """
         pass
 
 class AbstractMCSampler(AbstractSampler):
     """
-    A sampler class.
+    Base class of the samplers that draw configurations stochastically.
 
     This abstract class provides functionality to sample states from \
     the distribution 
@@ -89,29 +113,42 @@ class AbstractMCSampler(AbstractSampler):
 
     For :math:`\\mu=2` this corresponds to sampling from the Born distribution. \
     :math:`0\\leq\\mu<2` can be used to perform importance sampling \
-    (see `[arXiv:2108.08631] <https://arxiv.org/abs/2108.08631>`_).
+    (see `[arXiv:2108.08631] <https://arxiv.org/abs/2108.08631>`_). The returned weights are \
+    proportional to :math:`|\\psi(s)|^{1/\\text{logProbFactor}-\\mu}`, so that weighted averages \
+    are taken over the distribution :math:`|\\psi(s)|^{1/\\text{logProbFactor}}`.
 
-    Sampling is automatically distributed accross processes and locally available devices.
+    If the network of ``psi`` provides a ``sample()`` method, configurations are drawn directly \
+    from it and all get the same weight. In that case the network alone sets the distribution: \
+    ``mu``, ``logProbFactor`` and all the MCMC arguments have no effect on the samples. \
+    Otherwise, Markov chains are run with the proposals of ``updateProposer``.
+
+    Sampling is automatically distributed across processes and locally available devices. The \
+    numbers of chains and samples are rounded up where this is needed, so a call can return \
+    more samples than requested.
 
     Initializer arguments:
-        * ``net``: Network defining the probability distribution.
-        * ``sampleShape``: Shape of configurations.
-        * ``key``: An instance of ``jax.random.PRNGKey``. Alternatively, an ``int`` that will be used \
-                   as seed to initialize a ``PRNGKey``.
-        * ``updateProposer``: An instance of jVMC.proposer.AbstractProposer to propose updates for the MCMC algorithm. \
-        It is called as ``updateProposer(key, config, **kwargs)``, where ``key`` is an instance of \
-        ``jax.random.PRNGKey``, ``config`` is a computational basis configuration, and ``**kwargs`` \
-        are optional additional arguments.
-        * ``numChains``: Number of Markov chains, which are run in parallel.
-        * ``updateProposerArg``: An optional argument that will be passed to the ``updateProposer`` \
-        as ``kwargs``.
-        * ``numSamples``: Default number of samples to be returned by the ``sample()`` member function.
-        * ``thermalizationSweeps``: Number of sweeps to perform for thermalization of the Markov chain.
-        * ``sweepSteps``: Number of proposed updates per sweep.
-        * ``mu``: Parameter for the distribution :math:`p_{\\mu}(s)`, see above.
-        * ``logProbFactor``: Factor for the log-probabilities, aquivalent to the exponent for the probability \
-        distribution. For pure wave functions this should be 0.5, and 1.0 for POVMs. In the POVM case, the \
-        ``mu`` parameter must be set to 1.0, to sample the unchanged POVM distribution.
+        * ``psi``: Variational state defining the probability distribution.
+        * ``updateProposer``: An instance of ``jVMC_exp.sampler.propose.AbstractProposer`` to \
+          propose updates for the MCMC algorithm. Can be ``None`` only if ``psi`` samples directly.
+        * ``key``: An instance of ``jax.random.PRNGKey``, or an ``int`` that will be used as seed \
+          to initialize a ``PRNGKey``. If ``None``, a random seed is generated.
+        * ``numChains``: Number of Markov chains, which are run in parallel. It cannot exceed \
+          ``numSamples``. It is unused when sampling directly.
+        * ``numSamples``: Default number of samples to be returned by the ``sample()`` member \
+          function. All chains contribute the same number of samples.
+        * ``thermalizationSweeps``: Number of sweeps discarded at the start of every ``sample()`` \
+          call. If ``None``, thermalization is skipped.
+        * ``sweepSteps``: Number of proposed updates per sweep, i.e., between two recorded samples \
+          of a chain. If ``None``, the total number of sites, ``prod(sampleShape)``, is used.
+        * ``initState``: Initial configurations of the chains, of shape \
+          ``(n, *sampleShape)``. Surplus configurations are dropped and missing ones are \
+          generated randomly. If ``None``, all the configurations are generated randomly.
+        * ``mu``: Parameter for the distribution :math:`p_{\\mu}(s)`, see above, in the \
+          interval :math:`[0, 2]`. It cannot be changed after construction.
+        * ``logProbFactor``: Factor for the log-probabilities, equivalent to the exponent for the \
+          probability distribution. For pure wave functions this should be 0.5, and 1.0 for POVMs. \
+          In the POVM case, the ``mu`` parameter must be set to 1.0, to sample the unchanged POVM \
+          distribution.
     """
     def __init__(
             self, psi: NQS, updateProposer: None | AbstractProposer, key=None, 
@@ -126,21 +163,23 @@ class AbstractMCSampler(AbstractSampler):
         super().__init__(psi)
 
         self.logProbFactor = logProbFactor
-        self.mu = mu
         if mu < 0 or mu > 2:
             raise ValueError("mu must be in the range [0, 2]")
+        self._mu = mu
         self._updateProposer = updateProposer
 
         self.key = key
 
         if sweepSteps is None:
-            sweepSteps = self.sampleShape[-1]
+            sweepSteps = int(np.prod(self.sampleShape))
         self.sweepSteps = sweepSteps
         self.thermalizationSweeps = thermalizationSweeps
         self.numSamples = numSamples
         self.numChains = numChains
 
         self.states = initState
+        self.numProposed = None
+        self.numAccepted = None
 
         if has_callable_attr(self.psi.net, "eval_real"):
             def log_prob_fun(p, s):
@@ -176,7 +215,13 @@ class AbstractMCSampler(AbstractSampler):
         self._get_ratio = get_ratio
 
     @property
+    def mu(self):
+        """Parameter of the distribution :math:`p_{\\mu}(s)`, read-only."""
+        return self._mu
+
+    @property
     def thermalizationSweeps(self):
+        """Number of sweeps discarded at the start of every ``sample()`` call."""
         return self._thermalizationSweeps
     
     @thermalizationSweeps.setter
@@ -186,6 +231,7 @@ class AbstractMCSampler(AbstractSampler):
     
     @property
     def sweepSteps(self):
+        """Number of proposed updates per sweep."""
         return self._sweepSteps
     
     @sweepSteps.setter
@@ -195,15 +241,22 @@ class AbstractMCSampler(AbstractSampler):
 
     @property
     def updateProposer(self):
+        """Proposer of the MCMC updates."""
         return self._updateProposer
 
     @property
     def numChains(self):
+        """
+        Number of Markov chains.
+
+        Setting it adapts the current chains at the next ``sample()`` call, as described for \
+        ``initState``, and initializes the proposer again.
+        """
         return self._numChains
     
     @numChains.setter
     def numChains(self, value):
-        if self.numSamples < value:
+        if not self.psi.is_generator and self.numSamples < value:
             raise ValueError(
                 f"The provided number of chains {value} is bigger "
                 f"than the number of samples {self.numSamples}."
@@ -216,6 +269,7 @@ class AbstractMCSampler(AbstractSampler):
 
     @property
     def key(self):
+        """PRNG state: one key, or one key per chain once the chains are initialized."""
         return self._key
     
     @key.setter
@@ -225,6 +279,12 @@ class AbstractMCSampler(AbstractSampler):
 
     @property
     def states(self):
+        """
+        Current configurations of the Markov chains, of shape ``(numChains, *sampleShape)``.
+
+        This is ``initState`` until the first ``sample()`` call. A new value is used by the next \
+        ``sample()`` call, as described for ``initState``.
+        """
         return self._states
 
     @states.setter
@@ -233,7 +293,7 @@ class AbstractMCSampler(AbstractSampler):
             value = jnp.array(value)
             if value.shape[1:] != self.sampleShape:
                 raise ValueError(
-                    f"The provided state has the wrog sample shape. "
+                    f"The provided state has the wrong sample shape. "
                     f"Got {value.shape[1:]}, while sampleShape is {self.sampleShape}."
                 )
 
@@ -242,10 +302,17 @@ class AbstractMCSampler(AbstractSampler):
 
     @property
     def sampler_state(self):
+        """
+        Snapshot of the sampler as a dictionary with ``parameters``, ``states`` and ``weights``.
+
+        Reading it samples if there are no stored samples yet. Setting it restores these three \
+        entries, but not ``samples``, ``logPsi`` or ``key``: call ``sample()`` before using \
+        the stored samples again.
+        """
         return dict(
             parameters=self.psi.parameters,
-            states=self.states,
-            weights=self.weights
+            weights=self.weights,
+            states=self.states
         )
 
     @sampler_state.setter
@@ -264,29 +331,25 @@ class AbstractMCSampler(AbstractSampler):
         """
         Evaluate an observable using Monte Carlo samples of the current variational state.
 
-        This method draws (or reuses) samples from the underlying sampler and computes
-        the local estimator of the given observable. Resampling is triggered if no
-        samples are currently stored, if the requested number of samples differs from
-        the stored one, or if `resample=True`.
+        This method draws (or reuses) samples from the underlying sampler and computes \
+        the local estimator of the given observable. Resampling is triggered if no \
+        samples are currently stored, if the requested number of samples differs from \
+        ``numSamples``, or if ``resample=True``.
 
-        Parameters
-        ----------
-        observable : AbstractOperator
+        Stored samples and :math:`\\ln\\psi(s)` are reused even if ``psi.parameters`` has \
+        changed, so pass ``resample=True`` after updating the parameters. ``num_samples`` applies \
+        to one call and does not change ``numSamples``: any other value resamples at every call.
 
-        num_samples : int or None, optional
-            Number of Monte Carlo samples to draw. If None, the previously used
-            number of samples is reused.
+        Args:
+            * ``observable``: Operator to evaluate.
+            * ``num_samples``: Number of Monte Carlo samples to draw. If ``None``, the stored \
+              samples are reused.
+            * ``resample``: If ``True``, forces resampling even if stored samples are available.
+            * ``**obs_kwargs``: Additional keyword arguments for ``observable.get_O_loc()``.
 
-        resample : bool, optional
-            If True, forces resampling even if cached samples are available.
-
-        **obs_kwargs
-            Additional keyword arguments forwarded to
-            `observable.get_O_loc(...)`.
-
-        Returns
-        -------
-        SampledObs
+        Returns:
+            The local estimator of ``observable`` as a ``jVMC_exp.stats.SampledObs``, together \
+            with the sample weights.
         """
         needs_resample = (
             self.samples is None
@@ -300,13 +363,31 @@ class AbstractMCSampler(AbstractSampler):
         return SampledObs(raw_data, self.weights)
   
     def reset(self, key=None):
+        """
+        Replace the PRNG key and initialize the proposer again at the next ``sample()`` call.
+
+        The chains continue from their current configurations and the stored samples are kept, \
+        so this does not reproduce the samples of a new sampler created with the same key.
+
+        Args:
+            * ``key``: New key, as for the initializer argument ``key``.
+        """
         self.key = key
 
     @abstractmethod
     def _init_state(self):
+        """Initialize the chains, usually through ``_init_state_general``."""
         pass
 
     def _init_state_general(self, initializer, dtype):
+        """
+        Set up one PRNG key per chain, the chain configurations and the proposer arguments.
+
+        Args:
+            * ``initializer``: Called as ``initializer(key, shape, dtype)`` to generate the \
+              configurations missing from ``states``.
+            * ``dtype``: Data type of the configurations.
+        """
         master_key = self.key[0] if self.key.ndim > 1 else self.key
         all_keys = broadcast_split_key(master_key, self.numChains + 1)
         keys = all_keys[:-1]
@@ -368,26 +449,23 @@ class AbstractMCSampler(AbstractSampler):
         """
         Generate random samples from wave function.
 
-        If supported by ``net``, direct sampling is peformed. Otherwise, MCMC is run \
-        to generate the desired number of samples. For direct sampling the real part \
-        of ``net`` needs to provide a ``sample()`` member function that generates \
-        samples from :math:`p_{\\mu}(s)`.
+        If supported by the network, direct sampling is performed. Otherwise, MCMC is run \
+        to generate the desired number of samples: the chains continue from their last \
+        configurations, are thermalized again and then record one sample per sweep.
 
-        Sampling is automatically distributed accross MPI processes and available \
+        Sampling is automatically distributed across processes and available \
         devices. In that case the number of samples returned might exceed ``numSamples``.
 
-        Arguments:
-            * ``numSamples``: Number of samples to generate. When running multiple processes \
-            or on multiple devices per process, the number of samples returned is \
-            ``numSamples`` or more. If ``None``, the default number of samples is returned \
-            (see ``set_number_of_samples()`` member function).
-            * ``multipleOf``: This argument allows to choose the number of samples returned to \
-            be the smallest multiple of ``multipleOf`` larger than ``numSamples``. This feature \
-            is useful to distribute a total number of samples across multiple processors in such \
-            a way that the number of samples per processor is identical for each processor.
+        Args:
+            * ``numSamples``: Number of samples to generate in this call, without changing the \
+              default. If ``None``, the default number of samples is used.
 
         Returns:
-            Samples drawn from :math:`p_{\\mu}(s)`.
+            ``configs, logPsi, p``: The sampled configurations, of shape \
+            ``(N, *sampleShape)`` with ``N`` at least the requested number of samples, their \
+            logarithmic wave function coefficients and their normalized weights. Samples of the \
+            same chain are contiguous. The result is also stored in ``samples``, ``logPsi`` and \
+            ``weights``.
         """
 
         if numSamples is not None:
@@ -533,11 +611,21 @@ class AbstractMCSampler(AbstractSampler):
         return states, logProb, key, numProposed, numAccepted
         
     def acceptance_ratio(self):
-        """Get acceptance ratio.
+        """
+        Get acceptance ratio.
+
+        This is available only after a ``sample()`` call that ran MCMC. It raises a \
+        ``RuntimeError`` before that, and when sampling directly.
 
         Returns:
-            Acceptance ratio observed in the last call to ``sample()``.
+            Acceptance ratio observed in the last call to ``sample()``, including the \
+            thermalization.
         """
+        if self.psi.is_generator:
+            raise RuntimeError("The acceptance ratio is not defined when sampling directly.")
+        if self.numProposed is None:
+            raise RuntimeError("The acceptance ratio is not available before calling 'sample()'.")
+
         numProp = jnp.sum(self.numProposed)
         if numProp > 0:
             return jnp.sum(self.numAccepted) / numProp

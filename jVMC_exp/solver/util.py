@@ -73,6 +73,19 @@ def _eigh_numpy(S):
     return jnp.array(e), jnp.array(V)
 
 def smooth_cutoff_fn(x, c, exp=6):
+    """
+    Smooth step :math:`r(x)=1/(1+(c/x)^\\mathrm{exp})` from 0 to 1, with :math:`r(c)=1/2`.
+
+    It is close to 0 for :math:`x\\ll c`, and to 1 for :math:`x\\gg c`.
+
+    Args:
+        * ``x``: Non-negative array.
+        * ``c``: Position of the step.
+        * ``exp``: Steepness of the step.
+
+    Returns:
+        :math:`r(x)`, with the shape of ``x``.
+    """
     return 1 / (1 + (c / x)**exp)
 
 def diagonalize(
@@ -82,49 +95,39 @@ def diagonalize(
         T_A: int | None = None
     ):
     """
-    Diagonalize a Hermitian matrix, optionally sharded across devices.
+    Eigenvalues and eigenvectors of a Hermitian matrix.
 
-    Parameters
-    ----------
-    A : array_like
-        Hermitian matrix to diagonalize.
-    pad_size : int, default=0
-        Number of trailing rows/columns of `A` that are padding rather than
-        real data. If nonzero, a large constant is added to the diagonal of
-        the padded block before diagonalization, pushing the corresponding
-        fake eigenvalues (and their eigenvectors) to the end of the
-        spectrum.
-    mode : {"device", "distributed", "host"}, default="device"
-        Diagonalization backend:
+    If ``pad_size`` is nonzero, the last ``pad_size`` rows and columns of :math:`A` have to be \
+    zero padding. The constant :math:`c=2\\|A\\|_F+1`, larger than every eigenvalue of \
+    :math:`A`, is added to their diagonal elements before the diagonalization, so that the \
+    ``pad_size`` eigenvalues of the padding are the last ones, with eigenvectors that vanish \
+    outside of the padding. They are not removed from the result: when :math:`V` is sharded \
+    across the devices, slicing it along the sharded axis would gather it on every device.
 
-        - "device": `jax.numpy.linalg.eigh` on the default device(s).
-        - "distributed": distributed diagonalization via `jaxmg.syevd` on
-          `MESH_2D`. Falls back to "device" if there is no GPU backend, if
-          `A`'s size isn't divisible by the number of devices, if there is
-          only one device, or if `JVMC_USE_DISTRIBUTED` isn't set (jaxmg's
-          cuSOLVERMp backend needs rank-per-GPU execution).
-        - "host": `numpy.linalg.eigh` on the host.
-    T_A : int, optional
-        Tile size used for the distributed diagonalization
-        (`mode="distributed"`). If not given, it defaults to the greatest
-        common divisor of `A.shape[0]` divided by `MESH_2D`'s process rows
-        and columns.
+    The backends are
 
-    Returns
-    -------
-    ev : jax.Array
-        Eigenvalues of `A` in ascending order, still including the
-        `pad_size` fake eigenvalues at the end.
-    V : jax.Array
-        Eigenvectors of `A`, still including the `pad_size` fake
-        rows/columns.
+    * ``"device"``: ``jax.numpy.linalg.eigh`` on the devices of :math:`A`. If it raises \
+      ``ValueError``, ``numpy.linalg.eigh`` is used instead, with a ``RuntimeWarning``.
+    * ``"host"``: ``numpy.linalg.eigh`` on the host, which gathers :math:`A`.
+    * ``"distributed"``: ``jaxmg.syevd`` on :math:`A` sharded in blocks over ``MESH_2D`` (see \
+      ``jVMC_exp.sharding_config``), with :math:`V` sharded along its rows afterwards. It needs \
+      the ``jaxmg`` package, a GPU backend, more than one device, a matrix size divisible by the \
+      number of devices, and ``JVMC_USE_DISTRIBUTED=true`` with one process per GPU. If one of \
+      these is missing, it warns and falls back to ``"device"``.
 
-    Notes
-    -----
-    The padding is deliberately *not* stripped off before returning `ev`
-    and `V`. When `V` is sharded across devices, slicing it on the sharded
-    axis would force a reshard, gathering it and replicating it onto every
-    device. 
+    Args:
+        * ``A``: Hermitian matrix.
+        * ``pad_size``: Number of rows and columns of padding at the end of :math:`A`.
+        * ``mode``: Backend, ``"device"``, ``"host"`` or ``"distributed"``, not case sensitive.
+        * ``T_A`` [optional]: Tile size of ``jaxmg.syevd``, for ``mode="distributed"``. The \
+          default is the greatest common divisor of the size of :math:`A` divided by the number \
+          of rows and by the number of columns of ``MESH_2D``.
+
+    Returns:
+        ``ev, V``: The eigenvalues in ascending order, the ``pad_size`` eigenvalues of the \
+        padding included, and the matrix :math:`V` whose columns are the eigenvectors.
+
+    Raises ``ValueError`` for an unknown ``mode``.
     """
     mode = _distributed_warning(A, mode)
 

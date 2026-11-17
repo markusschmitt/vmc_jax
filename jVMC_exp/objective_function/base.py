@@ -11,11 +11,17 @@ from jVMC_exp.util.grads import pick_gradient
 @dataclass
 class ObjectiveFunctionOutput():
     """
-    Output of ``AbstractObjectiveFunction.value_and_grad``.
+    Output of ``AbstractObjectiveFunction.value_and_grad()``.
 
-    o_loc:        local losses ell_theta(s_i) on the sampler's configurations.
-    grad_log_psi: logarithmic derivatives Gamma_k(s_i) = d_k log psi_theta(s_i).
-    grad:         complex force vector F, such that d_k L = 2 Re F_k.
+    Attributes:
+        * ``o_loc``: Local losses :math:`\\ell_\\theta(s_n)` on the samples of the sampler, as a \
+          ``SampledObs``. Its ``mean`` estimates the loss :math:`L`.
+        * ``grad_log_psi``: Logarithmic derivatives \
+          :math:`\\Gamma_k(s_n)=\\partial_{\\theta_k}\\ln\\psi_\\theta(s_n)`, as a ``SampledObs``, or as \
+          a ``LazySampledObs`` with ``batched_jacobian=True``.
+        * ``grad``: Force :math:`F_k`, a complex array with one entry per real parameter, such \
+          that :math:`\\partial_{\\theta_k}L=2\\,\\mathrm{Re}\\,F_k`. ``None`` if the gradient was \
+          not computed.
     """
     o_loc: SampledObs | None = None
     grad_log_psi: SampledObs | LazySampledObs | None = None
@@ -23,32 +29,70 @@ class ObjectiveFunctionOutput():
 
 class AbstractObjectiveFunction(ABC):
     """
-    Loss L(theta) = E_{s ~ p_theta}[ell_theta(s)], with real parameters theta and
-    E[ell] real for all theta.
+    Loss of a variational state, estimated from samples.
 
-    ``value_and_grad`` returns the complex force vector
+    The loss is :math:`L(\\theta)=\\langle\\ell_\\theta\\rangle_{p_\\theta}`, the mean of a local \
+    loss :math:`\\ell_\\theta(s)` over :math:`p_\\theta(s)\\propto|\\psi_\\theta(s)|^2`, real for all \
+    real parameters :math:`\\theta`. ``value_and_grad()`` returns the local losses and the force
 
-        F_k = Cov_p(Gamma_k^*, ell) + R_k / 2,
-        R_k = E_p[d_k Re(ell)] - 2 E_p[Im(Gamma_k) Im(ell)],
+    .. math::
 
-    so that d_k L = 2 Re F_k. Subclasses differ only in the choice of ell and,
-    therefore, in the form of R_k.
+        F_k=\\mathrm{Cov}_p(\\Gamma_k^*,\\ell)+\\frac{R_k}{2},\\qquad
+        R_k=\\langle\\partial_{\\theta_k}\\mathrm{Re}\\,\\ell\\rangle_p
+        -2\\langle\\mathrm{Im}\\,\\Gamma_k\\,\\mathrm{Im}\\,\\ell\\rangle_p,
+
+    with :math:`\\Gamma_k=\\partial_{\\theta_k}\\ln\\psi_\\theta`, so that \
+    :math:`\\partial_{\\theta_k}L=2\\,\\mathrm{Re}\\,F_k`. The subclasses differ in the local loss \
+    :math:`\\ell`, and therefore in :math:`R_k`. The optimizers of ``jVMC_exp.optimizer`` take an \
+    objective function and call ``value_and_grad()`` at every step, with the time ``t`` as a \
+    keyword argument.
+
+    The averages are weighted with the weights of the sampler, and use the samples it stores: \
+    draw new samples after changing the parameters.
+
+    Args:
+        * ``batched_jacobian``: If ``True``, the logarithmic derivatives are computed one batch \
+          at a time (``NQS.lazy_gradients()``) and never held in memory at once, see \
+          ``jVMC_exp.stats.LazySampledObs``.
     """
     def __init__(self, batched_jacobian: bool = False):
         self._batched_jacobian = batched_jacobian
 
     @property
     def batched_jacobian(self) -> bool:
+        """Whether the logarithmic derivatives are computed one batch at a time."""
         return self._batched_jacobian
 
     @abstractmethod
     def __call__(self, sampler: AbstractSampler, **kwargs) -> SampledObs:
+        """
+        Local losses on the samples of ``sampler``.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``**kwargs``: Keyword arguments of the local loss, e.g. the time ``t``.
+
+        Returns:
+            The local losses :math:`\\ell_\\theta(s_n)` as a ``SampledObs``.
+        """
         pass
 
     @abstractmethod
     def value_and_grad(
         self, sampler: AbstractSampler, compute_grad: bool = True, **kwargs
     ) -> ObjectiveFunctionOutput:
+        """
+        Local losses, logarithmic derivatives and force on the samples of ``sampler``.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``compute_grad``: Whether to compute the force. The logarithmic derivatives are \
+              computed in any case.
+            * ``**kwargs``: Keyword arguments of the local loss, e.g. the time ``t``.
+
+        Returns:
+            ``ObjectiveFunctionOutput``.
+        """
         pass
 
     def _grad_log_psi(self, sampler: AbstractSampler) -> SampledObs | LazySampledObs:
@@ -61,8 +105,16 @@ class AbstractObjectiveFunction(ABC):
 
 class Observable(AbstractObjectiveFunction):
     """
-    L = <O> for a theta-independent Hermitian operator O, with ell = O_loc.
-    Here R_k = 0, so F_k = Cov_p(Gamma_k^*, O_loc).
+    Expectation value :math:`L=\\langle\\hat O\\rangle` of a Hermitian operator that does not \
+    depend on the parameters, e.g. the energy.
+
+    The local loss is the local estimator \
+    :math:`\\ell(s)=O_\\mathrm{loc}(s)=\\sum_{s'}O_{s,s'}\\psi_\\theta(s')/\\psi_\\theta(s)`. Then \
+    :math:`R_k=0` and :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,O_\\mathrm{loc})`.
+
+    Args:
+        * ``operator``: Hermitian operator :math:`\\hat O`, see :ref:`Operator`.
+        * ``batched_jacobian``: See ``AbstractObjectiveFunction``.
     """
     def __init__(self, operator: AbstractOperator, batched_jacobian: bool = False):
         super().__init__(batched_jacobian)
@@ -71,12 +123,37 @@ class Observable(AbstractObjectiveFunction):
 
     @property
     def operator(self):
+        """The operator :math:`\\hat O`."""
         return self._operator
 
     def __call__(self, sampler: AbstractSampler, **op_kwargs):
+        """
+        Local estimator :math:`O_\\mathrm{loc}` on the samples of ``sampler``, \
+        ``sampler(operator, **op_kwargs)``.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``**op_kwargs``: Keyword arguments of the operator, e.g. the time ``t`` of a \
+              time-dependent prefactor.
+
+        Returns:
+            ``SampledObs``.
+        """
         return sampler(self.operator, **op_kwargs)
 
     def value_and_grad(self, sampler: AbstractSampler, compute_grad: bool = True, **op_kwargs):
+        """
+        Local estimator, logarithmic derivatives and force \
+        :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,O_\\mathrm{loc})`.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``compute_grad``: Whether to compute the force.
+            * ``**op_kwargs``: Keyword arguments of the operator, e.g. the time ``t``.
+
+        Returns:
+            ``ObjectiveFunctionOutput``.
+        """
         o_loc = self(sampler, **op_kwargs)
         grad_log_psi = self._grad_log_psi(sampler)
 
@@ -90,14 +167,24 @@ class Observable(AbstractObjectiveFunction):
 
 class Estimator(AbstractObjectiveFunction):
     """
-    ell_theta(s) = f(s, theta), an arbitrary real-valued function of the
-    configuration and the parameters, given as ``estimator_fn(parameters, samples)``.
+    Mean of a real function :math:`f_\\theta(s)` of the configuration and of the parameters.
 
-    Since Im(ell) = 0, R_k = E_p[d_k f], so
+    The local loss is :math:`\\ell_\\theta(s)=f_\\theta(s)`. Since it is real, \
+    :math:`R_k=\\langle\\partial_{\\theta_k}f_\\theta\\rangle_p` and
 
-        F_k = Cov_p(Gamma_k^*, f) + E_p[d_k f] / 2,
+    .. math::
 
-    with d_k f obtained by automatic differentiation.
+        F_k=\\mathrm{Cov}_p(\\Gamma_k^*,f_\\theta)+\\frac12\\langle\\partial_{\\theta_k}f_\\theta\\rangle_p,
+
+    with :math:`\\partial_{\\theta_k}f_\\theta` from automatic differentiation.
+
+    Args:
+        * ``estimator_fn``: The function ``f(parameters, s)``, with the parameters ``psi.parameters`` \
+          of the variational state. It is called on all the samples at once, with ``s`` of shape \
+          ``(N, *sampleShape)``, and must return the ``N`` real values; for its derivatives it is \
+          called on single configurations, of shape ``sampleShape``, and must return a scalar.
+        * ``batched_jacobian``: See ``AbstractObjectiveFunction``. It also applies to the \
+          derivatives of ``estimator_fn``.
     """
     def __init__(self, estimator_fn: callable, batched_jacobian: bool = False):
         super().__init__(batched_jacobian)
@@ -106,13 +193,36 @@ class Estimator(AbstractObjectiveFunction):
 
     @property
     def estimator_fn(self):
+        """The function ``f(parameters, s)``."""
         return self._estimator_fn
 
     def __call__(self, sampler: AbstractSampler, **kwargs):
+        """
+        Values :math:`f_\\theta(s_n)` on the samples of ``sampler``.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``**kwargs``: Not used.
+
+        Returns:
+            ``SampledObs``.
+        """
         observations = self.estimator_fn(sampler.psi.parameters, sampler.samples)
         return SampledObs(observations, sampler.weights)
 
     def value_and_grad(self, sampler: AbstractSampler, compute_grad: bool = True, **kwargs):
+        """
+        Values, logarithmic derivatives and force \
+        :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,f_\\theta)+\\frac12\\langle\\partial_{\\theta_k}f_\\theta\\rangle_p`.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``compute_grad``: Whether to compute the force.
+            * ``**kwargs``: Not used.
+
+        Returns:
+            ``ObjectiveFunctionOutput``.
+        """
         value = self(sampler)
         grad_log_psi = self._grad_log_psi(sampler)
 
@@ -125,6 +235,20 @@ class Estimator(AbstractObjectiveFunction):
         return ObjectiveFunctionOutput(o_loc=value, grad_log_psi=grad_log_psi)
 
     def explicit_grad(self, sampler: AbstractSampler) -> jax.Array:
+        """
+        Mean :math:`\\langle\\partial_{\\theta_k}f_\\theta\\rangle_p` of the derivatives of \
+        ``estimator_fn`` with respect to the parameters, on the samples of ``sampler``.
+
+        The derivatives are flattened as the columns of ``NQS.gradients()``. The kind of \
+        derivative (real, holomorphic or not) is chosen at the first call, for the parameters of \
+        ``sampler.psi``.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+
+        Returns:
+            Array with one entry per real parameter.
+        """
         if self._grad_fn is None:
             _, _, self._grad_fn, _ = pick_gradient(
                 self.estimator_fn, sampler.psi.parameters, sampler.samples[0]
@@ -154,18 +278,29 @@ class Estimator(AbstractObjectiveFunction):
 
 class ParametricObservable(AbstractObjectiveFunction):
     """
-    L = <O(theta)> for an operator O(theta) that is Hermitian for all theta and
-    whose matrix elements depend explicitly on the parameters, ell = O_loc(s; theta).
+    Expectation value :math:`L=\\langle\\hat O(\\theta)\\rangle` of an operator that is Hermitian \
+    for all :math:`\\theta` and whose matrix elements depend on the parameters.
 
-    The implicit dependence through psi_theta is treated as for ``Observable``,
-    while the explicit one gives R_k = E_p[(d_k O)_loc], so
+    The local loss is :math:`\\ell_\\theta(s)=O_\\mathrm{loc}(s;\\theta)`. The dependence on \
+    :math:`\\theta` through :math:`\\psi_\\theta` is treated as in ``Observable``, and the one \
+    through the matrix elements gives \
+    :math:`R_k=\\langle(\\partial_{\\theta_k}\\hat O)_\\mathrm{loc}\\rangle_p`, so that
 
-        F_k = Cov_p(Gamma_k^*, O_loc) + E_p[(d_k O)_loc] / 2.
+    .. math::
 
-    ``estimator_fn(parameters, samples)`` must encode only the explicit parameter
-    dependence of the matrix elements: its derivative with respect to theta has to
-    be (d_k O)_loc(s) = sum_s' d_k O_ss'(theta) psi(s')/psi(s), i.e. the wave-function
-    ratios must be treated as constants (e.g. via ``jax.lax.stop_gradient``).
+        F_k=\\mathrm{Cov}_p(\\Gamma_k^*,O_\\mathrm{loc})
+        +\\frac12\\langle(\\partial_{\\theta_k}\\hat O)_\\mathrm{loc}\\rangle_p.
+
+    Args:
+        * ``operator``: The operator :math:`\\hat O(\\theta)` at the current parameters, which \
+          gives the local losses.
+        * ``estimator_fn``: Function ``f(parameters, s)`` whose derivatives are the local \
+          estimators of the derivatives of the operator, \
+          :math:`\\partial_{\\theta_k}f=(\\partial_{\\theta_k}\\hat O)_\\mathrm{loc}(s)=\\sum_{s'}\\partial_{\\theta_k}O_{s,s'}(\\theta)\\,\\psi(s')/\\psi(s)`: \
+          the wave function ratios have to be constants, e.g. through \
+          ``jax.lax.stop_gradient``. It is called as in ``Estimator``, and only its derivatives \
+          are used.
+        * ``batched_jacobian``: See ``AbstractObjectiveFunction``.
     """
     def __init__(
             self,
@@ -178,9 +313,32 @@ class ParametricObservable(AbstractObjectiveFunction):
         self._explicit = Estimator(estimator_fn, batched_jacobian)
 
     def __call__(self, sampler: AbstractSampler, **op_kwargs):
+        """
+        Local estimator :math:`O_\\mathrm{loc}(s;\\theta)` on the samples of ``sampler``, as in \
+        ``Observable``.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``**op_kwargs``: Keyword arguments of the operator, e.g. the time ``t``.
+
+        Returns:
+            ``SampledObs``.
+        """
         return self._observable(sampler, **op_kwargs)
 
     def value_and_grad(self, sampler: AbstractSampler, compute_grad: bool = True, **op_kwargs):
+        """
+        Local estimator, logarithmic derivatives and force \
+        :math:`F_k=\\mathrm{Cov}_p(\\Gamma_k^*,O_\\mathrm{loc})+\\frac12\\langle(\\partial_{\\theta_k}\\hat O)_\\mathrm{loc}\\rangle_p`.
+
+        Args:
+            * ``sampler``: Sampler of the variational state.
+            * ``compute_grad``: Whether to compute the force.
+            * ``**op_kwargs``: Keyword arguments of the operator, e.g. the time ``t``.
+
+        Returns:
+            ``ObjectiveFunctionOutput``.
+        """
         obs_out = self._observable.value_and_grad(sampler, compute_grad, **op_kwargs)
 
         if compute_grad:

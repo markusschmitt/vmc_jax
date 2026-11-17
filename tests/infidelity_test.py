@@ -134,6 +134,18 @@ class TestInfidelityValue(unittest.TestCase):
         for _ in range(4):
             self.assertAlmostEqual(loss(sampler).mean.real.item(), exact, places=10)
 
+    def test_time_dependent_operator(self):
+        # The keyword arguments, e.g. the time t passed by the optimizers, reach the prefactors
+        g = lambda **kwargs: jnp.cos(kwargs["t"])
+        operator = op.IdentityOperator(2, 0) + g * op.SigmaX(0)
+        loss = Infidelity(ExactSampler(self.chi), operator, operator)
+        for t in (0.3, 1.1):
+            exact = exact_infidelity(self.psi, self.chi, np.eye(2 ** L) + np.cos(t) * embed(SX, 0))
+            with self.subTest(t=t):
+                self.assertAlmostEqual(loss(ExactSampler(self.psi), t=t).mean.real.item(), exact, places=10)
+                out = loss.value_and_grad(ExactSampler(self.psi), t=t)
+                self.assertAlmostEqual(out.o_loc.mean.real.item(), exact, places=10)
+
     def test_conjugated_operator_without_operator(self):
         with self.assertRaises(ValueError):
             Infidelity(ExactSampler(self.chi), conjugated_operator=self.U_dag)

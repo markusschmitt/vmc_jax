@@ -22,11 +22,11 @@ MOCK_MODULES = ['mpi4py']
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
 
-import jVMC
-import jVMC.operator as operator
-import jVMC.vqs as vqs
-import jVMC.sampler as sampler
-import jVMC.nets as nets
+import jVMC_exp
+import jVMC_exp.operator as operator
+import jVMC_exp.vqs as vqs
+import jVMC_exp.sampler as sampler
+import jVMC_exp.nets as nets
 
 import sphinx_rtd_theme
 

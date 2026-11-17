@@ -2,6 +2,14 @@ from jVMC_exp.operator.continuous.base import Operator
 import jax.numpy as jnp    
 
 class PotentialOperator(Operator):
+    """
+    Potential energy :math:`V(s)`.
+
+    Args:
+        * ``geometry``: Geometry of the system.
+        * ``potential``: Function of a configuration, of shape ``(n_particles * n_dim,)``, \
+          returning a number.
+    """
     def __init__(self, geometry, potential):
         super().__init__(geometry, is_diagonal=True)
 
@@ -11,12 +19,24 @@ class PotentialOperator(Operator):
     
     @property
     def potential(self):
+        """Function giving the potential energy of a configuration."""
         return self._potential
         
     def _get_O_loc(self, s, apply_fun, parameters, kwargs):
         return self.potential(s)
     
 class CoulombInteraction(Operator):
+    """
+    Coulomb interaction :math:`\\sum_{i<j} q_iq_j/|r_i-r_j|`.
+
+    The distances are those of ``geometry.get_absolute_distance()``, with the minimum image \
+    convention along periodic directions.
+
+    Args:
+        * ``geometry``: Geometry of the system.
+        * ``charge``: ``None`` for :math:`q_iq_j=1`, a number that multiplies the interaction, \
+          or an array with one charge per particle.
+    """
     def __init__(self, geometry, charge=None):
         super().__init__(geometry, is_diagonal=True)
         
@@ -35,6 +55,15 @@ class CoulombInteraction(Operator):
         return jnp.sum(self._interaction_charge / self.geometry.get_absolute_distance(s))
     
 class ParticleDensity(Operator):
+    """
+    Number of particles in each cell of a regular grid over the geometry.
+
+    The local estimator of a configuration is an array of shape ``linear_partition``.
+
+    Args:
+        * ``geometry``: Geometry of the system, which has to provide ``count_particles_in_cell()``.
+        * ``linear_partition``: Number of cells along each spatial dimension.
+    """
     def __init__(self, geometry, linear_partition=(10, 10)):
         if not hasattr(geometry, 'count_particles_in_cell'):
             raise ValueError('For the particle density operator to work the given geometry ' \
@@ -47,6 +76,7 @@ class ParticleDensity(Operator):
         return self._count_fn(s)
     
 class Monopole(Operator):
+    """Sum of the squared distances of the particles from the origin, :math:`\\sum_i |r_i|^2`."""
     def __init__(self, geometry):
         super().__init__(geometry, True)
 

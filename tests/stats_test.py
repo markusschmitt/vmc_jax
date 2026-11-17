@@ -204,6 +204,29 @@ class TestStats(unittest.TestCase):
 
         self.assertGreater(tau_hi, tau_lo)
 
+    def test_act_matches_exact_ar1_value(self):
+        """
+        For an AR(1) process the integrated autocorrelation time is exactly
+        (1 + rho) / (1 - rho). With 4 chains of 8192 samples, the estimate averaged
+        over the chains must be within 15% of it (the statistical error is about 5%
+        for rho = 0.5 and 10% for rho = 0.9). The number of samples is not a
+        multiple of 3, so on 3 devices the observations are padded.
+        """
+        n_chains, chain_length = 4, 8192
+        for rho in (0.0, 0.5, 0.9):
+            noise = jax.random.normal(jax.random.PRNGKey(1), (chain_length, n_chains))
+            def step(x, eps):
+                x = rho * x + jnp.sqrt(1 - rho ** 2) * eps
+                return x, x
+            # Start from the stationary distribution, chains stored one after the other
+            _, samples = jax.lax.scan(step, noise[0], noise[1:])
+            samples = jnp.concatenate([noise[:1], samples]).T.ravel()
+
+            tau = SampledObs(samples).get_autocorrelation_time(n_chains=n_chains)
+            exact = (1 + rho) / (1 - rho)
+            with self.subTest(rho=rho):
+                self.assertAlmostEqual(float(tau.mean[0]) / exact, 1.0, delta=0.15)
+
 def _make_lazy(observations, weights, batch_size):
     """
     Build a `LazySampledObs` the same way `sharded(..., yield_iter=True)`
