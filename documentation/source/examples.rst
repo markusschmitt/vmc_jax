@@ -15,6 +15,7 @@ saved outputs. To run them, install the plotting and reference packages they use
     examples/custom_net
     examples/fermions
     examples/infidelity_optimization
+    examples/projected_time_evolution
     examples/2dho_ground_state_search
     examples/viteritti_vit_ground_state_search
     examples/rwkv_ground_state_search

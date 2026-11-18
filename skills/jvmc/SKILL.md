@@ -182,7 +182,7 @@ sanity check. Details: `references/optimization.md`.
 The example notebooks in the repository (`examples/` at
 https://github.com/computational-quantum-science/jvmc-2.0) are complete, tested workflows:
 `ground_state_search`, `unitary_time_evolution`, `custom_net`, `fermions`,
-`infidelity_optimization`, `2dho_ground_state_search` (continuous space),
+`infidelity_optimization`, `projected_time_evolution` (ptVMC), `2dho_ground_state_search` (continuous space),
 `viteritti_vit_ground_state_search`, `rwkv_ground_state_search`, `rwkv2d_ground_state_search`
 and `hidden_pfaffian_vit_ground_state_search`.
 
