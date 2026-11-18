@@ -56,7 +56,7 @@ class AbstractOptimizer(ABC):
           weights multiplied by :math:`|\\psi(s)/\\psi_0(s)|^{1/\\kappa}`, where :math:`\\psi_0` \
           is the state at the first substep and :math:`\\kappa` the ``log_prob_factor`` of the \
           sampler.
-        * ``use_cross_valiadation``: Whether ``cross_validation()`` runs at the first substep of \
+        * ``use_cross_validation``: Whether ``cross_validation()`` runs at the first substep of \
           every step.
         * ``output_manager`` [optional]: ``jVMC_exp.util.output_manager.OutputManager`` that \
           records the data. A new one by default.
@@ -67,13 +67,13 @@ class AbstractOptimizer(ABC):
         sampler: AbstractSampler,
         psi: NQS,
         resample_stepper: bool = True,
-        use_cross_valiadation: bool = False,
+        use_cross_validation: bool = False,
         output_manager: OutputManager | None = None,
     ):
         self._sampler = sampler
         self._psi = psi
         self._resample = resample_stepper
-        self.use_cross_valiadation = use_cross_valiadation
+        self.use_cross_validation = use_cross_validation
         self.meta_data = {}
         self._output_manager = (
             output_manager if output_manager is not None else OutputManager()
@@ -187,7 +187,7 @@ class AbstractOptimizer(ABC):
                 self.o_loc = objective_fn_out.o_loc
                 self._update_meta_data()
 
-                if self.use_cross_valiadation:
+                if self.use_cross_validation:
                     self.output_manager.start_timing("cross_validation")
                     self.cross_validation(
                         objective_function, t=t, **objective_function_kwargs
@@ -453,7 +453,7 @@ class Evolution(AbstractOptimizer):
     :math:`v\\mapsto Sv`.
 
     Args:
-        * ``sampler``, ``psi``, ``resample_stepper``, ``use_cross_valiadation``, \
+        * ``sampler``, ``psi``, ``resample_stepper``, ``use_cross_validation``, \
           ``output_manager``: See ``AbstractOptimizer``.
         * ``imag_time``: Imaginary time, :math:`c=-1`, or real time, :math:`c=-i`.
         * ``make_real``: How the equation is made real for real parameters, see above.
@@ -473,7 +473,7 @@ class Evolution(AbstractOptimizer):
         resample_stepper: bool,
         imag_time: bool,
         make_real: bool,
-        use_cross_valiadation: bool = False,
+        use_cross_validation: bool = False,
         diagonal_shift: float | Callable = 1e-3,
         diagonal_scale: float | Callable = 0.0,
         solver: AbstractSolver = PinvSNR(),
@@ -503,15 +503,6 @@ class Evolution(AbstractOptimizer):
         self._remove_double_trans = jax.vmap(remove_double_fn)
         self._remove_double_fn = jax.jit(remove_double_fn)
 
-        if jax.process_index() == 0:
-            warnings.warn(
-                "Naming convention changed: "
-                "'diag_shift' now adds a constant term to the diagonal, "
-                "while 'diag_scale' multiplies the diagonal entries. "
-                "This is the opposite of the previous convention.",
-                UserWarning,
-            )
-
         self._solver = solver
         self._get_lhs = (
             self._get_lhs_dense if solver._needs_dense_matrix else self._get_lhs_lazy
@@ -521,7 +512,7 @@ class Evolution(AbstractOptimizer):
             sampler,
             psi,
             resample_stepper,
-            use_cross_valiadation,
+            use_cross_validation,
             output_manager=output_manager,
         )
 

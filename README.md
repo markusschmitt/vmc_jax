@@ -7,9 +7,11 @@ This is an impementation of Variational Monte Carlo (VMC) for quantum many-body 
 
 1. [Documentation](#documentation)
 2. [Installation](#installation)
-3. [Online example](#online-example)
-4. [Important gotchas](#important-gotchas)
-5. [Citing jVMC](#citing-jvmc)
+3. [Migrating from jVMC 1.x](#migrating-from-jvmc-1x)
+4. [Using jVMC with AI coding agents](#using-jvmc-with-ai-coding-agents)
+5. [Online example](#online-example)
+6. [Important gotchas](#important-gotchas)
+7. [Citing jVMC](#citing-jvmc)
 
 Please report bugs as well as other issues or suggestions on our [issues page](https://github.com/markusschmitt/vmc_jax/issues).
 
@@ -44,6 +46,19 @@ On a cluster where CUDA is already provided (e.g. via an environment module) rat
 
 Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
 
+
+## Migrating from jVMC 1.x
+
+jVMC 2.0 changes most of the API. See [MIGRATION.md](MIGRATION.md) for what changed and how to port existing scripts.
+
+## Using jVMC with AI coding agents
+
+The folder [`skills/jvmc`](skills/jvmc/SKILL.md) is an [Agent Skill](https://agentskills.io) that teaches coding agents how to use jVMC 2.0. Without it, agents tend to write code for the 1.x API. To install it for Claude Code, copy the folder into your skills directory, using the tag of the jVMC version you have installed:
+
+        git clone --depth 1 --branch <version tag> https://github.com/computational-quantum-science/jvmc-2.0.git jvmc-src
+        cp -r jvmc-src/skills/jvmc ~/.claude/skills/
+
+Use `<your project>/.claude/skills/` instead of `~/.claude/skills/` to enable it for one project only. For other agents, copy the folder into their skills directory.
 
 ## Online example
 

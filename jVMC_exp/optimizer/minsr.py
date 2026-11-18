@@ -225,7 +225,7 @@ class MinSR(AbstractOptimizer):
             sampler,
             psi,
             resample_stepper,
-            use_cross_valiadation=False,
+            use_cross_validation=False,
             output_manager=output_manager,
         )
 

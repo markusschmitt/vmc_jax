@@ -158,7 +158,7 @@ class TestTimeEvolutionMCSampler(unittest.TestCase):
         solver = jVMC_exp.solver.PinvSNR(snr_tol=1, pinv_cutoff=1e-8)
         stepper = jVMC_exp.stepper.AdaptiveHeun(time_step=1e-3, rtol=0.0, atol=2.5e-5)
         opt = jVMC_exp.optimizer.TDVP(
-            mc_sampler, psi, make_real=False, solver=solver, use_cross_valiadation=True
+            mc_sampler, psi, make_real=False, solver=solver, use_cross_validation=True
         )
 
         t_max = 0.5
@@ -555,7 +555,7 @@ class TestCrossValidation(unittest.TestCase):
             make_real=False,
             diagonal_shift=0,
             solver=solver,
-            use_cross_valiadation=True,
+            use_cross_validation=True,
         )
         opt(psi.parameters_flat, 0.0, int_step=0, objective_function=loss_function)
         reported = float(

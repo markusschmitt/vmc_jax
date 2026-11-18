@@ -1,56 +1,58 @@
-..
-
 Installation
-===============
+============
 
-
-Option 1: ``pip``-install
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-1. We recommend you create a new conda environment to work with jVMC:
+jVMC requires Python 3.11 or later. Like JAX, it runs on Linux and macOS; GPUs are supported on
+Linux. We recommend installing it in a fresh virtual environment, e.g.
 
 .. code-block:: none
 
-    conda create -n jvmc python=3.8
-    conda activate jvmc
+    python -m venv jvmc-env
+    source jvmc-env/bin/activate
 
-
-2. ``pip``-install the package
+CPU
+^^^
 
 .. code-block:: none
 
     pip install jVMC
 
-Option 2: Clone and ``pip``-install
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+GPU
+^^^
 
-1. Clone the jVMC repository and check out the development branch:
-
-.. code-block:: none
-
-    git clone https://github.com/markusschmitt/vmc_jax.git
-    cd vmc_jax
-
-
-2. We recommend you create a new conda environment to work with jVMC:
+Choose the extra that matches your CUDA version:
 
 .. code-block:: none
 
-    conda create -n jvmc python=3.8
-    conda activate jvmc
+    pip install "jVMC[cuda12]"     # or "jVMC[cuda13]"
 
+This installs the CUDA build of JAX together with the CUDA libraries (see the
+`JAX installation guide <https://docs.jax.dev/en/latest/installation.html>`_), and
+`JAXMg <https://github.com/flatironinstitute/jaxmg>`_ for distributed linear algebra across
+several GPUs.
 
-3. Create a wheel and ``pip``-install the package
+On clusters that provide CUDA through environment modules, use the system installation instead,
+so that JAX uses the libraries matched to the local drivers:
 
 .. code-block:: none
 
-    python setup.py bdist_wheel
-    python -m pip install dist/\*.whl
+    module load cuda                    # cluster-specific
+    pip install "jVMC[cuda12-local]"    # or "jVMC[cuda13-local]"
 
+Development installation
+^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. code-block:: none
 
-Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
+    git clone https://github.com/computational-quantum-science/jvmc-2.0.git
+    cd jvmc-2.0
+    pip install -e ".[dev]"
 
-Option 3: Manually install dependencies
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This also installs the test and documentation tools. Run the tests with ``pytest tests/`` and
+build this documentation with
 
-If you want to work on the jVMC code you might prefer to `install dependencies and set up jVMC <https://github.com/markusschmitt/vmc_jax/blob/master/documentation/readme/compile_jax_on_cluster.md>`_ without ``pip``-install.
+.. code-block:: none
+
+    sphinx-build -b html -W --keep-going documentation/source documentation/_build/html
+
+Check the installation from outside the repository folder with
+``python -c "import jVMC_exp; print(jVMC_exp.__version__)"``.

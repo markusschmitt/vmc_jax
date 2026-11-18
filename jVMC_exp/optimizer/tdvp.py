@@ -38,7 +38,7 @@ class TDVP(Evolution):
         * ``psi``: Variational state.
         * ``make_real``: How the equation is made real for real parameters, see above.
         * ``resample_stepper``: See ``AbstractOptimizer``.
-        * ``use_cross_valiadation``: Whether to compute the ratios above at every step. It \
+        * ``use_cross_validation``: Whether to compute the ratios above at every step. It \
           requires ``store_qgt``, ``compute_tdvp_error`` and a solver that reports a \
           ``"residual"``, like ``Pinv`` and ``PinvSNR``.
         * ``diagonal_shift``, ``diagonal_scale``: Regularization, see ``Evolution``.
@@ -54,7 +54,7 @@ class TDVP(Evolution):
         psi,
         make_real: bool,
         resample_stepper=True,
-        use_cross_valiadation=False,
+        use_cross_validation=False,
         diagonal_shift=0.0,
         diagonal_scale=0.0,
         solver=PinvSNR(),
@@ -62,7 +62,7 @@ class TDVP(Evolution):
         compute_tdvp_error: bool = True,
         output_manager: OutputManager | None = None,
     ):
-        if use_cross_valiadation:
+        if use_cross_validation:
             if not store_qgt:
                 raise ValueError(
                     "Cross validation requires the QGT to be stored, "
@@ -80,7 +80,7 @@ class TDVP(Evolution):
             resample_stepper,
             False,
             make_real,
-            use_cross_valiadation,
+            use_cross_validation,
             diagonal_shift,
             diagonal_scale,
             solver,
@@ -123,7 +123,7 @@ class TDVP(Evolution):
                 f"Cross validation normalizes against the residual of the solve, but solver "
                 f"'{type(self.solver).__name__}' does not report a 'residual' in the info "
                 "dictionary it returns. Either use a solver that does (e.g. Pinv or PinvSNR), "
-                "or construct the optimizer with use_cross_valiadation=False."
+                "or construct the optimizer with use_cross_validation=False."
             )
 
         residual = self.meta_data["residual"]

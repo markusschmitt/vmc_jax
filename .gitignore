@@ -130,3 +130,11 @@ dmypy.json
 
 
 data/*
+# OS / editor files
+.DS_Store
+*.swp
+*.swo
+
+# Documentation build and the notebooks copied into it by conf.py
+documentation/_build/
+documentation/source/examples/

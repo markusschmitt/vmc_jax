@@ -12,19 +12,16 @@ authors = [
 ]
 license = { text = "MIT License" }
 keywords = ["Neural quantum states", "Variational Monte Carlo"]
-dependencies = ["numpy>=2", 
-                "openfermion", 
-                "jax>=0.10.1", 
-                "jaxlib>=0.10.1", 
-                "flax>=0.7.0",
+dependencies = ["numpy>=2",
+                "jax>=0.10.1",
+                "jaxlib>=0.10.1",
+                "flax>=0.12",
                 "optax",
                 "tqdm",
-                "h5py", 
-                "PyYAML",
+                "h5py",
                 "chex",
-                "matplotlib", 
                 "scipy"]
-requires-python = ">= 3.9"
+requires-python = ">=3.11"
 classifiers=[
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -32,7 +29,10 @@ classifiers=[
 ]
 
 [project.optional-dependencies]
-dev = ["sphinx", "mock", "sphinx_rtd_theme", "pytest", "pytest-mpi"]
+dev = ["jVMC_exp[docs,examples]", "pytest", "pytest-mpi"]
+docs = ["sphinx>=8", "sphinx-rtd-theme>=3", "myst-nb>=1.1"]
+# Only needed to run the notebooks in examples/
+examples = ["matplotlib", "openfermion"]
 cuda12 = ["jax[cuda12]>=0.10.1", "jaxmg[cuda12]"]
 cuda13 = ["jax[cuda13]>=0.10.1", "jaxmg[cuda13]"]
 cuda12-local = ["jax[cuda12-local]>=0.10.1", "jaxmg[cuda12-local]"]
@@ -42,6 +42,9 @@ cuda13-local = ["jax[cuda13-local]>=0.10.1", "jaxmg[cuda13-local]"]
 Documentation = "https://jvmc.readthedocs.io/en/latest/#"
 Repository = "https://github.com/markusschmitt/vmc_jax"
 Issues = "https://github.com/markusschmitt/vmc_jax/issues"
+
+[tool.setuptools.packages.find]
+include = ["jVMC_exp*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "jVMC_exp.version.__version__"}
