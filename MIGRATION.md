@@ -19,8 +19,8 @@ If you use an AI coding agent, the skill in [`skills/jvmc/`](https://github.com/
 | Operators | `BranchFreeOperator` filled with `add(scal_opstr(...))`, then `compile()` | algebraic expressions: `H += a * op.SigmaZ(i) * op.SigmaZ(j)` |
 | Optimization | manual loop over `stepper.step(...)` with a `TDVP` object | optimizer objects with `ground_state_search()` and `time_evolution()` |
 | Ground state vs dynamics | one `TDVP` class, switched by `rhsPrefactor` and `makeReal` | `SR`, `MinSR` or `Adam` for ground states, `TDVP` for real time |
-| Linear solver | options of `TDVP` (`svdTol`, `snrTol`, `pinvTol`, ...) | separate solver objects in `jVMC_exp.solver` |
-| Loss | the energy, hard-wired | objective functions in `jVMC_exp.objective_function` (`Observable`, `Infidelity`, `Estimator`, ...) |
+| Linear solver | options of `TDVP` (`svdTol`, `snrTol`, `pinvTol`, ...) | separate solver objects in `jVMC.solver` |
+| Loss | the energy, hard-wired | objective functions in `jVMC.objective_function` (`Observable`, `Infidelity`, `Estimator`, ...) |
 | Precision | `global_defs.tReal`, `tCpx` | environment variables `JVMC_DT_*` and `global_defs.update()`; mixed precision per `NQS` |
 
 ## Porting a ground-state search
@@ -55,29 +55,29 @@ for n in range(300):
 jVMC 2.0:
 
 ```python
-import jVMC_exp                                   # enables float64 in JAX
-import jVMC_exp.operator.discrete as op
+import jVMC                                   # enables float64 in JAX
+import jVMC.operator.discrete as op
 
-psi = jVMC_exp.vqs.NQS(jVMC_exp.nets.CpxRBM(num_hidden=8, bias=False), sample_shape=L,
+psi = jVMC.vqs.NQS(jVMC.nets.CpxRBM(num_hidden=8, bias=False), sample_shape=L,
                        batch_size=5000, seed=1234)
 
 hamiltonian = 0
 for l in range(L):
     hamiltonian += -op.SigmaZ(l) * op.SigmaZ((l + 1) % L) + g * op.SigmaX(l)
 
-sampler = jVMC_exp.sampler.MCSampler(psi, jVMC_exp.propose.SpinFlipZ2(), key=4321,
+sampler = jVMC.sampler.MCSampler(psi, jVMC.propose.SpinFlipZ2(), key=4321,
                                      num_chains=100, sweep_steps=L, num_samples=5000, thermalization_sweeps=25)
-opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=0.0, diagonal_scale=10,
-                            solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8))
-out = opt.ground_state_search(300, jVMC_exp.objective_function.Observable(hamiltonian),
-                              jVMC_exp.stepper.Euler(1e-2))
+opt = jVMC.optimizer.SR(sampler, psi, diagonal_shift=0.0, diagonal_scale=10,
+                            solver=jVMC.solver.Pinv(pinv_cutoff=1e-8))
+out = opt.ground_state_search(300, jVMC.objective_function.Observable(hamiltonian),
+                              jVMC.stepper.Euler(1e-2))
 energy, variance = out["energy"]["mean"], out["energy"]["variance"]
 ```
 
 For real-time evolution, replace `SR` by
-`jVMC_exp.optimizer.TDVP(sampler, psi, make_real=True, solver=jVMC_exp.solver.PinvSNR(...))` and
+`jVMC.optimizer.TDVP(sampler, psi, make_real=True, solver=jVMC.solver.PinvSNR(...))` and
 `ground_state_search(steps, ...)` by `time_evolution(t_max, ...)`, usually with an adaptive
-stepper such as `jVMC_exp.stepper.RK45`. See `examples/unitary_time_evolution.ipynb`.
+stepper such as `jVMC.stepper.RK45`. See `examples/unitary_time_evolution.ipynb`.
 
 ## Behaviour changes to check
 
@@ -105,7 +105,7 @@ These are changes in meaning or defaults; code using them still runs but does so
 
 ## Name changes
 
-### Variational state (`jVMC.vqs` → `jVMC_exp.vqs`)
+### Variational state (`jVMC.vqs` → `jVMC.vqs`)
 
 | 1.x | 2.0 |
 |---|---|
@@ -116,7 +116,7 @@ These are changes in meaning or defaults; code using them still runs but does so
 | `psi.gradients(s)` (with device/batch dimensions) | `psi.gradients(s)` with `s` of shape `(N, *sample_shape)` |
 | `psi.is_generator` | `psi.is_generator` (property) |
 
-### Networks (`jVMC.nets` → `jVMC_exp.nets`)
+### Networks (`jVMC.nets` → `jVMC.nets`)
 
 All fields are renamed to snake_case: `numHidden` → `num_hidden`, `actFun` → `act_fun`,
 `firstLayerBias` → `first_layer_bias`, `periodicBoundary` → `periodic_boundary`, `hiddenSize` →
@@ -127,13 +127,13 @@ All fields are renamed to snake_case: `numHidden` → `num_hidden`, `actFun` →
 | 1.x | 2.0 |
 |---|---|
 | `CpxRBM_Nospinflip` | `CpxRBMNoSpinFlip` |
-| `SymNet`, `CpxCNNSym`, `sym_wrapper.avgFun_Coefficients_Exp/Log/Sep` | `jVMC_exp.symmetry.ProjectedOrbitNet`, `projector * net`, `symmetry_average="exp"/"log"/"sep"` |
+| `SymNet`, `CpxCNNSym`, `sym_wrapper.avgFun_Coefficients_Exp/Log/Sep` | `jVMC.symmetry.ProjectedOrbitNet`, `projector * net`, `symmetry_average="exp"/"log"/"sep"` |
 | `jVMC.util.util.init_net(descr, dims, seed)` | build the network and `NQS` directly |
 
 New in 2.0: `RWKVCPM`, `RWKV2D`, `ViterittiViT`, `HiddenPfaffianViT`, `FullConfigurationState`,
 `ParticleConservingAutoregressive`, support for `flax.nnx` networks (`NQS(..., nnx_init=...)`).
 
-### Operators (`jVMC.operator` → `jVMC_exp.operator.discrete`, `.continuous`)
+### Operators (`jVMC.operator` → `jVMC.operator.discrete`, `.continuous`)
 
 | 1.x | 2.0 |
 |---|---|
@@ -149,9 +149,9 @@ New in 2.0: `RWKVCPM`, `RWKV2D`, `ViterittiViT`, `HiddenPfaffianViT`, `FullConfi
 
 New in 2.0: `to_dense(basis)`, `to_sparse(basis)`, continuous-space operators
 (`TotalKineticOperator`, `PotentialOperator`, `CoulombInteraction`, ...) with
-`jVMC_exp.geometry`, and `jVMC_exp.util.matrix_to_jvmc_operator`.
+`jVMC.geometry`, and `jVMC.util.matrix_to_jvmc_operator`.
 
-### Sampling (`jVMC.sampler` → `jVMC_exp.sampler`, `jVMC_exp.propose`)
+### Sampling (`jVMC.sampler` → `jVMC.sampler`, `jVMC.propose`)
 
 | 1.x | 2.0 |
 |---|---|
@@ -167,7 +167,7 @@ New in 2.0: `to_dense(basis)`, `to_sparse(basis)`, continuous-space operators
 New in 2.0: `MCSamplerCont` with the `RWM` and `MALA` proposers, `CutoffSampler`, and
 `sampler(op)`, which returns a `SampledObs`.
 
-### Optimization (`jVMC.util.tdvp`, `jVMC.util.minsr`, `jVMC.util.stepper` → `jVMC_exp.optimizer`, `.solver`, `.stepper`)
+### Optimization (`jVMC.util.tdvp`, `jVMC.util.minsr`, `jVMC.util.stepper` → `jVMC.optimizer`, `.solver`, `.stepper`)
 
 | 1.x | 2.0 |
 |---|---|
@@ -180,7 +180,7 @@ New in 2.0: `MCSamplerCont` with the `RWM` and `MALA` proposers, `CutoffSampler`
 | `Euler(timeStep)`, `Heun(timeStep)`, `AdaptiveHeun(timeStep, tol, maxStep)` | `Euler(time_step)`, `Heun(time_step)`, `AdaptiveHeun(time_step, rtol, atol, min_step, max_step)` |
 | manual `stepper.step(...)` loop | `opt.ground_state_search(steps, objective, stepper)`, `opt.time_evolution(t_max, objective, stepper)` |
 | `jVMC.util.util.ground_state_search(psi, ham, tdvpEquation, sampler, ...)` | `opt.ground_state_search(...)` |
-| `jVMC.util.measure(observables, psi, sampler)` | `jVMC_exp.util.measure(observables, sampler)`, or `observables=` of the run methods |
+| `jVMC.util.measure(observables, psi, sampler)` | `jVMC.util.measure(observables, sampler)`, or `observables=` of the run methods |
 
 New in 2.0: `RK23`, `RK45`, the `Adam` optimizer, the `CG` solver, objective functions
 (`Infidelity`, `Estimator`, `ParametricObservable`), learning-rate and regularization schedules
@@ -191,13 +191,13 @@ New in 2.0: `RK23`, `RK45`, the `Adam` optimizer, the `CG` solver, objective fun
 
 | 1.x | 2.0 |
 |---|---|
-| `jVMC.mpi_wrapper.global_mean(x, p)`, `global_variance`, `global_covariance`, `global_sum` | `jVMC_exp.stats.SampledObs(x, p).mean`, `.var`, `.get_covar()` |
+| `jVMC.mpi_wrapper.global_mean(x, p)`, `global_variance`, `global_covariance`, `global_sum` | `jVMC.stats.SampledObs(x, p).mean`, `.var`, `.get_covar()` |
 | `mpi_wrapper.distribute_sampling(...)`, `global_defs.set_pmap_devices(...)` | automatic; all visible devices are used |
 | running with `mpirun -n k` | one process per GPU with `JVMC_USE_DISTRIBUTED=true` (e.g. under `srun`) |
 | `SampledObs.mean()`, `.var()`, `.covar()`, `.subset()` | `.mean`, `.var`, `.get_covar()`, `.get_subset()` |
 | `global_defs.tReal`, `global_defs.tCpx` | `global_defs.DT_PARAMS_REAL`, `DT_PARAMS_CPX`, `DT_OUT_REAL`, `DT_OUT_CPX`, set with `JVMC_DT_*` or `global_defs.update()` |
-| `OutputManager(dataFileName, group="/", append=False)` | `jVMC_exp.util.OutputManager(path=None, group="/", append=True)` |
-| `jVMC.util.symmetries.get_orbit_1D(L, ...)`, `get_orbit_2D_square(L, ...)` | `jVMC_exp.symmetry.lattice_symmetries.chain_reflection_symmetry`, `square_translation_symmetry`, `square_d4_symmetry`, `spin_flip_symmetry`, ... (composed with `*`) |
+| `OutputManager(dataFileName, group="/", append=False)` | `jVMC.util.OutputManager(path=None, group="/", append=True)` |
+| `jVMC.util.symmetries.get_orbit_1D(L, ...)`, `get_orbit_2D_square(L, ...)` | `jVMC.symmetry.lattice_symmetries.chain_reflection_symmetry`, `square_translation_symmetry`, `square_d4_symmetry`, `spin_flip_symmetry`, ... (composed with `*`) |
 
 ## Removed
 

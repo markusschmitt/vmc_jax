@@ -15,7 +15,7 @@
    `networks.md`), or the environment variables `JVMC_DT_PARAMS_REAL=f32` and
    `JVMC_DT_OUT_REAL=f32` before the import.
 5. **`JVMC_BATCH_LOOP`** (environment variable before the import, or
-   `jVMC_exp.global_defs.update(batch_loop=...)`). `"python"` (the default) compiles once per
+   `jVMC.global_defs.update(batch_loop=...)`). `"python"` (the default) compiles once per
    batch size, whatever the number of samples. `"compiled"` fuses the loop and is faster for cheap
    batches, but it recompiles, and caches another executable, for every new number of samples. Use
    it only when the number of samples is fixed.

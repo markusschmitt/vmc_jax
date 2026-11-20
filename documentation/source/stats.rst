@@ -3,7 +3,7 @@
 Sample statistics module
 ========================
 
-The ``jVMC_exp.stats`` module computes statistics of samples. ``SampledObs`` holds the values
+The ``jVMC.stats`` module computes statistics of samples. ``SampledObs`` holds the values
 :math:`O_n` of an observable on :math:`N` samples, together with their normalized weights
 :math:`w_n`, and estimates means, variances, covariances and their statistical errors:
 
@@ -22,7 +22,7 @@ force :math:`F_k=\langle(\partial_{\theta_k}\ln\psi)^*E_{\rm loc}\rangle_c`::
     energy = sampler(hamiltonian)           # SampledObs of the local energy
     print(energy)                           # mean ± error of the mean (Var = variance)
 
-    grads = jVMC_exp.stats.SampledObs(psi.gradients(s), p)
+    grads = jVMC.stats.SampledObs(psi.gradients(s), p)
     S = grads.get_covar()                   # Shape (P, P)
     F = grads.get_covar(energy)             # Shape (P,)
 
@@ -41,8 +41,8 @@ do not contribute to any estimate.
 time, so that they are never held in memory at once. Objective functions use it for the gradients
 when they are created with ``batched_jacobian=True``.
 
-.. autoclass:: jVMC_exp.stats.SampledObs
+.. autoclass:: jVMC.stats.SampledObs
     :members:
 
-.. autoclass:: jVMC_exp.stats.LazySampledObs
+.. autoclass:: jVMC.stats.LazySampledObs
     :members:

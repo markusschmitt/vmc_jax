@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jVMC_exp"
+name = "jVMC"
 dynamic = ["version"]
 description="jVMC: Versatile and performant variational Monte Carlo"
 readme = "README.md"
@@ -29,7 +29,7 @@ classifiers=[
 ]
 
 [project.optional-dependencies]
-dev = ["jVMC_exp[docs,examples]", "pytest", "pytest-mpi"]
+dev = ["jVMC[docs,examples]", "pytest", "pytest-mpi"]
 docs = ["sphinx>=8", "sphinx-rtd-theme>=3", "myst-nb>=1.1"]
 # Only needed to run the notebooks in examples/
 examples = ["matplotlib", "openfermion"]
@@ -44,7 +44,7 @@ Repository = "https://github.com/markusschmitt/vmc_jax"
 Issues = "https://github.com/markusschmitt/vmc_jax/issues"
 
 [tool.setuptools.packages.find]
-include = ["jVMC_exp*"]
+include = ["jVMC*"]
 
 [tool.setuptools.dynamic]
-version = {attr = "jVMC_exp.version.__version__"}
+version = {attr = "jVMC.version.__version__"}

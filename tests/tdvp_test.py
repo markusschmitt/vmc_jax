@@ -5,10 +5,10 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.interpolate import interp1d
 
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import nets, sampler
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.operator.discrete as op
+from jVMC import nets, sampler
+from jVMC.vqs import NQS
 
 
 class TestTimeEvolution(unittest.TestCase):
@@ -53,10 +53,10 @@ class TestTimeEvolution(unittest.TestCase):
             hamiltonian += J * op.SigmaZ(l) * op.SigmaZ((l + 1) % L) + hx * op.SigmaX(l)
             ZZ += op.SigmaZ(l) * op.SigmaZ((l + 1) % L)
 
-        loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-        solver = jVMC_exp.solver.PinvSNR(snr_tol=1, pinv_tol=0.0, pinv_cutoff=1e-8)
-        stepper = jVMC_exp.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5)
-        opt = jVMC_exp.optimizer.TDVP(
+        loss_function = jVMC.objective_function.Observable(hamiltonian)
+        solver = jVMC.solver.PinvSNR(snr_tol=1, pinv_tol=0.0, pinv_cutoff=1e-8)
+        stepper = jVMC.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5)
+        opt = jVMC.optimizer.TDVP(
             exact_sampler, psi, make_real=False, diagonal_shift=0, solver=solver
         )
 
@@ -149,15 +149,15 @@ class TestTimeEvolutionMCSampler(unittest.TestCase):
             ZZ += op.SigmaZ(l) * op.SigmaZ((l + 1) % L)
 
         # Set up exact sampler
-        proposer = jVMC_exp.propose.SpinFlip()
-        mc_sampler = jVMC_exp.sampler.MCSampler(
+        proposer = jVMC.propose.SpinFlip()
+        mc_sampler = jVMC.sampler.MCSampler(
             psi, proposer, 123, num_chains, num_samples, mu=1
         )
 
-        loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-        solver = jVMC_exp.solver.PinvSNR(snr_tol=1, pinv_cutoff=1e-8)
-        stepper = jVMC_exp.stepper.AdaptiveHeun(time_step=1e-3, rtol=0.0, atol=2.5e-5)
-        opt = jVMC_exp.optimizer.TDVP(
+        loss_function = jVMC.objective_function.Observable(hamiltonian)
+        solver = jVMC.solver.PinvSNR(snr_tol=1, pinv_cutoff=1e-8)
+        stepper = jVMC.stepper.AdaptiveHeun(time_step=1e-3, rtol=0.0, atol=2.5e-5)
+        opt = jVMC.optimizer.TDVP(
             mc_sampler, psi, make_real=False, solver=solver, use_cross_validation=True
         )
 
@@ -244,12 +244,12 @@ class TestTimeEvolutionBatchedJacobian(unittest.TestCase):
                     (l + 1) % L
                 ) + hx * op.SigmaX(l)
 
-            loss_function = jVMC_exp.objective_function.Observable(
+            loss_function = jVMC.objective_function.Observable(
                 hamiltonian, batched_jacobian=batched_jacobian
             )
-            solver = jVMC_exp.solver.PinvSNR(pinv_tol=0.0, pinv_cutoff=1e-8)
-            stepper = jVMC_exp.stepper.Euler(time_step=1e-3)
-            opt = jVMC_exp.optimizer.TDVP(
+            solver = jVMC.solver.PinvSNR(pinv_tol=0.0, pinv_cutoff=1e-8)
+            stepper = jVMC.stepper.Euler(time_step=1e-3)
+            opt = jVMC.optimizer.TDVP(
                 exact_sampler, psi, make_real=False, diagonal_shift=0, solver=solver
             )
 
@@ -309,10 +309,10 @@ class TestTimeEvolutionPinv(unittest.TestCase):
             hamiltonian += J * op.SigmaZ(l) * op.SigmaZ((l + 1) % L) + hx * op.SigmaX(l)
             ZZ += op.SigmaZ(l) * op.SigmaZ((l + 1) % L)
 
-        loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-        solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-8)
-        stepper = jVMC_exp.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5)
-        opt = jVMC_exp.optimizer.TDVP(
+        loss_function = jVMC.objective_function.Observable(hamiltonian)
+        solver = jVMC.solver.Pinv(pinv_cutoff=1e-8)
+        stepper = jVMC.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5)
+        opt = jVMC.optimizer.TDVP(
             exact_sampler, psi, make_real=False, diagonal_shift=0, solver=solver
         )
 
@@ -403,16 +403,16 @@ class TestTimeEvolutionPinv(unittest.TestCase):
                     (l + 1) % L
                 ) + hx * op.SigmaX(l)
 
-            loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-            stepper = jVMC_exp.stepper.Euler(time_step=1e-3)
-            opt = jVMC_exp.optimizer.TDVP(
+            loss_function = jVMC.objective_function.Observable(hamiltonian)
+            stepper = jVMC.stepper.Euler(time_step=1e-3)
+            opt = jVMC.optimizer.TDVP(
                 exact_sampler, psi, make_real=False, diagonal_shift=0, solver=solver
             )
             out = opt.time_evolution(1e-2, loss_function, stepper)
             return np.array(out["energy"]["mean"])
 
-        energy_pinv = run(jVMC_exp.solver.Pinv(pinv_cutoff=1e-10))
-        energy_snr = run(jVMC_exp.solver.PinvSNR(pinv_tol=0.0, pinv_cutoff=1e-10))
+        energy_pinv = run(jVMC.solver.Pinv(pinv_cutoff=1e-10))
+        energy_snr = run(jVMC.solver.PinvSNR(pinv_tol=0.0, pinv_cutoff=1e-10))
 
         self.assertTrue(np.allclose(energy_pinv, energy_snr, atol=1e-8))
 
@@ -445,18 +445,18 @@ class TestNonHolomorphicUpdate(unittest.TestCase):
         return (
             psi,
             sampler.ExactSampler(psi),
-            jVMC_exp.objective_function.Observable(hamiltonian),
+            jVMC.objective_function.Observable(hamiltonian),
         )
 
     def test_update_is_real_for_every_dense_solver(self):
         for make_real in (True, False):
             for solver in (
-                jVMC_exp.solver.Pinv(pinv_cutoff=1e-8),
-                jVMC_exp.solver.PinvSNR(pinv_cutoff=1e-8),
+                jVMC.solver.Pinv(pinv_cutoff=1e-8),
+                jVMC.solver.PinvSNR(pinv_cutoff=1e-8),
             ):
                 with self.subTest(make_real=make_real, solver=type(solver).__name__):
                     psi, exact_sampler, loss_function = self._setup()
-                    opt = jVMC_exp.optimizer.TDVP(
+                    opt = jVMC.optimizer.TDVP(
                         exact_sampler,
                         psi,
                         make_real=make_real,
@@ -473,7 +473,7 @@ class TestNonHolomorphicUpdate(unittest.TestCase):
                     self.assertEqual(update.shape, psi.parameters_flat.shape)
 
                     # The full step must stay in the real parameterization too
-                    stepper = jVMC_exp.stepper.Euler(time_step=1e-3)
+                    stepper = jVMC.stepper.Euler(time_step=1e-3)
                     new_parameters, _ = opt.step(0, stepper, loss_function)
                     self.assertEqual(new_parameters.dtype, psi.parameters_flat.dtype)
 
@@ -484,8 +484,8 @@ class TestNonHolomorphicUpdate(unittest.TestCase):
         projection in ``Evolution.get_update`` would be caught.
         """
         psi, exact_sampler, loss_function = self._setup()
-        solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-8)
-        opt = jVMC_exp.optimizer.TDVP(
+        solver = jVMC.solver.Pinv(pinv_cutoff=1e-8)
+        opt = jVMC.optimizer.TDVP(
             exact_sampler, psi, make_real=False, diagonal_shift=1e-3, solver=solver
         )
 
@@ -546,10 +546,10 @@ class TestCrossValidation(unittest.TestCase):
         )
         exact_sampler = sampler.ExactSampler(psi)
         hamiltonian = _tfim(L)
-        loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-        solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-8)
+        loss_function = jVMC.objective_function.Observable(hamiltonian)
+        solver = jVMC.solver.Pinv(pinv_cutoff=1e-8)
 
-        opt = jVMC_exp.optimizer.TDVP(
+        opt = jVMC.optimizer.TDVP(
             exact_sampler,
             psi,
             make_real=False,
@@ -578,7 +578,7 @@ class TestCrossValidation(unittest.TestCase):
             psi(s_even),
             jnp.asarray(w_even),
         )
-        reference_opt = jVMC_exp.optimizer.TDVP(
+        reference_opt = jVMC.optimizer.TDVP(
             exact_sampler, psi, make_real=False, diagonal_shift=0, solver=solver
         )
         update = np.asarray(
@@ -623,15 +623,15 @@ class TestSubstepReweighting(unittest.TestCase):
                 exact_sampler = sampler.ExactSampler(
                     psi, 2, log_prob_factor=log_prob_factor
                 )
-                opt = jVMC_exp.optimizer.TDVP(
+                opt = jVMC.optimizer.TDVP(
                     exact_sampler,
                     psi,
                     make_real=False,
                     diagonal_shift=0,
-                    solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8),
+                    solver=jVMC.solver.Pinv(pinv_cutoff=1e-8),
                     resample_stepper=False,
                 )
-                loss_function = jVMC_exp.objective_function.Observable(_tfim(L))
+                loss_function = jVMC.objective_function.Observable(_tfim(L))
 
                 theta_0 = psi.parameters_flat
                 theta_1 = theta_0 + 0.3 * jnp.cos(jnp.arange(theta_0.shape[0]))

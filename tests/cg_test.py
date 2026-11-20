@@ -2,10 +2,10 @@ import unittest
 
 import jax.numpy as jnp
 
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import nets, sampler
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.operator.discrete as op
+from jVMC import nets, sampler
+from jVMC.vqs import NQS
 
 
 class TestGsSearch(unittest.TestCase):
@@ -29,10 +29,10 @@ class TestGsSearch(unittest.TestCase):
                 ) + hx * op.SigmaX(l)
 
             delta = 2
-            loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-            solver = jVMC_exp.solver.CG()
-            stepper = jVMC_exp.stepper.Euler(5e-2)
-            opt = jVMC_exp.optimizer.SR(
+            loss_function = jVMC.objective_function.Observable(hamiltonian)
+            solver = jVMC.solver.CG()
+            stepper = jVMC.stepper.Euler(5e-2)
+            opt = jVMC.optimizer.SR(
                 exact_sampler, psi, diagonal_shift=0, diagonal_scale=delta, solver=solver
             )
 

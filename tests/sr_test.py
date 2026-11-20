@@ -2,10 +2,10 @@ import unittest
 
 import jax.numpy as jnp
 
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import nets, sampler
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.operator.discrete as op
+from jVMC import nets, sampler
+from jVMC.vqs import NQS
 
 
 class TestGsSearch(unittest.TestCase):
@@ -29,10 +29,10 @@ class TestGsSearch(unittest.TestCase):
                 ) + hx * op.SigmaX(l)
 
             delta = 2
-            loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-            solver = jVMC_exp.solver.PinvSNR(snr_tol=1, pinv_tol=0.0, pinv_cutoff=1e-8)
-            stepper = jVMC_exp.stepper.Euler(5e-2)
-            opt = jVMC_exp.optimizer.SR(
+            loss_function = jVMC.objective_function.Observable(hamiltonian)
+            solver = jVMC.solver.PinvSNR(snr_tol=1, pinv_tol=0.0, pinv_cutoff=1e-8)
+            stepper = jVMC.stepper.Euler(5e-2)
+            opt = jVMC.optimizer.SR(
                 exact_sampler, psi, diagonal_shift=0, diagonal_scale=delta, solver=solver
             )
 
@@ -59,12 +59,12 @@ class TestGsSearchBatchedJacobian(unittest.TestCase):
             )
 
         delta = 2
-        loss_function = jVMC_exp.objective_function.Observable(
+        loss_function = jVMC.objective_function.Observable(
             hamiltonian, batched_jacobian=True
         )
-        solver = jVMC_exp.solver.PinvSNR(snr_tol=1, pinv_tol=0.0, pinv_cutoff=1e-8)
-        stepper = jVMC_exp.stepper.Euler(5e-2)
-        opt = jVMC_exp.optimizer.SR(
+        solver = jVMC.solver.PinvSNR(snr_tol=1, pinv_tol=0.0, pinv_cutoff=1e-8)
+        stepper = jVMC.stepper.Euler(5e-2)
+        opt = jVMC.optimizer.SR(
             exact_sampler, psi, diagonal_shift=0, diagonal_scale=delta, solver=solver
         )
 
@@ -89,12 +89,12 @@ class TestGsSearchBatchedJacobian(unittest.TestCase):
                 op.SigmaZ(l) * op.SigmaZ((l + 1) % L)
             ) - 0.3 * op.SigmaX(l)
 
-        loss_function = jVMC_exp.objective_function.Observable(
+        loss_function = jVMC.objective_function.Observable(
             hamiltonian, batched_jacobian=True
         )
-        solver = jVMC_exp.solver.CG()
-        stepper = jVMC_exp.stepper.Euler(5e-2)
-        opt = jVMC_exp.optimizer.SR(exact_sampler, psi, diagonal_shift=0, solver=solver)
+        solver = jVMC.solver.CG()
+        stepper = jVMC.stepper.Euler(5e-2)
+        opt = jVMC.optimizer.SR(exact_sampler, psi, diagonal_shift=0, solver=solver)
 
         with self.assertRaises(ValueError):
             opt.ground_state_search(1, loss_function, stepper)

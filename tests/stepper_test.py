@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import jVMC_exp.stepper as st
-from jVMC_exp import global_defs
+import jVMC.stepper as st
+from jVMC import global_defs
 
 
 def _make_linear_ode(N: int, seed: int = 123):

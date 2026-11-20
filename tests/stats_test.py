@@ -3,8 +3,8 @@ import unittest
 import jax
 import jax.numpy as jnp
 
-from jVMC_exp.sharding_config import BatchLayout, SizedIterable, pad_to_devices
-from jVMC_exp.stats import LazySampledObs, SampledObs
+from jVMC.sharding_config import BatchLayout, SizedIterable, pad_to_devices
+from jVMC.stats import LazySampledObs, SampledObs
 
 # 3 samples per device and batch: over 20 samples the last batch is never full
 BATCH_SIZE = 3 * jax.device_count()

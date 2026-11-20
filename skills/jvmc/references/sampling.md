@@ -3,15 +3,15 @@
 ```python
 import numpy as np
 import jax.numpy as jnp
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
+import jVMC
+import jVMC.operator.discrete as op
 
 L = 8
-psi = jVMC_exp.vqs.NQS(jVMC_exp.nets.CpxRBM(num_hidden=8), L, batch_size=2**L, seed=0)
+psi = jVMC.vqs.NQS(jVMC.nets.CpxRBM(num_hidden=8), L, batch_size=2**L, seed=0)
 H = sum(-op.SigmaZ(i) * op.SigmaZ((i + 1) % L) - op.SigmaX(i) for i in range(L))
 ```
 
-## Samplers (`jVMC_exp.sampler`)
+## Samplers (`jVMC.sampler`)
 
 | Sampler | Use |
 |---|---|
@@ -28,7 +28,7 @@ H = sum(-op.SigmaZ(i) * op.SigmaZ((i + 1) % L) - op.SigmaX(i) for i in range(L))
   uniform.
 * `sampler.acceptance_ratio` checks the Metropolis acceptance; very low values mean bad mixing.
 
-Proposers (`jVMC_exp.propose`, also `jVMC_exp.sampler.propose`):
+Proposers (`jVMC.propose`, also `jVMC.sampler.propose`):
 
 | Proposer | Move |
 |---|---|
@@ -38,23 +38,23 @@ Proposers (`jVMC_exp.propose`, also `jVMC_exp.sampler.propose`):
 | `RWM(geometry)` | Gaussian random walk of all particles, step size tuned during thermalization |
 | `MALA(geometry, apply_fun)` | Langevin move along ∇ log \|ψ\| |
 
-A custom proposer subclasses `jVMC_exp.propose.AbstractProposer` and implements
+A custom proposer subclasses `jVMC.propose.AbstractProposer` and implements
 `__call__(key, s, arg) -> (s_new, log_proposal_ratio)`; it must be `jax.jit`-compatible.
 
 ```python
 n_samples = 2**10
-mc = jVMC_exp.sampler.MCSampler(psi, jVMC_exp.propose.SpinFlip(), key=1,
+mc = jVMC.sampler.MCSampler(psi, jVMC.propose.SpinFlip(), key=1,
                                 num_chains=n_samples // 4, num_samples=n_samples, thermalization_sweeps=20)
 s, log_psi, weights = mc.sample()            # s: (num_samples, L) int32; weights sum to 1
 
 zero_mag = jnp.array([[0, 1] * (L // 2)] * 16, dtype=jnp.int32)
-mc_u1 = jVMC_exp.sampler.MCSampler(psi, jVMC_exp.propose.SpinFlipZeroMag(), key=2,
+mc_u1 = jVMC.sampler.MCSampler(psi, jVMC.propose.SpinFlipZeroMag(), key=2,
                                    num_chains=16, num_samples=64, init_state=zero_mag)
 ```
 
 ## Measuring
 
-`sampler(operator, **kwargs)` returns a `jVMC_exp.stats.SampledObs` evaluated on the **stored**
+`sampler(operator, **kwargs)` returns a `jVMC.stats.SampledObs` evaluated on the **stored**
 samples of the last `sample()` call. For `MCSampler`, `resample=True` forces new samples, and
 `num_samples=n` draws `n` samples for this call only.
 
@@ -66,7 +66,7 @@ r_hat = E.get_R_hat(mc.num_chains)                 # Gelman–Rubin; close to 1 
 
 E_big = mc(H, num_samples=2**12)                     # a larger, one-off measurement
 
-obs = jVMC_exp.util.measure({"energy": H, "Z0": op.SigmaZ(0)}, mc)
+obs = jVMC.util.measure({"energy": H, "Z0": op.SigmaZ(0)}, mc)
 print(obs["energy"]["mean"], obs["energy"]["MC_error"])
 ```
 
@@ -79,7 +79,7 @@ For the exact sampler, refresh after changing parameters: `exact.sample(); exact
 
 ## Custom samplers
 
-To restrict an exact sum to a symmetry sector, subclass `jVMC_exp.sampler.base.AbstractSampler`.
+To restrict an exact sum to a symmetry sector, subclass `jVMC.sampler.base.AbstractSampler`.
 Implement `sample()`, which sets `self._samples`, `self._log_psi` and `self._weights` and returns
 them, and `__call__(observable, **kw)`, which returns
 `SampledObs(observable.get_O_loc(self.samples, self.psi, log_psi_s=self.log_psi, **kw), self.weights)`.

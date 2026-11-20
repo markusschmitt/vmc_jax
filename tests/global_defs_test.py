@@ -2,7 +2,7 @@ import unittest
 
 import jax.numpy as jnp
 
-from jVMC_exp import global_defs
+from jVMC import global_defs
 
 _SETTINGS = (
     "DT_PARAMS_REAL",

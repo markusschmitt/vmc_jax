@@ -3,13 +3,13 @@
 ```python
 import numpy as np
 import jax.numpy as jnp
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
+import jVMC
+import jVMC.operator.discrete as op
 ```
 
 ## Discrete operators (spins and fermions)
 
-All discrete operators live in `jVMC_exp.operator.discrete` and act on one site `idx`. They combine
+All discrete operators live in `jVMC.operator.discrete` and act on one site `idx`. They combine
 with `+`, `-`, `*` (operator product, applied right to left), `/` by a scalar, and multiplication
 by scalars. Start a sum from `0` or from the first term.
 
@@ -69,8 +69,8 @@ take them as keywords. Changing them does not trigger recompilation.
 f = lambda t, **kwargs: jnp.cos(t)
 O = op.SigmaZ(0) * (op.SigmaX(0) + 2 * op.SigmaY(1)) + f * op.SigmaZ(0) * op.SigmaZ(1)
 
-psi = jVMC_exp.vqs.NQS(jVMC_exp.nets.CpxRBM(num_hidden=2), 2, batch_size=4, seed=0)
-exact = jVMC_exp.sampler.ExactSampler(psi)
+psi = jVMC.vqs.NQS(jVMC.nets.CpxRBM(num_hidden=2), 2, batch_size=4, seed=0)
+exact = jVMC.sampler.ExactSampler(psi)
 print(O.to_dense(exact.basis, t=0.25 * jnp.pi))   # dense matrix at t = pi/4
 print(exact(O, t=0.3).mean)                        # expectation value at t = 0.3
 ```
@@ -83,22 +83,22 @@ print(exact(O, t=0.3).mean)                        # expectation value at t = 0.
 * `O.get_conn_elements(s, batch_size)` returns the connected configurations s' and the matrix
   elements ⟨s|O|s'⟩. `O.get_O_loc(s, psi)` returns the local estimator. Usually `sampler(O)`
   is all you need.
-* `jVMC_exp.util.matrix_to_jvmc_operator(matrix, sites, return_conjugate=False)` converts a dense
+* `jVMC.util.matrix_to_jvmc_operator(matrix, sites, return_conjugate=False)` converts a dense
   2×2 or 4×4 matrix on one or two spin-1/2 sites into an operator. It returns the operator of
   `matrix.conj().T` too if `return_conjugate=True`, which `Infidelity` needs.
 
 ```python
 U2 = np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=complex)   # SWAP
-swap, swap_dag = jVMC_exp.util.matrix_to_jvmc_operator(U2, (0, 1), return_conjugate=True)
+swap, swap_dag = jVMC.util.matrix_to_jvmc_operator(U2, (0, 1), return_conjugate=True)
 ```
 
 ### Custom branch-free operators
 
 An operator is branch-free if it maps every local state to exactly one local state. Subclass
-`jVMC_exp.operator.discrete.Operator` and give the map and the matrix elements per local state:
+`jVMC.operator.discrete.Operator` and give the map and the matrix elements per local state:
 
 ```python
-from jVMC_exp import global_defs
+from jVMC import global_defs
 
 class MySigmaY(op.Operator):
     def __init__(self, idx):
@@ -117,8 +117,8 @@ assert np.allclose(MySigmaY(0).to_dense(exact.basis), op.SigmaY(0).to_dense(exac
 
 ## Continuous operators (particles in space)
 
-`jVMC_exp.operator.continuous` acts on positions of shape `(n_particles * n_dim,)` and needs a
-geometry. `jVMC_exp.geometry.HyperRectangle(n_particles, n_dim, PBC=..., extent=...)`
+`jVMC.operator.continuous` acts on positions of shape `(n_particles * n_dim,)` and needs a
+geometry. `jVMC.geometry.HyperRectangle(n_particles, n_dim, PBC=..., extent=...)`
 describes the box. With `PBC=False` the extent only sets where the Markov chains start and the
 default proposal step. With periodic directions, distances use the minimum-image convention.
 
@@ -130,19 +130,19 @@ default proposal step. With periodic directions, distances use the minimum-image
 | `ParticleDensity(geometry, linear_partition)`, `Monopole(geometry)` | diagonal observables |
 
 ```python
-import jVMC_exp.operator.continuous as cop
+import jVMC.operator.continuous as cop
 
 N, n_dim, omega = 2, 2, 1.0
-geometry = jVMC_exp.geometry.HyperRectangle(N, n_dim, PBC=False, extent=(6.0, 6.0))
+geometry = jVMC.geometry.HyperRectangle(N, n_dim, PBC=False, extent=(6.0, 6.0))
 H_dot = (
     cop.TotalKineticOperator(geometry)
     + cop.PotentialOperator(geometry, lambda x: 0.5 * omega**2 * jnp.sum(x**2))
     + cop.CoulombInteraction(geometry)
 )
-# sampler: jVMC_exp.sampler.MCSamplerCont(psi, jVMC_exp.propose.RWM(geometry), ...), see sampling.md
+# sampler: jVMC.sampler.MCSamplerCont(psi, jVMC.propose.RWM(geometry), ...), see sampling.md
 ```
 
-A custom continuous operator subclasses `jVMC_exp.operator.continuous.Operator(geometry,
+A custom continuous operator subclasses `jVMC.operator.continuous.Operator(geometry,
 is_diagonal)` and implements `_get_O_loc(self, s, apply_fun, parameters, kwargs)` for one
 configuration. A diagonal operator just returns a function of `s`; a non-diagonal one can
 differentiate `apply_fun(parameters, s)` (log ψ) with JAX. See `PotentialOperator` and

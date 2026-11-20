@@ -2,10 +2,10 @@ import unittest
 
 import jax.numpy as jnp
 
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import nets, sampler
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.operator.discrete as op
+from jVMC import nets, sampler
+from jVMC.vqs import NQS
 
 
 class TestGsSearch(unittest.TestCase):
@@ -28,8 +28,8 @@ class TestGsSearch(unittest.TestCase):
                     op.SigmaZ(l) * op.SigmaZ((l + 1) % L)
                 ) + hx * op.SigmaX(l)
 
-            loss_function = jVMC_exp.objective_function.Observable(hamiltonian)
-            opt = jVMC_exp.optimizer.Adam(exact_sampler, psi, 1e-3)
+            loss_function = jVMC.objective_function.Observable(hamiltonian)
+            opt = jVMC.optimizer.Adam(exact_sampler, psi, 1e-3)
 
             opt.ground_state_search(1000, loss_function)
             eps_rel = jnp.abs((exact_sampler(hamiltonian).mean.item() - exact_energy) / exact_energy)

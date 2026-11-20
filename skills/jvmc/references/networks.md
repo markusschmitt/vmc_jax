@@ -4,7 +4,7 @@
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
-import jVMC_exp
+import jVMC
 ```
 
 ## The contract of a network
@@ -15,7 +15,7 @@ import jVMC_exp
   network returns ψ(s) instead.
 * Spins arrive as integers 0/1. Map them yourself if you want ±1 (`2 * s - 1`).
 * Parameters live in the `params` collection, all with one dtype. For complex parameters use
-  `param_dtype=jVMC_exp.global_defs.DT_PARAMS_CPX`. Flax's `dtype=` sets only the computation
+  `param_dtype=jVMC.global_defs.DT_PARAMS_CPX`. Flax's `dtype=` sets only the computation
   dtype, not the parameter dtype.
 * Do not hard-code `dtype=` in layers if you want mixed precision (see below).
 * Optional methods: `sample(key)` makes the network a direct (autoregressive) sampler;
@@ -29,13 +29,13 @@ class MyRBM(nn.Module):
     def __call__(self, s):
         h = nn.Dense(
             self.num_hidden,
-            param_dtype=jVMC_exp.global_defs.DT_PARAMS_CPX,
-            kernel_init=jVMC_exp.nets.initializers.cplx_init,
+            param_dtype=jVMC.global_defs.DT_PARAMS_CPX,
+            kernel_init=jVMC.nets.initializers.cplx_init,
         )(2 * s.ravel() - 1)
         return jnp.sum(jnp.log(jnp.cosh(h)))
 
 L = 6
-psi = jVMC_exp.vqs.NQS(MyRBM(num_hidden=8), sample_shape=L, batch_size=2**L, seed=1234)
+psi = jVMC.vqs.NQS(MyRBM(num_hidden=8), sample_shape=L, batch_size=2**L, seed=1234)
 print(psi.num_parameters, psi.real_params, psi.holomorphic)   # holomorphicity is detected automatically
 configs = jax.random.bernoulli(jax.random.PRNGKey(0), shape=(5, L)).astype(jnp.int32)
 log_psi = psi(configs)                                         # shape (5,)
@@ -43,7 +43,7 @@ log_psi = psi(configs)                                         # shape (5,)
 
 ## `NQS`
 
-`jVMC_exp.vqs.NQS(net, sample_shape, batch_size=None, batch_size_per_device=None, logarithmic=True,
+`jVMC.vqs.NQS(net, sample_shape, batch_size=None, batch_size_per_device=None, logarithmic=True,
 seed=None, orbit=None, symmetry_average="exp", sampler_dtype=None, eval_dtype=None, grad_dtype=None,
 nnx_init=None)`. Give exactly one of `batch_size` and `batch_size_per_device`.
 
@@ -68,16 +68,16 @@ from flax import nnx
 
 class RBMNNX(nnx.Module):
     def __init__(self, in_features, num_hidden, *, rngs: nnx.Rngs):
-        self.layer = nnx.Linear(in_features, num_hidden, param_dtype=jVMC_exp.global_defs.DT_PARAMS_CPX,
-                                kernel_init=jVMC_exp.nets.initializers.cplx_init, rngs=rngs)
+        self.layer = nnx.Linear(in_features, num_hidden, param_dtype=jVMC.global_defs.DT_PARAMS_CPX,
+                                kernel_init=jVMC.nets.initializers.cplx_init, rngs=rngs)
 
     def __call__(self, s):
         return jnp.sum(jnp.log(jnp.cosh(self.layer(2 * s.ravel() - 1))))
 
-psi_nnx = jVMC_exp.vqs.NQS(RBMNNX, L, batch_size=2**L, seed=0, nnx_init=dict(in_features=L, num_hidden=4))
+psi_nnx = jVMC.vqs.NQS(RBMNNX, L, batch_size=2**L, seed=0, nnx_init=dict(in_features=L, num_hidden=4))
 ```
 
-## Built-in networks (`jVMC_exp.nets`)
+## Built-in networks (`jVMC.nets`)
 
 | Network | Notes |
 |---|---|
@@ -99,21 +99,21 @@ Autoregressive networks provide `sample()`. `MCSampler(psi, None, ...)` then dra
 independent samples with equal weights; no proposer or thermalization is needed:
 
 ```python
-net_ar = jVMC_exp.nets.RWKVCPM(L=8, patch_size=2, hidden_size=8, embedding_size=8, num_layers=1)
-psi_ar = jVMC_exp.vqs.NQS(net_ar, 8, batch_size=16, seed=31)
-sampler_ar = jVMC_exp.sampler.MCSampler(psi_ar, None, key=32, num_samples=64)
+net_ar = jVMC.nets.RWKVCPM(L=8, patch_size=2, hidden_size=8, embedding_size=8, num_layers=1)
+psi_ar = jVMC.vqs.NQS(net_ar, 8, batch_size=16, seed=31)
+sampler_ar = jVMC.sampler.MCSampler(psi_ar, None, key=32, num_samples=64)
 s, log_psi_ar, w = sampler_ar.sample()
 
-psi_q = jVMC_exp.vqs.NQS(jVMC_exp.nets.ParticleConservingAutoregressive(net=net_ar, Q=4), 8, batch_size=16, seed=31)
-s_q, _, _ = jVMC_exp.sampler.MCSampler(psi_q, None, key=1, num_samples=16).sample()
+psi_q = jVMC.vqs.NQS(jVMC.nets.ParticleConservingAutoregressive(net=net_ar, Q=4), 8, batch_size=16, seed=31)
+s_q, _, _ = jVMC.sampler.MCSampler(psi_q, None, key=1, num_samples=16).sample()
 assert (s_q.sum(axis=-1) == 4).all()
 ```
 
 ## Symmetry projection
 
-`jVMC_exp.symmetry` projects a network onto a symmetry sector,
+`jVMC.symmetry` projects a network onto a symmetry sector,
 ψ_χ(s) = (d_χ/|G|) Σ_g χ*_g η_g(s) ψ(g⁻¹s). Projectors come from
-`jVMC_exp.symmetry.lattice_symmetries`:
+`jVMC.symmetry.lattice_symmetries`:
 
 * `square_translation_symmetry(Lx, Ly, particle_type, q=(0, 0))` (lattice momentum `q`)
 * `square_d4_symmetry(Lx, Ly, particle_type)`, `rectangle_d2_symmetry(...)`, `point_group_symmetry(...)`
@@ -126,19 +126,19 @@ and `projector * net` returns a `ProjectedOrbitNet`. Passing `NQS(net, ..., orbi
 equivalent.
 
 ```python
-from jVMC_exp.symmetry import lattice_symmetries as sym
+from jVMC.symmetry import lattice_symmetries as sym
 
 Lx = Ly = 4
 D4 = sym.square_d4_symmetry(Lx, Ly, particle_type="spin")
 T0 = sym.square_translation_symmetry(Lx, Ly, particle_type="spin", q=(0, 0))
-net_sym = (D4 * T0) * jVMC_exp.nets.RBM(num_hidden=4, bias=True)
-psi_sym = jVMC_exp.vqs.NQS(net_sym, Lx * Ly, batch_size=16, seed=7)
+net_sym = (D4 * T0) * jVMC.nets.RBM(num_hidden=4, bias=True)
+psi_sym = jVMC.vqs.NQS(net_sym, Lx * Ly, batch_size=16, seed=7)
 ```
 
 `symmetry_average`: `"exp"` (default) is the exact coherent projection and works for any
 character and fermionic signs. `"log"` and `"sep"` ignore the characters, so they only work for
 the trivial sector. Networks with `sample()` accept only `"sep"` (or a custom callable), with
-unit characters. Custom groups: `jVMC_exp.symmetry.SymmetryProjector(Lx, Ly, particle_type,
+unit characters. Custom groups: `jVMC.symmetry.SymmetryProjector(Lx, Ly, particle_type,
 perm=..., character=...)`, where each row of `perm` is a permutation of the site indices.
 
 ## Mixed precision

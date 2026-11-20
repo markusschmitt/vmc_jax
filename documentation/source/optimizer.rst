@@ -13,8 +13,8 @@ function (see :ref:`ObjectiveFunction`):
 * ``TDVP``: real-time evolution with the time-dependent variational principle.
 
 ``SR`` and ``TDVP`` solve the equation :math:`S\dot\theta=cF` with the quantum geometric tensor
-:math:`S` and the force :math:`F`, with a solver of ``jVMC_exp.solver``. A stepper of
-``jVMC_exp.stepper`` (see :ref:`Stepper`) integrates the update :math:`\dot\theta`: its time step is the learning rate
+:math:`S` and the force :math:`F`, with a solver of ``jVMC.solver``. A stepper of
+``jVMC.stepper`` (see :ref:`Stepper`) integrates the update :math:`\dot\theta`: its time step is the learning rate
 of a ground state search, and the time step of a time evolution.
 
 Usage
@@ -23,18 +23,18 @@ Usage
 ::
 
     H = sum(-op.SigmaZ(l) * op.SigmaZ((l + 1) % L) - g * op.SigmaX(l) for l in range(L))
-    energy = jVMC_exp.objective_function.Observable(H)
+    energy = jVMC.objective_function.Observable(H)
 
     # Ground state search
-    opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=1e-3)
-    out = opt.ground_state_search(500, energy, stepper=jVMC_exp.stepper.Euler(5e-2))
+    opt = jVMC.optimizer.SR(sampler, psi, diagonal_shift=1e-3)
+    out = opt.ground_state_search(500, energy, stepper=jVMC.stepper.Euler(5e-2))
     out["energy"]["mean"]                   # Mean of the local energies at every step
 
     # Real-time evolution with an adaptive time step, measuring an observable
-    opt = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=False, diagonal_shift=0.)
+    opt = jVMC.optimizer.TDVP(sampler, psi, make_real=False, diagonal_shift=0.)
     out = opt.time_evolution(
-        t_max, jVMC_exp.objective_function.Observable(H_quench),
-        jVMC_exp.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5),
+        t_max, jVMC.objective_function.Observable(H_quench),
+        jVMC.stepper.AdaptiveHeun(time_step=1e-3, rtol=1e-5, atol=1e-5),
         observables={"ZZ": ZZ}
     )
     out["times"], out["ZZ"]["mean"]
@@ -49,28 +49,28 @@ argument of the operators.
 Optimizers
 ^^^^^^^^^^
 
-.. autoclass:: jVMC_exp.optimizer.SR
+.. autoclass:: jVMC.optimizer.SR
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.optimizer.TDVP
+.. autoclass:: jVMC.optimizer.TDVP
     :members: cross_validation
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.optimizer.MinSR
+.. autoclass:: jVMC.optimizer.MinSR
     :members:
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.optimizer.Adam
+.. autoclass:: jVMC.optimizer.Adam
     :members:
     :show-inheritance:
 
 Base classes
 ^^^^^^^^^^^^
 
-.. autoclass:: jVMC_exp.optimizer.base.AbstractOptimizer
+.. autoclass:: jVMC.optimizer.base.AbstractOptimizer
     :members:
     :special-members: __call__
 
-.. autoclass:: jVMC_exp.optimizer.base.Evolution
+.. autoclass:: jVMC.optimizer.base.Evolution
     :members:
     :show-inheritance:

@@ -5,18 +5,18 @@ Sampler module
 
 The sampler module provides the possibilities to sample variational quantum states:
 
-* :class:`~jVMC_exp.sampler.mc_sampler.MCSampler` samples discrete computational basis
+* :class:`~jVMC.sampler.mc_sampler.MCSampler` samples discrete computational basis
   configurations. If the variational wave function provides a ``sample()`` member function,
   direct sampling is used. Otherwise, Markov Chain Monte Carlo (MCMC) is employed.
-* :class:`~jVMC_exp.sampler.mc_sampler.MCSamplerCont` does the same for continuous particle
+* :class:`~jVMC.sampler.mc_sampler.MCSamplerCont` does the same for continuous particle
   configurations.
-* :class:`~jVMC_exp.sampler.mc_sampler.CutoffSampler` is an MCMC sampler that clips small
+* :class:`~jVMC.sampler.mc_sampler.CutoffSampler` is an MCMC sampler that clips small
   probabilities from below, and corrects for this in the weights of the samples.
-* :class:`~jVMC_exp.sampler.exact_sampler.ExactSampler` works with all basis states instead of
+* :class:`~jVMC.sampler.exact_sampler.ExactSampler` works with all basis states instead of
   samples, which can be helpful for quick troubleshooting.
 
-The MCMC updates come from the proposers of the ``jVMC_exp.sampler.propose`` module, which is also
-available as ``jVMC_exp.propose``.
+The MCMC updates come from the proposers of the ``jVMC.sampler.propose`` module, which is also
+available as ``jVMC.propose``.
 
 Usage
 ^^^^^
@@ -26,9 +26,9 @@ logarithmic wave function coefficients and their normalized weights, and stores 
 ``samples``, ``log_psi`` and ``weights`` properties. Calling the sampler evaluates an observable on
 these samples::
 
-    psi = jVMC_exp.vqs.NQS(net, L, batch_size=2**10, seed=1234)
-    sampler = jVMC_exp.sampler.MCSampler(
-        psi, jVMC_exp.propose.SpinFlip(), key=123, num_chains=2**6, num_samples=2**12
+    psi = jVMC.vqs.NQS(net, L, batch_size=2**10, seed=1234)
+    sampler = jVMC.sampler.MCSampler(
+        psi, jVMC.propose.SpinFlip(), key=123, num_chains=2**6, num_samples=2**12
     )
 
     s, log_psi, p = sampler.sample()
@@ -45,26 +45,26 @@ requested.
 Samplers
 ^^^^^^^^
 
-.. autoclass:: jVMC_exp.sampler.base.AbstractSampler
+.. autoclass:: jVMC.sampler.base.AbstractSampler
     :members:
     :special-members: __call__
 
-.. autoclass:: jVMC_exp.sampler.base.AbstractMCSampler
+.. autoclass:: jVMC.sampler.base.AbstractMCSampler
     :members:
     :special-members: __call__
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.mc_sampler.MCSampler
+.. autoclass:: jVMC.sampler.mc_sampler.MCSampler
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.mc_sampler.MCSamplerCont
+.. autoclass:: jVMC.sampler.mc_sampler.MCSamplerCont
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.mc_sampler.CutoffSampler
+.. autoclass:: jVMC.sampler.mc_sampler.CutoffSampler
     :members:
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.exact_sampler.ExactSampler
+.. autoclass:: jVMC.sampler.exact_sampler.ExactSampler
     :members:
     :special-members: __call__
     :show-inheritance:
@@ -72,33 +72,33 @@ Samplers
 Proposers
 ^^^^^^^^^
 
-.. autoclass:: jVMC_exp.sampler.propose.AbstractProposer
+.. autoclass:: jVMC.sampler.propose.AbstractProposer
     :members:
     :special-members: __call__
     :private-members: _custom_therm_fun
 
-.. autoclass:: jVMC_exp.sampler.propose.AbstractProposeCont
+.. autoclass:: jVMC.sampler.propose.AbstractProposeCont
     :members:
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.propose.SpinFlip
+.. autoclass:: jVMC.sampler.propose.SpinFlip
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.propose.SpinFlipZ2
+.. autoclass:: jVMC.sampler.propose.SpinFlipZ2
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.propose.SpinFlipZeroMag
+.. autoclass:: jVMC.sampler.propose.SpinFlipZeroMag
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.propose.POVMOutcome
+.. autoclass:: jVMC.sampler.propose.POVMOutcome
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.propose.RWM
+.. autoclass:: jVMC.sampler.propose.RWM
     :members: adapt_rate, target_rate
     :special-members: __call__
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.sampler.propose.MALA
+.. autoclass:: jVMC.sampler.propose.MALA
     :members: apply_fun, mu, adapt_rate, target_rate
     :special-members: __call__
     :show-inheritance:

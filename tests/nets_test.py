@@ -5,10 +5,10 @@ import jax.numpy as jnp
 import numpy as np
 from jax import random
 
-import jVMC_exp
-from jVMC_exp import nets
-from jVMC_exp.symmetry import ProjectedOrbitNet
-from jVMC_exp.symmetry.lattice_symmetries import square_translation_symmetry
+import jVMC
+from jVMC import nets
+from jVMC.symmetry import ProjectedOrbitNet
+from jVMC.symmetry.lattice_symmetries import square_translation_symmetry
 
 
 class TestCNN(unittest.TestCase):
@@ -96,11 +96,11 @@ class TestCpxNet(unittest.TestCase):
 
         self.assertTrue(
             params["params"]["Conv_1"]["kernel"].dtype
-            == jVMC_exp.global_defs.DT_PARAMS_CPX
+            == jVMC.global_defs.DT_PARAMS_CPX
         )
         self.assertTrue(
             params["params"]["Conv_1"]["bias"].dtype
-            == jVMC_exp.global_defs.DT_PARAMS_CPX
+            == jVMC.global_defs.DT_PARAMS_CPX
         )
 
         S0 = jnp.pad(jnp.array([1, 0, 1, 1, 0]), (0, 4), "wrap")

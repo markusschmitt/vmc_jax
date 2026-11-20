@@ -3,8 +3,8 @@ from itertools import product
 
 import jax.numpy as jnp
 
-import jVMC_exp.operator.discrete as op
-from jVMC_exp.vqs import NQS
+import jVMC.operator.discrete as op
+from jVMC.vqs import NQS
 
 
 class FakeState:

@@ -3,5 +3,5 @@
 Global definitions module
 =========================
 
-.. automodule:: jVMC_exp.global_defs
+.. automodule:: jVMC.global_defs
     :members:

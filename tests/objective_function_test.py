@@ -5,19 +5,19 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import jVMC_exp
-import jVMC_exp.nets
-import jVMC_exp.operator.discrete as op
-import jVMC_exp.sampler
-import jVMC_exp.vqs
-from jVMC_exp import global_defs
-from jVMC_exp.objective_function import (
+import jVMC
+import jVMC.nets
+import jVMC.operator.discrete as op
+import jVMC.sampler
+import jVMC.vqs
+from jVMC import global_defs
+from jVMC.objective_function import (
     Estimator,
     ObjectiveFunctionOutput,
     Observable,
     ParametricObservable,
 )
-from jVMC_exp.stats import LazySampledObs, SampledObs
+from jVMC.stats import LazySampledObs, SampledObs
 
 L = 4
 N_SAMPLES = 16
@@ -46,7 +46,7 @@ class NonHolomorphicRBM(nn.Module):
         theta = nn.Dense(
             2,
             param_dtype=global_defs.DT_PARAMS_CPX,
-            kernel_init=jVMC_exp.nets.initializers.cplx_init,
+            kernel_init=jVMC.nets.initializers.cplx_init,
         )(2 * s.ravel() - 1.0)
 
         return jnp.sum(jnp.log(jnp.cosh(theta))) + 0.1 * jnp.sum(jnp.abs(theta) ** 2)
@@ -54,15 +54,15 @@ class NonHolomorphicRBM(nn.Module):
 
 NETS = {
     "real_parameters": ModulusPhaseNet,
-    "holomorphic": lambda: jVMC_exp.nets.CpxRBM(2, True),
+    "holomorphic": lambda: jVMC.nets.CpxRBM(2, True),
     "non_holomorphic": NonHolomorphicRBM,
 }
 
 
 def build_sampler(batch_size=N_SAMPLES):
-    model = jVMC_exp.nets.CpxRBM(1, True)
-    psi = jVMC_exp.vqs.NQS(model, L, batch_size=batch_size)
-    sampler = jVMC_exp.sampler.ExactSampler(psi, 2)
+    model = jVMC.nets.CpxRBM(1, True)
+    psi = jVMC.vqs.NQS(model, L, batch_size=batch_size)
+    sampler = jVMC.sampler.ExactSampler(psi, 2)
     return sampler, psi
 
 
@@ -110,7 +110,7 @@ def make_sigma_x_fn(psi):
 
 def random_nqs(net, seed, batch_size=2**L):
     """NQS with O(1) random parameters"""
-    psi = jVMC_exp.vqs.NQS(net, L, batch_size=batch_size, seed=seed)
+    psi = jVMC.vqs.NQS(net, L, batch_size=batch_size, seed=seed)
     noise = jax.random.normal(jax.random.PRNGKey(seed), psi.parameters_flat.shape)
     psi.parameters = psi.parameters_flat + 0.5 * noise
 
@@ -312,7 +312,7 @@ class TestGradientFiniteDifferences(unittest.TestCase):
         for name, net in NETS.items():
             with self.subTest(net=name):
                 psi = random_nqs(net(), seed=2)
-                sampler = jVMC_exp.sampler.ExactSampler(psi, 2)
+                sampler = jVMC.sampler.ExactSampler(psi, 2)
                 sampler.sample()
                 objective, ell = build(psi)
                 out = objective.value_and_grad(sampler)

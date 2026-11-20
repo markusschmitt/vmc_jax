@@ -3,8 +3,8 @@ import unittest
 import jax.numpy as jnp
 import numpy as np
 
-import jVMC_exp
-from jVMC_exp.stats import SampledObs
+import jVMC
+from jVMC.stats import SampledObs
 
 # Functions T of the right hand side b = T(F) and of the matrix A = T_A(S) of Evolution
 TRANSFORMATIONS = {
@@ -46,7 +46,7 @@ class TestPinvSNR(unittest.TestCase):
                         N * np.abs(rho.mean(axis=0)) ** 2 / (rho.var(axis=0) + 1e-14)
                     )
 
-                    _, info = jVMC_exp.solver.PinvSNR(snr_tol=1)(
+                    _, info = jVMC.solver.PinvSNR(snr_tol=1)(
                         jnp.pad(A, ((0, pad_size), (0, pad_size))),
                         b,
                         grad_log_psi=grad_log_psi,

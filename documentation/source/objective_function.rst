@@ -17,14 +17,14 @@ samples of a sampler as the mean of a local loss,
 The optimizers take an objective function and minimize it::
 
     H = sum(-op.SigmaZ(l) * op.SigmaZ((l + 1) % L) - g * op.SigmaX(l) for l in range(L))
-    energy = jVMC_exp.objective_function.Observable(H)
+    energy = jVMC.objective_function.Observable(H)
 
     out = energy.value_and_grad(sampler)
     out.o_loc.mean                          # Energy
     out.grad                                # Force, one entry per real parameter
 
-    optimizer = jVMC_exp.optimizer.SR(sampler, psi)
-    optimizer.ground_state_search(500, energy, stepper=jVMC_exp.stepper.Euler(1e-2))
+    optimizer = jVMC.optimizer.SR(sampler, psi)
+    optimizer.ground_state_search(500, energy, stepper=jVMC.stepper.Euler(1e-2))
 
 The local losses of
 
@@ -35,9 +35,9 @@ The local losses of
 * ``Infidelity`` give the infidelity with a reference state transformed by an operator, e.g. to fit
   a state to :math:`\hat U|\chi\rangle` for a gate :math:`\hat U`::
 
-    U, U_dag = jVMC_exp.util.util.matrix_to_jvmc_operator(gate, (0, 1), return_conjugate=True)
-    loss = jVMC_exp.objective_function.Infidelity(chi_sampler, U, U_dag, control_variate="adaptive")
-    optimizer.ground_state_search(steps, loss, stepper=jVMC_exp.stepper.Euler(5e-2))
+    U, U_dag = jVMC.util.util.matrix_to_jvmc_operator(gate, (0, 1), return_conjugate=True)
+    loss = jVMC.objective_function.Infidelity(chi_sampler, U, U_dag, control_variate="adaptive")
+    optimizer.ground_state_search(steps, loss, stepper=jVMC.stepper.Euler(5e-2))
 
 All of them use the samples and weights stored in the sampler, which the optimizers refresh at
 every step. With ``batched_jacobian=True`` the logarithmic derivatives are computed one batch at a
@@ -46,19 +46,19 @@ time, for networks whose Jacobian does not fit in memory.
 Objective functions
 ^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: jVMC_exp.objective_function.base.Observable
+.. autoclass:: jVMC.objective_function.base.Observable
     :members:
     :special-members: __call__
 
-.. autoclass:: jVMC_exp.objective_function.base.Estimator
+.. autoclass:: jVMC.objective_function.base.Estimator
     :members:
     :special-members: __call__
 
-.. autoclass:: jVMC_exp.objective_function.base.ParametricObservable
+.. autoclass:: jVMC.objective_function.base.ParametricObservable
     :members:
     :special-members: __call__
 
-.. autoclass:: jVMC_exp.objective_function.infidelity.Infidelity
+.. autoclass:: jVMC.objective_function.infidelity.Infidelity
     :members:
     :special-members: __call__
 
@@ -68,11 +68,11 @@ Interface
 New objective functions derive from ``AbstractObjectiveFunction`` and implement ``__call__()``
 and ``value_and_grad()``.
 
-.. autoclass:: jVMC_exp.objective_function.base.AbstractObjectiveFunction
+.. autoclass:: jVMC.objective_function.base.AbstractObjectiveFunction
     :members:
     :special-members: __call__
 
-.. autoclass:: jVMC_exp.objective_function.base.ObjectiveFunctionOutput
+.. autoclass:: jVMC.objective_function.base.ObjectiveFunctionOutput
 
-.. autoclass:: jVMC_exp.objective_function.infidelity.MovingAverage
+.. autoclass:: jVMC.objective_function.infidelity.MovingAverage
     :members:

@@ -7,11 +7,11 @@ import jax.numpy as jnp
 import numpy as np
 from jax import random
 
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import global_defs, nets
-from jVMC_exp.sharding_config import distribute
-from jVMC_exp.symmetry.lattice_symmetries import square_translation_symmetry
-from jVMC_exp.vqs import NQS
+import jVMC.operator.discrete as op
+from jVMC import global_defs, nets
+from jVMC.sharding_config import distribute
+from jVMC.symmetry.lattice_symmetries import square_translation_symmetry
+from jVMC.vqs import NQS
 
 L = 4
 LDIM = 2

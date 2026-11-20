@@ -55,4 +55,4 @@ build this documentation with
     sphinx-build -b html -W --keep-going documentation/source documentation/_build/html
 
 Check the installation from outside the repository folder with
-``python -c "import jVMC_exp; print(jVMC_exp.__version__)"``.
+``python -c "import jVMC; print(jVMC.__version__)"``.

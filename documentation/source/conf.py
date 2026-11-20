@@ -16,7 +16,7 @@ _here = Path(__file__).parent
 for _nb in (_here / "../../examples").glob("*.ipynb"):
     shutil.copy2(_nb, _here / "examples" / _nb.name)
 
-from jVMC_exp.version import __version__  # noqa: E402
+from jVMC.version import __version__  # noqa: E402
 
 project = "jVMC"
 author = "Markus Schmitt and the jVMC contributors"

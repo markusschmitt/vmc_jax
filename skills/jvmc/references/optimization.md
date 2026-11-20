@@ -4,13 +4,13 @@
 import numpy as np
 import jax.numpy as jnp
 import optax
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
+import jVMC
+import jVMC.operator.discrete as op
 
 L = 6
 H = sum(-op.SigmaZ(i) * op.SigmaZ((i + 1) % L) - 0.8 * op.SigmaX(i) for i in range(L))
-psi = jVMC_exp.vqs.NQS(jVMC_exp.nets.CpxRBM(num_hidden=12, bias=True), L, batch_size=2**L, seed=3)
-sampler = jVMC_exp.sampler.ExactSampler(psi)
+psi = jVMC.vqs.NQS(jVMC.nets.CpxRBM(num_hidden=12, bias=True), L, batch_size=2**L, seed=3)
+sampler = jVMC.sampler.ExactSampler(psi)
 ```
 
 ## How a step works
@@ -25,7 +25,7 @@ With multi-stage steppers (Heun, RK), `resample_stepper=True` (the default) draw
 every stage. With `False`, the samples of the first stage are reused and reweighted, which is
 cheaper and less noisy in the adaptive error estimate.
 
-## Objective functions (`jVMC_exp.objective_function`)
+## Objective functions (`jVMC.objective_function`)
 
 | Class | Loss |
 |---|---|
@@ -41,7 +41,7 @@ speed. It is incompatible with `PinvSNR(snr_tol>0)`.
 `objective(sampler)` evaluates the losses on the stored samples as a `SampledObs`, e.g. to
 measure an infidelity.
 
-## Optimizers (`jVMC_exp.optimizer`)
+## Optimizers (`jVMC.optimizer`)
 
 | Class | Use | Key arguments |
 |---|---|---|
@@ -50,13 +50,13 @@ measure an infidelity.
 | `Adam(sampler, psi, learning_rate=1e-3, b1, b2, eps)` | plain first-order optimization | `ground_state_search(steps, objective)`, **no stepper** |
 | `TDVP(sampler, psi, make_real, diagonal_shift=0., solver=PinvSNR(), store_qgt=True, compute_tdvp_error=True)` | real-time dynamics | `make_real=True` (McLachlan) is the usual choice for non-holomorphic networks; holomorphic networks use S θ̇ = −iF automatically |
 
-Every optimizer accepts `output_manager=jVMC_exp.util.OutputManager(...)` (see below). `SR` and
+Every optimizer accepts `output_manager=jVMC.util.OutputManager(...)` (see below). `SR` and
 `TDVP` with `store_qgt=True` expose the last quantum geometric tensor as `opt.qgt`.
 
-A custom optimizer subclasses `jVMC_exp.optimizer.base.AbstractOptimizer` and implements only
+A custom optimizer subclasses `jVMC.optimizer.base.AbstractOptimizer` and implements only
 `get_update(objective_function_output)`.
 
-## Solvers (`jVMC_exp.solver`)
+## Solvers (`jVMC.solver`)
 
 | Class | Behaviour |
 |---|---|
@@ -68,18 +68,18 @@ A custom optimizer subclasses `jVMC_exp.optimizer.base.AbstractOptimizer` and im
 `"distributed"` (`jaxmg`, splits the matrix over all GPUs; needs one process per GPU, see
 `scaling.md`).
 
-## Steppers (`jVMC_exp.stepper`)
+## Steppers (`jVMC.stepper`)
 
 | Class | Use |
 |---|---|
 | `Euler(time_step)` | ground states: `time_step` is the learning rate, a float or a callable `step -> value` such as an `optax` schedule |
 | `Heun(time_step)` | second order, fixed step |
-| `AdaptiveHeun`, `RK23`, `RK45` `(time_step, rtol, atol, min_step=None, max_step=1)` | adaptive steps for dynamics; pass `norm_function=jVMC_exp.util.s_norm_fn(opt)` to the run method to measure the error in the metric S |
+| `AdaptiveHeun`, `RK23`, `RK45` `(time_step, rtol, atol, min_step=None, max_step=1)` | adaptive steps for dynamics; pass `norm_function=jVMC.util.s_norm_fn(opt)` to the run method to measure the error in the metric S |
 
 ## Running, recording, checkpointing
 
 ```python
-out_m = jVMC_exp.util.OutputManager()     # in memory; OutputManager("run.h5", group="run_0", append=False) writes HDF5
+out_m = jVMC.util.OutputManager()     # in memory; OutputManager("run.h5", group="run_0", append=False) writes HDF5
 
 calls = []
 def checkpoint():                           # callbacks take no arguments: close over what you need
@@ -87,11 +87,11 @@ def checkpoint():                           # callbacks take no arguments: close
     if len(calls) % 25 == 0:
         out_m.write_parameters(len(calls), psi.parameters)
 
-opt = jVMC_exp.optimizer.SR(sampler, psi, diagonal_shift=lambda n: max(1e-2 * 0.95**n, 1e-4),
-                            solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-10), output_manager=out_m)
-stepper = jVMC_exp.stepper.Euler(optax.exponential_decay(5e-2, transition_steps=50, decay_rate=0.5))
+opt = jVMC.optimizer.SR(sampler, psi, diagonal_shift=lambda n: max(1e-2 * 0.95**n, 1e-4),
+                            solver=jVMC.solver.Pinv(pinv_cutoff=1e-10), output_manager=out_m)
+stepper = jVMC.stepper.Euler(optax.exponential_decay(5e-2, transition_steps=50, decay_rate=0.5))
 out, meta = opt.ground_state_search(
-    50, jVMC_exp.objective_function.Observable(H), stepper,
+    50, jVMC.objective_function.Observable(H), stepper,
     observables={"Z0": op.SigmaZ(0), "XX": (op.SigmaX(0) * op.SigmaX(1), {})},   # operator or (operator, kwargs)
     callback=[checkpoint],
     save_meta_data=True,
@@ -105,7 +105,7 @@ energies = np.array(out["energy"]["mean"])   # out = output_manager.data["observ
   left holding those samples, so measure the final state with `sampler(H, resample=True)` (MC) or
   `sampler.sample(); sampler(H)` (exact).
 * `observables` also accepts callables that return a `SampledObs`.
-* Load checkpoints with `jVMC_exp.util.InputManager(path).load_parameters(psi.parameters)`.
+* Load checkpoints with `jVMC.util.InputManager(path).load_parameters(psi.parameters)`.
 * `ground_state_search` can be called repeatedly to continue a run, e.g. in blocks until
   `out["energy"]["variance"]` drops below a target.
 
@@ -117,7 +117,7 @@ energies = np.array(out["energy"]["mean"])   # out = output_manager.data["observ
 * Regularize with the solver (`PinvSNR(pinv_tol=..., snr_tol=...)`), not with
   `diagonal_shift`/`diagonal_scale`, which change the tracked trajectory.
 * Use many more samples than for ground states, and an adaptive stepper with
-  `norm_function=jVMC_exp.util.s_norm_fn(opt)`.
+  `norm_function=jVMC.util.s_norm_fn(opt)`.
 * Diagnostics: `save_meta_data=True` returns `meta["tdvp_error"]` (r²). r²·Var(H) is the squared
   distance between the variational and the exact update, so if it grows, stop trusting the
   results. Energy and variance must stay constant for a time-independent H.
@@ -125,22 +125,22 @@ energies = np.array(out["energy"]["mean"])   # out = output_manager.data["observ
   `operators.md`); the current time is passed automatically.
 
 ```python
-opt_t = jVMC_exp.optimizer.TDVP(sampler, psi, make_real=True, solver=jVMC_exp.solver.PinvSNR(pinv_tol=1e-8))
+opt_t = jVMC.optimizer.TDVP(sampler, psi, make_real=True, solver=jVMC.solver.PinvSNR(pinv_tol=1e-8))
 out_t, meta_t = opt_t.time_evolution(
-    0.2, jVMC_exp.objective_function.Observable(H), jVMC_exp.stepper.Heun(1e-2), save_meta_data=True,
+    0.2, jVMC.objective_function.Observable(H), jVMC.stepper.Heun(1e-2), save_meta_data=True,
 )
 ```
 
 ## Infidelity minimization (fitting a target state)
 
 ```python
-chi = jVMC_exp.vqs.NQS(jVMC_exp.nets.CpxRBM(num_hidden=4), L, batch_size=2**L, seed=11)   # reference |chi>
-U, U_dag = jVMC_exp.util.matrix_to_jvmc_operator(np.eye(4)[[0, 2, 1, 3]].astype(complex), (0, 1), return_conjugate=True)
-loss_inf = jVMC_exp.objective_function.Infidelity(
-    reference_sampler=jVMC_exp.sampler.ExactSampler(chi), operator=U, conjugated_operator=U_dag,
+chi = jVMC.vqs.NQS(jVMC.nets.CpxRBM(num_hidden=4), L, batch_size=2**L, seed=11)   # reference |chi>
+U, U_dag = jVMC.util.matrix_to_jvmc_operator(np.eye(4)[[0, 2, 1, 3]].astype(complex), (0, 1), return_conjugate=True)
+loss_inf = jVMC.objective_function.Infidelity(
+    reference_sampler=jVMC.sampler.ExactSampler(chi), operator=U, conjugated_operator=U_dag,
 )
-opt_inf = jVMC_exp.optimizer.SR(sampler, psi)
-out_inf = opt_inf.ground_state_search(20, loss_inf, jVMC_exp.stepper.Euler(1e-1))   # minimizes 1 - |<psi|U|chi>|^2
+opt_inf = jVMC.optimizer.SR(sampler, psi)
+out_inf = opt_inf.ground_state_search(20, loss_inf, jVMC.stepper.Euler(1e-1))   # minimizes 1 - |<psi|U|chi>|^2
 ```
 
 With Monte Carlo samplers for both states, use `control_variate="adaptive"` to reduce the

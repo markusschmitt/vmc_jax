@@ -6,14 +6,14 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.linalg import expm
 
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import global_defs, nets
-from jVMC_exp.objective_function import Infidelity
-from jVMC_exp.objective_function.infidelity import MovingAverage
-from jVMC_exp.sampler import ExactSampler, MCSampler
-from jVMC_exp.util.util import matrix_to_jvmc_operator
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.operator.discrete as op
+from jVMC import global_defs, nets
+from jVMC.objective_function import Infidelity
+from jVMC.objective_function.infidelity import MovingAverage
+from jVMC.sampler import ExactSampler, MCSampler
+from jVMC.util.util import matrix_to_jvmc_operator
+from jVMC.vqs import NQS
 
 L = 4
 # 2 samples per device and batch: the connected configurations of a sample are evaluated in chunks
@@ -196,7 +196,7 @@ class TestInfidelityValue(unittest.TestCase):
         )
 
     def test_monte_carlo(self):
-        proposer = jVMC_exp.propose.SpinFlip()
+        proposer = jVMC.propose.SpinFlip()
         chi_sampler = MCSampler(self.chi, proposer, 123, 2**5, 2**13)
         psi_sampler = MCSampler(self.psi, proposer, 321, 2**5, 2**13)
         psi_sampler.sample()
@@ -298,12 +298,12 @@ class TestInfidelityOptimization(unittest.TestCase):
 
     def test_sr(self):
         self.assert_converges(
-            jVMC_exp.optimizer.SR, 200, stepper=jVMC_exp.stepper.Euler(1e-1)
+            jVMC.optimizer.SR, 200, stepper=jVMC.stepper.Euler(1e-1)
         )
 
     def test_adam(self):
         self.assert_converges(
-            lambda sampler, psi: jVMC_exp.optimizer.Adam(
+            lambda sampler, psi: jVMC.optimizer.Adam(
                 sampler, psi, learning_rate=1e-2
             ),
             500,

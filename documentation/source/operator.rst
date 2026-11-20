@@ -13,10 +13,10 @@ whose average over :math:`|\psi(s)|^2` is the expectation value :math:`\langle\h
 operator implements it as ``get_O_loc(s, psi)``, and samplers evaluate operators through it, e.g.,
 as ``sampler(H)``.
 
-The module has two parts: ``jVMC_exp.operator.discrete`` for computational basis configurations of
-lattice models, and ``jVMC_exp.operator.continuous`` for particles in continuous space.
+The module has two parts: ``jVMC.operator.discrete`` for computational basis configurations of
+lattice models, and ``jVMC.operator.continuous`` for particles in continuous space.
 
-.. autoclass:: jVMC_exp.operator.base.AbstractOperator
+.. autoclass:: jVMC.operator.base.AbstractOperator
     :members:
 
 Discrete operators
@@ -31,7 +31,7 @@ of length ``L`` with periodic boundary conditions,
 
 is::
 
-    import jVMC_exp.operator.discrete as op
+    import jVMC.operator.discrete as op
 
     H = sum(-op.SigmaZ(l) * op.SigmaZ((l + 1) % L) - g * op.SigmaX(l) for l in range(L))
 
@@ -64,73 +64,73 @@ Hubbard model on a ring is::
 For small systems, ``H.to_sparse(basis)`` and ``H.to_dense(basis)`` return the matrix of the
 operator in an ordered basis, e.g., to compare with exact diagonalization.
 
-.. autoclass:: jVMC_exp.operator.discrete.base.Operator
+.. autoclass:: jVMC.operator.discrete.base.Operator
     :members:
 
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.Operator
+.. autoclass:: jVMC.operator.discrete.branch_free.Operator
     :members: idx, fermionic, spin, diag, mat_els, map
     :show-inheritance:
 
 Elementary operators
 --------------------
 
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.SigmaX
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.SigmaY
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.SigmaZ
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.SigmaPlus
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.SigmaMinus
-.. autofunction:: jVMC_exp.operator.discrete.branch_free.Creation
-.. autofunction:: jVMC_exp.operator.discrete.branch_free.Annihilation
-.. autofunction:: jVMC_exp.operator.discrete.branch_free.Number
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.IdentityOperator
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaX
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaY
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaZ
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaPlus
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaMinus
+.. autofunction:: jVMC.operator.discrete.branch_free.Creation
+.. autofunction:: jVMC.operator.discrete.branch_free.Annihilation
+.. autofunction:: jVMC.operator.discrete.branch_free.Number
+.. autoclass:: jVMC.operator.discrete.branch_free.IdentityOperator
 
 Combined operators
 ------------------
 
 These classes are created by the arithmetic operations on operators.
 
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.CompositeOperator
-.. autoclass:: jVMC_exp.operator.discrete.branch_free.ScaledOperator
+.. autoclass:: jVMC.operator.discrete.branch_free.CompositeOperator
+.. autoclass:: jVMC.operator.discrete.branch_free.ScaledOperator
 
 Continuous operators
 ^^^^^^^^^^^^^^^^^^^^
 
 Operators on particles in continuous space act on configurations that hold the positions of all
 the particles, with shape ``(n_particles * n_dim,)``, and are defined on a geometry from
-``jVMC_exp.geometry``. They are combined in the same way as discrete operators, and numbers can be
+``jVMC.geometry``. They are combined in the same way as discrete operators, and numbers can be
 added to them. For example, interacting electrons in a two-dimensional harmonic trap are
 described by::
 
-    import jVMC_exp.operator.continuous as op
+    import jVMC.operator.continuous as op
 
-    geometry = jVMC_exp.geometry.HyperRectangle(N, 2, PBC=False, extent=(6., 6.))
+    geometry = jVMC.geometry.HyperRectangle(N, 2, PBC=False, extent=(6., 6.))
     H = (
         op.TotalKineticOperator(geometry)
         + op.PotentialOperator(geometry, lambda x: 0.5 * omega ** 2 * jnp.sum(x ** 2))
         + op.CoulombInteraction(geometry)
     )
 
-.. autoclass:: jVMC_exp.operator.continuous.base.Operator
+.. autoclass:: jVMC.operator.continuous.base.Operator
     :members:
 
-.. autoclass:: jVMC_exp.operator.continuous.non_diag_operator.TotalKineticOperator
-    :members:
-    :show-inheritance:
-
-.. autoclass:: jVMC_exp.operator.continuous.diag_operator.PotentialOperator
+.. autoclass:: jVMC.operator.continuous.non_diag_operator.TotalKineticOperator
     :members:
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.operator.continuous.diag_operator.CoulombInteraction
+.. autoclass:: jVMC.operator.continuous.diag_operator.PotentialOperator
+    :members:
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.operator.continuous.diag_operator.ParticleDensity
+.. autoclass:: jVMC.operator.continuous.diag_operator.CoulombInteraction
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.operator.continuous.diag_operator.Monopole
+.. autoclass:: jVMC.operator.continuous.diag_operator.ParticleDensity
     :show-inheritance:
 
-.. autoclass:: jVMC_exp.operator.continuous.base.IdentityOperator
-.. autoclass:: jVMC_exp.operator.continuous.base.SumOperator
-.. autoclass:: jVMC_exp.operator.continuous.base.ScaledOperator
-.. autoclass:: jVMC_exp.operator.continuous.base.MulOperator
+.. autoclass:: jVMC.operator.continuous.diag_operator.Monopole
+    :show-inheritance:
+
+.. autoclass:: jVMC.operator.continuous.base.IdentityOperator
+.. autoclass:: jVMC.operator.continuous.base.SumOperator
+.. autoclass:: jVMC.operator.continuous.base.ScaledOperator
+.. autoclass:: jVMC.operator.continuous.base.MulOperator

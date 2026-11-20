@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import numpy as np
 from jax.sharding import PartitionSpec
 
-from jVMC_exp import sharding_config
-from jVMC_exp.sharding_config import (
+from jVMC import sharding_config
+from jVMC.sharding_config import (
     DEVICE_SHARDING,
     DEVICE_SPEC,
     REPLICATED_SHARDING,

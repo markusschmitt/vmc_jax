@@ -5,11 +5,11 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-import jVMC_exp
-import jVMC_exp.nets.activation_functions as act_funs
-from jVMC_exp import global_defs, nets
-from jVMC_exp.symmetry.lattice_symmetries import square_translation_symmetry
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.nets.activation_functions as act_funs
+from jVMC import global_defs, nets
+from jVMC.symmetry.lattice_symmetries import square_translation_symmetry
+from jVMC.vqs import NQS
 
 
 def _general_test_grad(model, num_samples, L, test_class: unittest.TestCase):
@@ -55,8 +55,8 @@ class CpxRBMNonHolomorphic(nn.Module):
         layer = nn.Dense(
             self.num_hidden,
             use_bias=self.bias,
-            **jVMC_exp.nets.initializers.init_fn_args(
-                kernel_init=jVMC_exp.nets.initializers.cplx_init,
+            **jVMC.nets.initializers.init_fn_args(
+                kernel_init=jVMC.nets.initializers.cplx_init,
                 bias_init=jax.nn.initializers.zeros,
                 param_dtype=global_defs.DT_PARAMS_CPX,
             ),
@@ -84,7 +84,7 @@ class SimpleNonHolomorphic(nn.Module):
     @nn.compact
     def __call__(self, s):
         z = self.param(
-            "z", jVMC_exp.nets.initializers.cplx_init, (1,), global_defs.DT_PARAMS_CPX
+            "z", jVMC.nets.initializers.cplx_init, (1,), global_defs.DT_PARAMS_CPX
         )
 
         return jnp.sum(jnp.conj(z))
@@ -98,7 +98,7 @@ class MatrixMultiplicationNonHolomorphic(nn.Module):
         layer1 = nn.Dense(
             1,
             use_bias=False,
-            **jVMC_exp.nets.initializers.init_fn_args(dtype=global_defs.DT_PARAMS_CPX),
+            **jVMC.nets.initializers.init_fn_args(dtype=global_defs.DT_PARAMS_CPX),
         )
         out = layer1(2 * s.ravel() - 1)
         if not self.holo:
@@ -214,9 +214,9 @@ class TestGradients(unittest.TestCase):
     def test_gradient_dict(self):
         L = 3
         num_samples = 4
-        net = jVMC_exp.nets.CpxRBM(num_hidden=8, bias=False)
+        net = jVMC.nets.CpxRBM(num_hidden=8, bias=False)
 
-        psi = jVMC_exp.vqs.NQS(net, L, num_samples, seed=1234)
+        psi = jVMC.vqs.NQS(net, L, num_samples, seed=1234)
         s = jnp.zeros((num_samples, L))
         g1 = psi.gradients(s)
         g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]

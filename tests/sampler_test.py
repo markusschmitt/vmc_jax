@@ -6,15 +6,15 @@ import jax.numpy as jnp
 import numpy as np
 from jax import random
 
-import jVMC_exp
-from jVMC_exp import nets, sampler
-from jVMC_exp.symmetry import ProjectedOrbitNet
-from jVMC_exp.symmetry.lattice_symmetries import (
+import jVMC
+from jVMC import nets, sampler
+from jVMC.symmetry import ProjectedOrbitNet
+from jVMC.symmetry.lattice_symmetries import (
     chain_reflection_symmetry,
     spin_flip_symmetry,
     square_translation_symmetry,
 )
-from jVMC_exp.vqs import NQS
+from jVMC.vqs import NQS
 
 
 @jax.jit
@@ -88,7 +88,7 @@ def _test_sampling(net, test_class: unittest.TestCase, mu=2, log_prob_factor=0.5
     exact_sampler = sampler.ExactSampler(exact_psi, log_prob_factor=log_prob_factor)
 
     # Set up MCMC sampler
-    proposer = jVMC_exp.propose.SpinFlip()
+    proposer = jVMC.propose.SpinFlip()
     mc_sampler = sampler.MCSampler(
         psi,
         update_proposer=proposer,
@@ -137,7 +137,7 @@ def _test_autoreg_sampling(
     exact_sampler = sampler.ExactSampler(exact_psi)
 
     # Set up MCMC sampler
-    proposer = jVMC_exp.propose.SpinFlip()
+    proposer = jVMC.propose.SpinFlip()
     mc_sampler = sampler.MCSampler(
         psi,
         update_proposer=proposer,
@@ -222,7 +222,7 @@ class TestMC(unittest.TestCase):
     def test_MCMC_sampling_with_two_nets(self):
         rbm1 = nets.RBM(num_hidden=2, bias=False)
         rbm2 = nets.RBM(num_hidden=2, bias=False)
-        model = jVMC_exp.nets.TwoNets((rbm1, rbm2))
+        model = jVMC.nets.TwoNets((rbm1, rbm2))
         orbit = _translation_projector(4)
         net = orbit * model
 
@@ -238,7 +238,7 @@ class TestMC(unittest.TestCase):
     def test_autoregressive_sampling(self):
         rnn = nets.RNN1DGeneral(L=4, hidden_size=5, depth=2)
         rbm = nets.RBM(num_hidden=2, bias=False)
-        model = jVMC_exp.nets.TwoNets((rnn, rbm))
+        model = jVMC.nets.TwoNets((rnn, rbm))
         orbit = _translation_projector(4)
         net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
 
@@ -247,7 +247,7 @@ class TestMC(unittest.TestCase):
     def test_autoregressive_sampling_with_symmetries(self):
         rnn = nets.RNN1DGeneral(L=4, hidden_size=5, real_valued_output=True)
         rbm = nets.RBM(num_hidden=2, bias=False)
-        model = jVMC_exp.nets.TwoNets((rnn, rbm))
+        model = jVMC.nets.TwoNets((rnn, rbm))
         orbit = _translation_projector(4)
         net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
 
@@ -263,7 +263,7 @@ class TestMC(unittest.TestCase):
             input_dim=2,
         )
         rbm = nets.RBM(num_hidden=2, bias=False)
-        model = jVMC_exp.nets.TwoNets((rnn, rbm))
+        model = jVMC.nets.TwoNets((rnn, rbm))
         orbit = _translation_projector(4)
         net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
 
@@ -285,7 +285,7 @@ class TestMC(unittest.TestCase):
 
 #     def test_autoregressive_sampling_with_rnn2d(self):
 #         rnn = nets.RNN2DGeneral(L=2, hidden_size=5, cell="RNN", real_valued_params=True, real_valued_output=True)
-#         model = jVMC_exp.nets.TwoNets((rnn, rnn))
+#         model = jVMC.nets.TwoNets((rnn, rnn))
 #         orbit = square_translation_symmetry(2, 2, "spin")
 #         net = orbit * model
 
@@ -293,7 +293,7 @@ class TestMC(unittest.TestCase):
 
 #     def test_autoregressive_sampling_with_rnn2d_symmetric(self):
 #         rnn = nets.RNN2DGeneral(L=2, hidden_size=5, cell="RNN", real_valued_params=True, real_valued_output=True)
-#         model = jVMC_exp.nets.TwoNets((rnn, rnn))
+#         model = jVMC.nets.TwoNets((rnn, rnn))
 #         orbit = square_translation_symmetry(2, 2, "spin")
 #         net = orbit * model
 
@@ -301,7 +301,7 @@ class TestMC(unittest.TestCase):
 
 #     def test_autoregressive_sampling_with_lstm2d(self):
 #         rnn = nets.RNN2DGeneral(L=2, hidden_size=5, cell="LSTM", real_valued_params=True, real_valued_output=True)
-#         model = jVMC_exp.nets.TwoNets((rnn, rnn))
+#         model = jVMC.nets.TwoNets((rnn, rnn))
 #         orbit = square_translation_symmetry(2, 2, "spin")
 #         net = orbit * model
 
@@ -313,7 +313,7 @@ class TestAcceptanceRatio(unittest.TestCase):
         psi = NQS(nets.CpxRBM(num_hidden=2, bias=False), 4, 2**6, seed=1234)
         mc_sampler = sampler.MCSampler(
             psi,
-            update_proposer=jVMC_exp.propose.SpinFlip(),
+            update_proposer=jVMC.propose.SpinFlip(),
             key=random.PRNGKey(0),
             num_chains=2**4,
             num_samples=2**6,
@@ -354,9 +354,9 @@ class _FlatNet(nn.Module):
 class TestMALA(unittest.TestCase):
     def test_accepts_all_moves_on_flat_distribution_with_pbc(self):
         """Moves across the periodic boundary must not be penalized by the proposal correction."""
-        geometry = jVMC_exp.geometry.HyperRectangle(1, 1, extent=(1.0,))
+        geometry = jVMC.geometry.HyperRectangle(1, 1, extent=(1.0,))
         psi = NQS(_FlatNet(), 1, 2**8, seed=1234)
-        proposer = jVMC_exp.propose.MALA(
+        proposer = jVMC.propose.MALA(
             geometry, psi.apply_fun, tau=0.02, use_thermalization=False
         )
         mc_sampler = sampler.MCSamplerCont(
@@ -517,7 +517,7 @@ class TestCutoffSampler(unittest.TestCase):
 
         cutoff_sampler = sampler.CutoffSampler(
             psi,
-            update_proposer=jVMC_exp.propose.SpinFlip(),
+            update_proposer=jVMC.propose.SpinFlip(),
             eps=eps,
             key=random.PRNGKey(0),
             num_chains=self.NUM_CHAINS,
@@ -583,7 +583,7 @@ class TestCutoffSampler(unittest.TestCase):
         self._run_sampling_test(eps=1.0, tol=3e-3, cutoff_active=True)
 
 
-class _CustomThermalizationProposer(jVMC_exp.propose.SpinFlip):
+class _CustomThermalizationProposer(jVMC.propose.SpinFlip):
     def __init__(self):
         super().__init__()
         self._use_custom_thermalization = True
@@ -620,7 +620,7 @@ class TestCutoffSamplerGuards(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             sampler.CutoffSampler(
                 psi,
-                update_proposer=jVMC_exp.propose.SpinFlip(),
+                update_proposer=jVMC.propose.SpinFlip(),
                 eps=0.1,
                 key=random.PRNGKey(0),
                 max_log_psi=0.0,
@@ -632,7 +632,7 @@ class TestCutoffSamplerProperties(unittest.TestCase):
 
     def _make_sampler(self, eps=0.1, max_log_psi=-2.0):
         psi, _ = _setup_cutoff_psi(L=4, num_samples=2**8)
-        proposer = jVMC_exp.propose.SpinFlip()
+        proposer = jVMC.propose.SpinFlip()
 
         return sampler.CutoffSampler(
             psi,
@@ -671,7 +671,7 @@ class TestCutoffSamplerProperties(unittest.TestCase):
 
     def test_init_rejects_eps_out_of_range(self):
         psi, _ = _setup_cutoff_psi(L=4, num_samples=2**8)
-        proposer = jVMC_exp.propose.SpinFlip()
+        proposer = jVMC.propose.SpinFlip()
         for bad_eps in (2.0, -0.1):
             with self.assertRaises(ValueError):
                 sampler.CutoffSampler(

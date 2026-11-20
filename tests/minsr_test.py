@@ -5,12 +5,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import jVMC_exp
-import jVMC_exp.operator.discrete as op
-from jVMC_exp import nets, sampler
-from jVMC_exp.objective_function.base import ObjectiveFunctionOutput
-from jVMC_exp.stats import LazySampledObs, SampledObs
-from jVMC_exp.vqs import NQS
+import jVMC
+import jVMC.operator.discrete as op
+from jVMC import nets, sampler
+from jVMC.objective_function.base import ObjectiveFunctionOutput
+from jVMC.stats import LazySampledObs, SampledObs
+from jVMC.vqs import NQS
 
 
 class TestGsSearch(unittest.TestCase):
@@ -37,10 +37,10 @@ class TestGsSearch(unittest.TestCase):
             # Set up exact sampler
             exact_sampler = sampler.ExactSampler(psi)
 
-            loss_function = jVMC_exp.objective_function.Observable(H)
-            stepper = jVMC_exp.stepper.Euler(time_step=learning_rate)
-            solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-6)
-            opt = jVMC_exp.optimizer.MinSR(
+            loss_function = jVMC.objective_function.Observable(H)
+            stepper = jVMC.stepper.Euler(time_step=learning_rate)
+            solver = jVMC.solver.Pinv(pinv_cutoff=1e-6)
+            opt = jVMC.optimizer.MinSR(
                 exact_sampler, psi, solver=solver, diagonal_shift=1e-3
             )
 
@@ -77,10 +77,10 @@ class TestGsSearchBatchedJacobian(unittest.TestCase):
 
         exact_sampler = sampler.ExactSampler(psi)
 
-        loss_function = jVMC_exp.objective_function.Observable(H, batched_jacobian=True)
-        stepper = jVMC_exp.stepper.Euler(time_step=learning_rate)
-        solver = jVMC_exp.solver.Pinv(pinv_cutoff=1e-6)
-        opt = jVMC_exp.optimizer.MinSR(
+        loss_function = jVMC.objective_function.Observable(H, batched_jacobian=True)
+        stepper = jVMC.stepper.Euler(time_step=learning_rate)
+        solver = jVMC.solver.Pinv(pinv_cutoff=1e-6)
+        opt = jVMC.optimizer.MinSR(
             exact_sampler, psi, solver=solver, diagonal_shift=1e-3
         )
 
@@ -122,16 +122,16 @@ class TestUpdateBatchedJacobian(unittest.TestCase):
             with self.subTest(net=name):
                 psi = NQS(net, L, 3 * jax.device_count(), seed=1234)
                 exact_sampler = sampler.ExactSampler(psi)
-                opt = jVMC_exp.optimizer.MinSR(
+                opt = jVMC.optimizer.MinSR(
                     exact_sampler,
                     psi,
-                    solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8),
+                    solver=jVMC.solver.Pinv(pinv_cutoff=1e-8),
                     diagonal_shift=1e-3,
                 )
 
                 updates = []
                 for batched_jacobian in (False, True):
-                    loss_function = jVMC_exp.objective_function.Observable(
+                    loss_function = jVMC.objective_function.Observable(
                         H, batched_jacobian=batched_jacobian
                     )
                     updates.append(
@@ -152,7 +152,7 @@ class TestUpdateBatchedJacobian(unittest.TestCase):
         num_samples = 5 * jax.device_count() + 1
         k1, k2, k3, k4 = jax.random.split(jax.random.PRNGKey(0), 4)
         s = jax.random.randint(k1, (num_samples, L), 0, 2).astype(
-            jVMC_exp.global_defs.DT_SAMPLES
+            jVMC.global_defs.DT_SAMPLES
         )
         weights = jax.random.uniform(k2, (num_samples,))
         o_loc = SampledObs(
@@ -167,10 +167,10 @@ class TestUpdateBatchedJacobian(unittest.TestCase):
         ):
             with self.subTest(net=name):
                 psi = NQS(net, L, 2 * jax.device_count(), seed=1234)
-                opt = jVMC_exp.optimizer.MinSR(
+                opt = jVMC.optimizer.MinSR(
                     sampler.ExactSampler(psi),
                     psi,
-                    solver=jVMC_exp.solver.Pinv(pinv_cutoff=1e-8),
+                    solver=jVMC.solver.Pinv(pinv_cutoff=1e-8),
                     diagonal_shift=1e-3,
                 )
                 dense = ObjectiveFunctionOutput(
@@ -213,7 +213,7 @@ class TestPinvSolve(unittest.TestCase):
             for cutoff in (1e-14, 1e-6, 1e-3):
                 with self.subTest(N=N, complex_valued=complex_valued, cutoff=cutoff):
                     expected = jnp.linalg.pinv(A, rtol=cutoff, hermitian=True) @ b
-                    x, info = jVMC_exp.solver.Pinv(pinv_cutoff=cutoff)(A, b)
+                    x, info = jVMC.solver.Pinv(pinv_cutoff=cutoff)(A, b)
 
                     self.assertTrue(jnp.allclose(x, expected, rtol=1e-10, atol=1e-10))
                     self.assertGreater(info["condition_number"], 1.0)
@@ -228,8 +228,8 @@ class TestPinvSolve(unittest.TestCase):
         A = jnp.array(X @ X.T) + 1e-3 * jnp.eye(64)
         b = jnp.array(rng.standard_normal(64))
 
-        loose = jVMC_exp.solver.Pinv(pinv_cutoff=1e-14)(A, b)[1]["residual"]
-        tight = jVMC_exp.solver.Pinv(pinv_cutoff=1e-1)(A, b)[1]["residual"]
+        loose = jVMC.solver.Pinv(pinv_cutoff=1e-14)(A, b)[1]["residual"]
+        tight = jVMC.solver.Pinv(pinv_cutoff=1e-1)(A, b)[1]["residual"]
 
         self.assertLess(loose, 1e-12)
         self.assertGreater(tight, loose)
@@ -244,13 +244,13 @@ class TestSolverCompatibility(unittest.TestCase):
     def test_rejects_matrix_free_solver(self):
         psi, exact_sampler = self._psi_and_sampler()
         with self.assertRaises(ValueError):
-            jVMC_exp.optimizer.MinSR(exact_sampler, psi, solver=jVMC_exp.solver.CG())
+            jVMC.optimizer.MinSR(exact_sampler, psi, solver=jVMC.solver.CG())
 
     def test_rejects_snr_regularization(self):
         psi, exact_sampler = self._psi_and_sampler()
         with self.assertRaises(ValueError):
-            jVMC_exp.optimizer.MinSR(
-                exact_sampler, psi, solver=jVMC_exp.solver.PinvSNR(snr_tol=1)
+            jVMC.optimizer.MinSR(
+                exact_sampler, psi, solver=jVMC.solver.PinvSNR(snr_tol=1)
             )
 
     def test_accepts_pinv_snr_without_snr(self):
@@ -264,13 +264,13 @@ class TestSolverCompatibility(unittest.TestCase):
         H = 0
         for l in range(L):
             H += -1.0 * op.SigmaZ(l) * op.SigmaZ((l + 1) % L) + -0.3 * op.SigmaX(l)
-        loss_function = jVMC_exp.objective_function.Observable(H)
+        loss_function = jVMC.objective_function.Observable(H)
 
-        opt = jVMC_exp.optimizer.MinSR(
-            exact_sampler, psi, solver=jVMC_exp.solver.PinvSNR(pinv_cutoff=1e-6)
+        opt = jVMC.optimizer.MinSR(
+            exact_sampler, psi, solver=jVMC.solver.PinvSNR(pinv_cutoff=1e-6)
         )
         new_parameters, _ = opt.step(
-            0, jVMC_exp.stepper.Euler(time_step=1e-2), loss_function
+            0, jVMC.stepper.Euler(time_step=1e-2), loss_function
         )
 
         self.assertEqual(new_parameters.shape, psi.parameters_flat.shape)

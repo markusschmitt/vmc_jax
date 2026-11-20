@@ -7,7 +7,7 @@ devices, on one or several processes, and the arrays are split across the device
 passed to or obtained from the `jVMC` API have the same shape whatever the number of devices:
 configurations have the shape ``(N, *sample_shape)``, wave function coefficients ``(N,)`` and
 gradients ``(N, P)``, with ``N`` the number of samples. The tools used for this are in
-``jVMC_exp.sharding_config`` (see :ref:`ShardingConfig`).
+``jVMC.sharding_config`` (see :ref:`ShardingConfig`).
 
 Devices
 ^^^^^^^

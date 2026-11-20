@@ -8,8 +8,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jVMC_exp.symmetry import ProjectedOrbitNet, SymmetryProjector, compose_projectors
-from jVMC_exp.symmetry.lattice_symmetries import (
+from jVMC.symmetry import ProjectedOrbitNet, SymmetryProjector, compose_projectors
+from jVMC.symmetry.lattice_symmetries import (
     _unique_symmetry_projector,
     chain_reflection_symmetry,
     particle_hole_symmetry,

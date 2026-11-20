@@ -15,21 +15,21 @@ with two particles in two dimensions, a configuration is ``[x_0, y_0, x_1, y_1]`
 For example, ``N`` electrons in a two-dimensional harmonic trap are described with open boundary
 conditions, and the extent sets the box where the Markov chains start::
 
-    import jVMC_exp.operator.continuous as op
+    import jVMC.operator.continuous as op
 
-    geometry = jVMC_exp.geometry.HyperRectangle(N, 2, PBC=False, extent=(6., 6.))
+    geometry = jVMC.geometry.HyperRectangle(N, 2, PBC=False, extent=(6., 6.))
     H = (
         op.TotalKineticOperator(geometry)
         + op.PotentialOperator(geometry, lambda x: 0.5 * omega ** 2 * jnp.sum(x ** 2))
         + op.CoulombInteraction(geometry)
     )
-    psi = jVMC_exp.vqs.NQS(net, sample_shape=2 * N, batch_size=1000, seed=0)
-    sampler = jVMC_exp.sampler.MCSamplerCont(psi, jVMC_exp.propose.RWM(geometry))
+    psi = jVMC.vqs.NQS(net, sample_shape=2 * N, batch_size=1000, seed=0)
+    sampler = jVMC.sampler.MCSamplerCont(psi, jVMC.propose.RWM(geometry))
 
 Geometries
 ^^^^^^^^^^
 
-.. autoclass:: jVMC_exp.geometry.HyperRectangle
+.. autoclass:: jVMC.geometry.HyperRectangle
     :members:
     :show-inheritance:
 
@@ -39,5 +39,5 @@ Interface
 New geometries derive from ``AbstractGeometry`` and implement ``domain``, ``apply_PBC()``,
 ``uniform_populate()`` and ``get_distance()``.
 
-.. autoclass:: jVMC_exp.geometry.AbstractGeometry
+.. autoclass:: jVMC.geometry.AbstractGeometry
     :members:

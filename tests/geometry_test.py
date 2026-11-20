@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jVMC_exp.geometry import HyperRectangle
+from jVMC.geometry import HyperRectangle
 
 
 class TestUniformPopulate(unittest.TestCase):

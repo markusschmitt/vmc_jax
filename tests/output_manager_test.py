@@ -5,8 +5,8 @@ import unittest
 import h5py
 import numpy as np
 
-from jVMC_exp.util.input_manager import InputManager
-from jVMC_exp.util.output_manager import OutputManager
+from jVMC.util.input_manager import InputManager
+from jVMC.util.output_manager import OutputManager
 
 
 class TestOutputManager(unittest.TestCase):

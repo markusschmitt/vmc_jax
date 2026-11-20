@@ -5,11 +5,11 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
-import jVMC_exp
-import jVMC_exp.nets.activation_functions as act_funs
-import jVMC_exp.nets.initializers
-from jVMC_exp import global_defs
-from jVMC_exp.nets.initializers import init_fn_args
+import jVMC
+import jVMC.nets.activation_functions as act_funs
+import jVMC.nets.initializers
+from jVMC import global_defs
+from jVMC.nets.initializers import init_fn_args
 
 
 class RBMNN(nn.Module):
@@ -22,7 +22,7 @@ class RBMNN(nn.Module):
             self.num_hidden,
             use_bias=self.bias,
             **init_fn_args(
-                kernel_init=jVMC_exp.nets.initializers.cplx_init,
+                kernel_init=jVMC.nets.initializers.cplx_init,
                 bias_init=jax.nn.initializers.zeros,
                 dtype=global_defs.DT_PARAMS_CPX,
             ),
@@ -38,7 +38,7 @@ class RBMNNX(nnx.Module):
             use_bias=bias,
             param_dtype=global_defs.DT_OPERATORS_CPX,
             bias_init=jax.nn.initializers.zeros,
-            kernel_init=jVMC_exp.nets.initializers.cplx_init,
+            kernel_init=jVMC.nets.initializers.cplx_init,
             rngs=rngs,
         )
         self.activation = act_funs.log_cosh
@@ -53,7 +53,7 @@ NNX_INIT = dict(in_features=L, num_hidden=2, bias=True)
 
 
 def _make_nqs_nnx(**kwargs):
-    return jVMC_exp.vqs.NQS(
+    return jVMC.vqs.NQS(
         RBMNNX,
         L,
         batch_size=2**5,
@@ -64,7 +64,7 @@ def _make_nqs_nnx(**kwargs):
 
 
 def _make_nqs_nn(**kwargs):
-    return jVMC_exp.vqs.NQS(
+    return jVMC.vqs.NQS(
         RBMNN(num_hidden=2, bias=True),
         L,
         batch_size=2**5,
@@ -88,7 +88,7 @@ class TestNNXWrapper(unittest.TestCase):
         """Passing an NNX *instance* (not a class) should raise a clear ValueError."""
         instance = RBMNNX(in_features=L, num_hidden=2, bias=True, rngs=nnx.Rngs(SEED))
         with self.assertRaises((ValueError, TypeError)):
-            jVMC_exp.vqs.NQS(instance, L, batch_size=2**5, seed=SEED)
+            jVMC.vqs.NQS(instance, L, batch_size=2**5, seed=SEED)
 
     def test_nnx_forward_pass(self):
         """NQS built from an NNX class should produce a scalar output."""
@@ -107,8 +107,8 @@ class TestNNXWrapper(unittest.TestCase):
     def test_nnx_sampler_runs(self):
         """Full sampling pipeline should complete without error for NNX model."""
         psi = _make_nqs_nnx()
-        proposer = jVMC_exp.propose.SpinFlip()
-        sampler = jVMC_exp.sampler.MCSampler(
+        proposer = jVMC.propose.SpinFlip()
+        sampler = jVMC.sampler.MCSampler(
             psi, proposer, num_chains=2**5, num_samples=2**7
         )
         sampler.sample()
@@ -117,8 +117,8 @@ class TestNNXWrapper(unittest.TestCase):
     def test_linen_sampler_runs(self):
         """Full sampling pipeline should complete without error for Linen model (regression)."""
         psi = _make_nqs_nn()
-        proposer = jVMC_exp.propose.SpinFlip()
-        sampler = jVMC_exp.sampler.MCSampler(
+        proposer = jVMC.propose.SpinFlip()
+        sampler = jVMC.sampler.MCSampler(
             psi, proposer, num_chains=2**5, num_samples=2**7
         )
         sampler.sample()
@@ -127,8 +127,8 @@ class TestNNXWrapper(unittest.TestCase):
     def test_nnx_output_is_finite(self):
         """Log-amplitudes from NNX model should be finite (no NaN / Inf)."""
         psi = _make_nqs_nnx()
-        proposer = jVMC_exp.propose.SpinFlip()
-        sampler = jVMC_exp.sampler.MCSampler(
+        proposer = jVMC.propose.SpinFlip()
+        sampler = jVMC.sampler.MCSampler(
             psi, proposer, num_chains=2**5, num_samples=2**7
         )
         sampler.sample()
