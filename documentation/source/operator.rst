@@ -3,206 +3,134 @@
 Operator module
 ===============
 
-The operator module provides functionality to evaluate the action of operators on
-computational basis configurations. 
-In terms of an operator acting on the pure state Hilbert space this corresponds to
-''on-the-fly'' generation of matrix elements.
-Generally, this amounts to a mapping
+The operator module provides the operators whose expectation values are estimated with
+variational Monte Carlo. For an operator :math:`\hat O` and a variational state :math:`\psi`, the
+key quantity is the local estimator
 
-.. math:: s \rightarrow \{s_j'\}, \{O_{s,s_j'}\} 
+.. math:: O_{loc}(s) = \sum_{s'} O_{s,s'}\frac{\psi(s')}{\psi(s)},
 
-Here, :math:`s` denotes the input basis configuration and the :math:`s'` are the connected
-basis configurations produced by the operator. The :math:`O_{s,s'}` are the coefficients
-associated with the map :math:`s\to s'`.
+whose average over :math:`|\psi(s)|^2` is the expectation value :math:`\langle\hat O\rangle`. Every
+operator implements it as ``get_O_loc(s, psi)``, and samplers evaluate operators through it, e.g.,
+as ``sampler(H)``.
 
-Abstract operator class
-^^^^^^^^^^^^^^^^^^^^^^^
+The module has two parts: ``jVMC.operator.discrete`` for computational basis configurations of
+lattice models, and ``jVMC.operator.continuous`` for particles in continuous space.
 
-The abstract operator class ``Operator`` defines the general interface of operators
-acting on computational basis configurations. Any specific implementation should be
-a child of ``Operator`` and implement a ``compile`` function.
-
-
-.. autoclass:: jVMC.operator.Operator
+.. autoclass:: jVMC.operator.base.AbstractOperator
     :members:
 
+Discrete operators
+^^^^^^^^^^^^^^^^^^
 
-Branch-free operator class
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-These operators are intended to act on the computational basis of a many-body Hilbert space.
-The many-body Hilbert space is a product of local Hilbert spaces, :math:`\mathscr H=\bigotimes_l \mathscr h_l`.
-Operators generally take the form :math:`\hat O=\sum_k \hat O_k`, where :math:`\hat O_k=\prod_l \hat o_l^k` are operator strings 
-made up of elementary operators :math:`\hat o_l` acting on the factors :math:`\mathscr h_l`.
+Operators on lattices are built from branch-free elementary operators, which act on a single site
+and map each local state to a single local state. They are combined with ``+``, ``-``, ``*`` and
+``/``, and multiplied by numbers. For example, the Hamiltonian of the transverse-field Ising chain
+of length ``L`` with periodic boundary conditions,
 
-.. note:: The key assumption of the ``BranchFreeOperator`` is that the elementary operators :math:`\hat o_l` are ''branch-free'', meaning that the correspondig matrices have only one non-zero entry per row.
+.. math:: \hat H=-\sum_{l=0}^{L-1}\hat\sigma_l^z\hat\sigma_{l+1}^z-g\sum_{l=0}^{L-1}\hat\sigma_l^x,
 
-In variational Monte Carlo a key quantity is
+is::
 
-    :math:`O_{loc}(s) = \sum_{s'}O_{s,s'}\psi(s')/\psi(s)`
+    import jVMC.operator.discrete as op
 
-where :math:`s,s'` denote computational basis states.
+    H = sum(-op.SigmaZ(l) * op.SigmaZ((l + 1) % L) - g * op.SigmaX(l) for l in range(L))
 
-This module provides functionality to assemble general operators from elementary operators, to compute matrix elements :math:`O_{s,s'}`,
-and finally to compute :math:`O_{loc}(s)`.
+    O_loc = H.get_O_loc(s, psi)
+
+Sites are indexed in the flattened configuration, so that site ``l`` of a two-dimensional lattice
+of shape ``(L, L)`` is ``s.ravel()[l]``.
+
+Prefactors can also be callables that accept arbitrary keyword arguments. They are evaluated with
+the keyword arguments given when the operator is used, which allows, e.g., time-dependent
+Hamiltonians::
+
+    h = lambda **kwargs: jnp.cos(kwargs["t"])
+    H = sum(-op.SigmaZ(l) * op.SigmaZ((l + 1) % L) + h * op.SigmaX(l) for l in range(L))
+
+    O_loc = H.get_O_loc(s, psi, t=0.5)
+
+Fermionic operators include the sign of a Jordan-Wigner string. Spinless fermions occupy sites with
+local dimension 2, and spinful fermions sites with local dimension 4, whose local states 0, 1, 2
+and 3 stand for an empty site, a spin up, a spin down and a doubly occupied site. For example, the
+Hubbard model on a ring is::
+
+    H = sum(
+        -t * (op.Creation(i, spin) * op.Annihilation(j, spin)
+              + op.Creation(j, spin) * op.Annihilation(i, spin))
+        for i, j in ((l, (l + 1) % L) for l in range(L))
+        for spin in ("up", "down")
+    ) + U * sum(op.Number(l, "up") * op.Number(l, "down") for l in range(L))
+
+For small systems, ``H.to_sparse(basis)`` and ``H.to_dense(basis)`` return the matrix of the
+operator in an ordered basis, e.g., to compare with exact diagonalization.
+
+.. autoclass:: jVMC.operator.discrete.base.Operator
+    :members:
+
+.. autoclass:: jVMC.operator.discrete.branch_free.Operator
+    :members: idx, fermionic, spin, diag, mat_els, map
+    :show-inheritance:
 
 Elementary operators
 --------------------
 
-At the core the operator class works with a general description of elementary operators 
-:math:`\hat o_l`. Elementary operators are defined by dictionaries that hold four items:
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaX
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaY
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaZ
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaPlus
+.. autoclass:: jVMC.operator.discrete.branch_free.SigmaMinus
+.. autofunction:: jVMC.operator.discrete.branch_free.Creation
+.. autofunction:: jVMC.operator.discrete.branch_free.Annihilation
+.. autofunction:: jVMC.operator.discrete.branch_free.Number
+.. autoclass:: jVMC.operator.discrete.branch_free.IdentityOperator
 
-    * ``'idx'``: Index of the corresponding local Hilbert space.
-    * ``'map'``: An array (jax.numpy.array) defining the mapping between local basis indices. The array entry :math:`j` holds the image of the basis index :math:`j` under the map.
-    * ``'matEls'``: An array (jax.numpy.array) defining the corresponding matrix elements.
-    * ``'diag'``: Boolean stating whether this operator is a diagonal operator (exploiting this information enhances efficiency).
+Combined operators
+------------------
 
-For concreteness, consider the Pauli operator
+These classes are created by the arithmetic operations on operators.
 
-    :math:`\hat\sigma^x=\begin{pmatrix}0&1\\1&0\end{pmatrix}`
+.. autoclass:: jVMC.operator.discrete.branch_free.CompositeOperator
+.. autoclass:: jVMC.operator.discrete.branch_free.ScaledOperator
 
-acting on lattice site :math:`l=1`. The corresponding dictionary is::
+Continuous operators
+^^^^^^^^^^^^^^^^^^^^
 
-    Sx = {
-            'idx': 1,
-            'map': jax.numpy.array([1,0],dtype=np.int32),
-            'matEl': jax.numpy.array([1.,1.],dtype=jVMC.global_defs.tReal),
-            'diag': False
-         }
+Operators on particles in continuous space act on configurations that hold the positions of all
+the particles, with shape ``(n_particles * n_dim,)``, and are defined on a geometry from
+``jVMC.geometry``. They are combined in the same way as discrete operators, and numbers can be
+added to them. For example, interacting electrons in a two-dimensional harmonic trap are
+described by::
 
-A number of frequently used operators is pre-defined in this module, see below.
+    import jVMC.operator.continuous as op
 
-Operator strings
-----------------
+    geometry = jVMC.geometry.HyperRectangle(N, 2, PBC=False, extent=(6., 6.))
+    H = (
+        op.TotalKineticOperator(geometry)
+        + op.PotentialOperator(geometry, lambda x: 0.5 * omega ** 2 * jnp.sum(x ** 2))
+        + op.CoulombInteraction(geometry)
+    )
 
-Operator strings are treated as tuples of elementary operators. For example, using the \
-pre-defined Pauli operators ``Sx`` and ``Sz``, the operator string :math:`\hat\sigma_1^x\hat\sigma_2^z` \
-is obtained as::
-
-    X1Z2 = ( Sx(1), Sz(2) )
-
-Prefactors can be added to operator strings using the ``scal_opstr()`` function. For \
-example, to obtain :math:`\frac{1}{2}\hat\sigma_1^x\hat\sigma_2^z`::
-
-    X1Z2_with_prefactor = scal_opstr(0.5, X1Z2)
-
-Alternatively, a function that depends on some arguments, ``f(*args)``, can be given as \
-prefactor::
-
-    X1Z2_with_prefactor = scal_opstr(f, X1Z2)
-
-In that case, the respective arguments have to be passed as additional arguments, whenever \
-the ``get_s_primes`` function is called.
-
-
-Assembling operators
---------------------
-
-Finally, arbitrary operators can be assembled from operator strings. Consider, e.g., the \
-Hamiltonian of the spin-1/2 quantum Ising chain of length L,
-
-    :math:`\hat H=-\sum_{l=0}^{L-2}\hat\sigma_l^z\hat\sigma_{l+1}^z-g\sum_{l=0}^{L-1}\hat\sigma_l^x`
-
-Again, using the pre-defined Pauli operators ``Sx`` and ``Sz``, an ``Operator`` object \
-for this Hamiltonian can be obtained as::
-
-    hamiltonian = Operator()
-    for l in range(L-1):
-        hamiltonian.add( scal_opstr( -1., ( Sz(l), Sz(l+1) ) ) )
-        hamiltonian.add( scal_opstr( -g, ( Sx(l), ) ) )
-    hamiltonian.add( scal_opstr( -g, ( Sx(L-1), ) ) )
-
-Detailed documentation
-----------------------
-
-.. autoclass:: jVMC.operator.BranchFreeOperator
+.. autoclass:: jVMC.operator.continuous.base.Operator
     :members:
 
-.. autofunction:: jVMC.operator.Id
-.. autofunction:: jVMC.operator.Sx
-.. autofunction:: jVMC.operator.Sy
-.. autofunction:: jVMC.operator.Sz
-.. autofunction:: jVMC.operator.Sp
-.. autofunction:: jVMC.operator.Sm
-.. autofunction:: jVMC.operator.scal_opstr
-
-
-POVM operator class
-^^^^^^^^^^^^^^^^^^^
-
-The POVM-formalism builds on the observation that a density matrix :math:`\rho` may equivalently (without information loss) be represented as a probability distribution :math:`P` with :math:`4^N` entries.
-Elements of this distribution are obtained as expectation values of the density matrix :math:`P^\textbf{a}=\mathrm{tr}(\rho M^\textbf{a})` for the product POVM-operators :math:`M^\textbf{a}=M^{a_1}\otimes M^{a_2}\otimes..\otimes M^{a_N}`. In order to simulate dissipative dynamics in Open Quantum Systems (OQS) the Lindbladian evolution is expressed as :math:`\dot{P}^\textbf{a}=\mathcal{L}^\textbf{ab}P^\textbf{b}`, where :math:`\mathcal{L}` is the operator that generates the evolution.
-The POVM operator class comprises an implementation of :math:`\mathcal{L}^\textbf{ab}`, whose main purpose it is to output all off-diagonal configurations :math:`\textbf{b}=b_1b_2..b_N` associated with an input configuration :math:`\textbf{a}=a_1a_2..a_N`. This is achieved by building on the sparsity that is typically present in many-body systems, as this sparsity crucially is preserved in the POVM-formalism allowing the described operations to scale linearly in the system size :math:`N`.
-
-Elementary operators
---------------------
-
-Elementary operators in the POVM-formalism are build by reexpressing the equation of motion of the density operator :math:`\dot{\rho}=\mathcal{L}[\rho]` in terms of :math:`P`, \
-resulting in 
-
-    :math:`\dot{P}^\textbf{a} = \mathrm{tr}(\mathcal{L}[M^\textbf{c}]M^\textbf{a}) T^{-1\textbf{cb}} P^\textbf{b} = \mathcal{L}^\textbf{ab}P^\textbf{b}`.
-
-Typically :math:`\mathcal{L}[\rho]` consists of 2-body (1-body) operators which translate to (real) :math:`16\times 16` (:math:`4\times 4`) matrices in the POVM-picture. Importantly, only objects of this size need to be stored, but :math:`n`-body operators for :math:`n>2` are also supported.
-Frequently encountered unitary and dissipative operators are pre-defined and can be constructed as explained below.
-
-Assembling operators
---------------------
-
-Consider again the above example of a spin-1/2 quantum Ising chain of length :math:`L` (here with periodic boundary conditions),
-
-    :math:`\hat H=-\sum_{l=1}^{L}\hat\sigma_l^z\hat\sigma_{(l+1) \% L}^z-g\sum_{l=1}^{L}\hat\sigma_l^x`.
-
-However, let us now additionally assume a single-qubit decay on each spin in the chain, \
-such that the time-derivative of the density matrix is
-
-    :math:`\dot{\rho} = -i[H, \rho] + \gamma \sum_i \sigma^-_i\rho\sigma^+_i - \frac{1}{2}\lbrace \sigma^+_i\sigma^-_i,\rho\rbrace`
-
-Using the POVM-operator class, the expression for the operator that corresponds to these dynamics reads::
-
-    Lindbladian = jVMC.operator.POVMOperator()
-    for l in range(L):
-        Lindbladian.add({"name": "ZZ", "strength": -1.0, "sites": (l, (l + 1) % L)})
-        Lindbladian.add({"name": "X", "strength": -g, "sites": (l,)})
-        Lindbladian.add({"name": "decaydown", "strength": gamma, "sites": (l,)})
-
-Adding terms to the Lindbladian is done using dictionaries, which have three entries: The name of the operator to be added, its prefactor and the site-ids that are involved.
-Valid names that are recognized by default are the unitary 2-body (1-body) operators [``"XX"``, ``"YY"``, ``"ZZ"``] ([``"X"``, ``"Y"``, ``"Z"``]) corresponding to couplings and external magnetic fields aswell as the single-particle dissipation terms [``"dephasing"``, ``"decaydown"``, ``"decayup"``] corresponding to the dissipation operators [:math:`\sigma^z`, :math:`\sigma^-`, :math:`\sigma^+`].
-
-Adding new operators
---------------------
-
-To add custom operators it is best to use the ``matrix_to_povm`` function and the appropiate adding
-method of the ``POVM`` object.
-For example adding the operator :math:`A = \sigma_i^x \sigma_j^z` as part of the unitary term can be done by::
-
-    povm = POVM({"dim": "1D", "L": L})
-    M, T_inv = povm.M, povm.T_inv
-    M_2body = jax.numpy.array([[jax.numpy.kron(M[i], M[j]) for j in range(4)]
-                                for i in range(4)]).reshape(4**2, 2**2, 2**2)
-    T_inv_2body = jax.numpy.kron(T_inv, T_inv)
-
-    omega = matrix_to_povm(A, M_2body, T_inv_2body, mode='unitary')
-    povm.add_unitary("XZ", omega)
-
-Valid values for the ``mode`` parameter are ``unitary`` (``uni``), ``dissipative`` (``dis``), ``observable`` (``obs``)
-and ``imaginary`` (``imag``).
-The name for a operator added to the ``POVM`` object can not be used twice even for different modes, trying to add an
-operator with a already used name will raise a ``ValueError``.
-
-
-Detailed documentation
-----------------------
-
-.. autoclass:: jVMC.operator.POVM
+.. autoclass:: jVMC.operator.continuous.non_diag_operator.TotalKineticOperator
     :members:
+    :show-inheritance:
 
-.. autoclass:: jVMC.operator.POVMOperator
+.. autoclass:: jVMC.operator.continuous.diag_operator.PotentialOperator
     :members:
+    :show-inheritance:
 
-.. autofunction:: jVMC.operator.measure_povm
-.. autofunction:: jVMC.operator.get_M
-.. autofunction:: jVMC.operator.get_dissipators
-.. autofunction:: jVMC.operator.get_unitaries
-.. autofunction:: jVMC.operator.get_observables
-.. autofunction:: jVMC.operator.get_1_particle_distributions
-.. autofunction:: jVMC.operator.get_paulis
-.. autofunction:: jVMC.operator.matrix_to_povm
+.. autoclass:: jVMC.operator.continuous.diag_operator.CoulombInteraction
+    :show-inheritance:
+
+.. autoclass:: jVMC.operator.continuous.diag_operator.ParticleDensity
+    :show-inheritance:
+
+.. autoclass:: jVMC.operator.continuous.diag_operator.Monopole
+    :show-inheritance:
+
+.. autoclass:: jVMC.operator.continuous.base.IdentityOperator
+.. autoclass:: jVMC.operator.continuous.base.SumOperator
+.. autoclass:: jVMC.operator.continuous.base.ScaledOperator
+.. autoclass:: jVMC.operator.continuous.base.MulOperator

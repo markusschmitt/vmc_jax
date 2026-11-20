@@ -1,69 +1,47 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# This file only contains a selection of the most common options. For a full
-# list see the documentation:
+# Sphinx configuration of the jVMC documentation.
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-# -- Path setup --------------------------------------------------------------
-
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-
-import mock
-
 import os
+import shutil
 import sys
-sys.path.append(os.path.abspath("../../"))
- 
-#MOCK_MODULES = ['mpi4py','flax', 'flax.nn', 'flax.linen', 'h5py']
-MOCK_MODULES = ['mpi4py']
-for mod_name in MOCK_MODULES:
-    sys.modules[mod_name] = mock.Mock()
+from pathlib import Path
 
-import jVMC
-import jVMC.operator as operator
-import jVMC.vqs as vqs
-import jVMC.sampler as sampler
-import jVMC.nets as nets
+# Document the package of this repository, not an installed copy.
+sys.path.insert(0, os.path.abspath("../.."))
 
-import sphinx_rtd_theme
+# Sphinx only reads files inside this folder, so copy the example notebooks of the repository
+# into ``examples/`` (ignored by git) at every build.
+_here = Path(__file__).parent
+(_here / "examples").mkdir(exist_ok=True)
+for _nb in (_here / "../../examples").glob("*.ipynb"):
+    shutil.copy2(_nb, _here / "examples" / _nb.name)
 
-# -- Project information -----------------------------------------------------
+from jVMC.version import __version__  # noqa: E402
 
-project = 'jVMC'
-copyright = '2020, Markus Schmitt'
-author = 'Markus Schmitt'
+project = "jVMC"
+author = "Markus Schmitt and the jVMC contributors"
+copyright = "2020-2026, Markus Schmitt and the jVMC contributors"
+release = __version__
+version = ".".join(__version__.split(".")[:2])
 
+extensions = [
+    "sphinx.ext.autodoc",   # API pages from docstrings
+    "sphinx.ext.mathjax",   # :math: in docstrings
+    "sphinx.ext.viewcode",  # "[source]" links
+    "myst_nb",              # Markdown pages and Jupyter notebooks
+    "sphinx_rtd_theme",
+]
 
-# -- General configuration ---------------------------------------------------
+# Optional dependencies that are not needed to import the package for the docs.
+autodoc_mock_imports = ["jaxmg"]
+autodoc_member_order = "bysource"
 
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
-extensions = ['sphinx.ext.autodoc', "sphinx_rtd_theme"]
+# Notebooks are shown with their saved outputs; they are not run during the build.
+nb_execution_mode = "off"
+myst_enable_extensions = ["dollarmath", "amsmath"]
 
-# Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
+exclude_patterns = ["_build"]
 
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-# This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["programs"]
-
-
-# -- Options for HTML output -------------------------------------------------
-
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-#html_theme = 'alabaster'
 html_theme = "sphinx_rtd_theme"
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
-
-html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'] }
+html_static_path = ["_static"]

@@ -1,316 +1,266 @@
 import unittest
-
-import jVMC
-import jVMC.nets as nets
-from jVMC.vqs import NQS
-
-import jVMC.global_defs as global_defs
-
-import jax
-import jax.numpy as jnp
-import numpy as np
 from math import isclose
 
 import flax.linen as nn
+import jax
+import jax.numpy as jnp
+
+import jVMC
 import jVMC.nets.activation_functions as act_funs
+from jVMC import global_defs, nets
+from jVMC.symmetry.lattice_symmetries import square_translation_symmetry
+from jVMC.vqs import NQS
 
 
-def get_shape(shape):
-    return (global_defs.myDeviceCount,) + shape
+def _general_test_grad(model, num_samples, L, test_class: unittest.TestCase):
+    psi = NQS(model, L, num_samples)
+
+    s = jnp.zeros((num_samples, L), dtype=global_defs.DT_SAMPLES)
+    s = s.at[0, 1].set(1)
+    s = s.at[2, 2].set(1)
+
+    psi0 = psi(s)
+    G = psi.gradients(s)
+    delta = 1e-6
+    params = psi.parameters
+    for j in range(G.shape[-1]):
+        u = jnp.zeros(G.shape[-1], dtype=global_defs.DT_PARAMS_REAL).at[j].set(1)
+        psi.parameters = delta * u + psi.parameters_flat
+        psi1 = psi(s)
+        psi.parameters = params
+
+        # Finite difference gradients
+        Gfd = (psi1 - psi0) / delta
+        with test_class.subTest(i=j):
+            test_class.assertTrue(jnp.max(jnp.abs(Gfd - G[..., j])) < 1e-2)
 
 
-class CpxRBM_nonHolomorphic(nn.Module):
-    """Restricted Boltzmann machine with complex parameters.
+class CpxRBMNonHolomorphic(nn.Module):
+    """
+    Restricted Boltzmann machine with complex parameters.
 
     Initialization arguments:
         * ``s``: Computational basis configuration.
-        * ``numHidden``: Number of hidden units.
+        * ``num_hidden``: Number of hidden units.
         * ``bias``: ``Boolean`` indicating whether to use bias.
 
     """
-    numHidden: int = 2
+
+    num_hidden: int = 2
     bias: bool = False
 
     @nn.compact
     def __call__(self, s):
 
-        layer = nn.Dense(self.numHidden, use_bias=self.bias,
-                         **jVMC.nets.initializers.init_fn_args(kernel_init=jVMC.nets.initializers.cplx_init,
-                                        bias_init=jax.nn.initializers.zeros,
-                                        dtype=global_defs.tCpx)
-                         )
+        layer = nn.Dense(
+            self.num_hidden,
+            use_bias=self.bias,
+            **jVMC.nets.initializers.init_fn_args(
+                kernel_init=jVMC.nets.initializers.cplx_init,
+                bias_init=jax.nn.initializers.zeros,
+                param_dtype=global_defs.DT_PARAMS_CPX,
+            ),
+        )
 
         out = layer(2 * s.ravel() - 1)
         out = out + jnp.real(out) * 1e-2
         return jnp.sum(act_funs.log_cosh(out))
 
-# ** end class CpxRBM_nonHolomorphic
 
-class Simple_nonHolomorphic(nn.Module):
-    """Restricted Boltzmann machine with complex parameters.
+class SimpleNonHolomorphic(nn.Module):
+    """
+    Restricted Boltzmann machine with complex parameters.
 
     Initialization arguments:
         * ``s``: Computational basis configuration.
-        * ``numHidden``: Number of hidden units.
+        * ``num_hidden``: Number of hidden units.
         * ``bias``: ``Boolean`` indicating whether to use bias.
 
     """
-    numHidden: int = 2
+
+    num_hidden: int = 2
     bias: bool = False
 
     @nn.compact
     def __call__(self, s):
+        z = self.param(
+            "z", jVMC.nets.initializers.cplx_init, (1,), global_defs.DT_PARAMS_CPX
+        )
 
-        z = self.param('z', jVMC.nets.initializers.cplx_init, (1,), global_defs.tCpx)
-    
         return jnp.sum(jnp.conj(z))
 
-# ** end class Simple_nonHolomorphic
 
-class MatrixMultiplication_NonHolomorphic(nn.Module):
+class MatrixMultiplicationNonHolomorphic(nn.Module):
     holo: bool = False
 
     @nn.compact
     def __call__(self, s):
-        layer1 = nn.Dense(1, use_bias=False, **jVMC.nets.initializers.init_fn_args(dtype=global_defs.tCpx))
+        layer1 = nn.Dense(
+            1,
+            use_bias=False,
+            **jVMC.nets.initializers.init_fn_args(dtype=global_defs.DT_PARAMS_CPX),
+        )
         out = layer1(2 * s.ravel() - 1)
         if not self.holo:
             out = out + 1e-1 * jnp.real(out)
+
         return jnp.sum(out)
-    
-# ** end class MatrixMultiplication_NonHolomorphic
 
 
 class TestGradients(unittest.TestCase):
-
     def test_automatic_holomorphicity_recognition(self):
-
         for k in range(10):
             L = 3
-            rbm = nets.CpxRBM(numHidden=2**k, bias=True)
-            orbit = jVMC.util.symmetries.get_orbit_1D(L)
-            net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-            s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
-            psiC = NQS(net)
-            psiC(s)
+            num_samples = 4
 
-            self.assertTrue(psiC.holomorphic)
+            rbm = nets.CpxRBM(num_hidden=2**k, bias=True)
+            orbit = square_translation_symmetry(L, 1, "spin")
+            psi_c = NQS(rbm, L, num_samples, orbit=orbit)
+
+            self.assertTrue(psi_c.holomorphic)
 
     def test_gradients_cpx(self):
+        L = 3
+        num_samples = 4
 
-        dlist = [jax.devices()[0], jax.devices()]
+        rbm = nets.CpxRBM(num_hidden=2, bias=True)
+        orbit = square_translation_symmetry(L, 1, "spin")
+        model = orbit * rbm
 
-        for ds in dlist:
-
-            global_defs.set_pmap_devices(ds)
-
-            L = 3
-            rbm = nets.CpxRBM(numHidden=2, bias=True)
-
-            orbit = jVMC.util.symmetries.get_orbit_1D(L)
-            net = nets.sym_wrapper.SymNet(net=rbm, orbit=orbit)
-            psiC = NQS(net)
-
-            s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
-            s = s.at[..., 0, 1].set(1)
-            s = s.at[..., 2, 2].set(1)
-
-            psi0 = psiC(s)
-            G = psiC.gradients(s)
-            delta = 1e-6
-            params = psiC.get_parameters()
-            for j in range(G.shape[-1]):
-                u = jnp.zeros(G.shape[-1], dtype=global_defs.tReal).at[j].set(1)
-                psiC.update_parameters(delta * u)
-                psi1 = psiC(s)
-                psiC.set_parameters(params)
-
-                # Finite difference gradients
-                Gfd = (psi1 - psi0) / delta
-                with self.subTest(i=j):
-                    self.assertTrue(jnp.max(jnp.abs(Gfd - G[..., j])) < 1e-2)
+        _general_test_grad(model, num_samples, L, self)
 
     def test_gradients_real(self):
+        L = 3
+        num_samples = 4
 
-        dlist = [jax.devices()[0], jax.devices()]
+        rbm_model_1 = nets.RBM(num_hidden=2, bias=True)
+        rbm_model_2 = nets.RBM(num_hidden=3, bias=True)
 
-        for ds in dlist:
-
-            global_defs.set_pmap_devices(ds)
-
-            L = 3
-            rbmModel1 = nets.RBM(numHidden=2, bias=True)
-            rbmModel2 = nets.RBM(numHidden=3, bias=True)
-            psi = NQS((rbmModel1, rbmModel2))
-
-            s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
-            s = s.at[..., 0, 1].set(1)
-            s = s.at[..., 2, 2].set(1)
-
-            psi0 = psi(s)
-            G = psi.gradients(s)
-            delta = 1e-5
-            params = psi.get_parameters()
-            for j in range(G.shape[-1]):
-                u = jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tReal).at[j].set(1)
-                psi.update_parameters(delta * u)
-                psi1 = psi(s)
-                psi.set_parameters(params)
-
-                # Finite difference gradients
-                Gfd = (psi1 - psi0) / delta
-
-                with self.subTest(i=j):
-                    self.assertTrue(jnp.max(jnp.abs(Gfd - G[..., j])) < 1e-2)
+        _general_test_grad((rbm_model_1, rbm_model_2), num_samples, L, self)
 
     def test_gradients_nonholomorphic(self):
+        L = 3
+        num_samples = 4
+        model = nets.RNN1DGeneral(L=L)
 
-        dlist = [jax.devices()[0], jax.devices()]
+        _general_test_grad(model, num_samples, L, self)
 
-        for ds in dlist:
-
-            global_defs.set_pmap_devices(ds)
-
-            L = 3
-            model = nets.RNN1DGeneral(L=L)
-            psi = NQS(model)
-
-            s = jnp.zeros(get_shape((4, 3)), dtype=np.int32)
-            s = s.at[..., 0, 1].set(1)
-            s = s.at[..., 2, 2].set(1)
-
-            psi0 = psi(s)
-            G = psi.gradients(s)
-            delta = 1e-5
-            params = psi.get_parameters()
-            for j in range(G.shape[-1]):
-                u = jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tReal).at[j].set(1)
-                psi.update_parameters(delta * u)
-                psi1 = psi(s)
-                psi.set_parameters(params)
-
-                # Finite difference gradients
-                Gfd = (psi1 - psi0) / delta
-
-                with self.subTest(i=j):
-                    self.assertTrue(jnp.max(jnp.abs(Gfd - G[..., j])) < 1e-2)
-
-    
     def test_gradients_complex_nonholomorphic(self):
-        
-        dlist=[jax.devices()[0], jax.devices()]
+        L = 3
+        num_samples = 4
+        model = SimpleNonHolomorphic()
 
-        for ds in dlist:
+        _general_test_grad(model, num_samples, L, self)
 
-            global_defs.set_pmap_devices(ds)
+        model = CpxRBMNonHolomorphic()
 
-            model = Simple_nonHolomorphic()
+        _general_test_grad(model, num_samples, L, self)
 
-            s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
-            s=s.at[...,0,1].set(1)
-            s=s.at[...,2,2].set(1)
-            
-            psi = NQS(model)
-            psi0 = psi(s)
-            G = psi.gradients(s)
-            delta=1e-5
-            params = psi.get_parameters()
-            for j in range(G.shape[-1]):
-                u = jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tCpx).at[j].set(1)
-                psi.update_parameters(delta * u)
-                psi1 = psi(s)
-                psi.set_parameters(params)
+        model = MatrixMultiplicationNonHolomorphic(holo=False)
 
-                # Finite difference gradients
-                Gfd = (psi1-psi0) / delta
+        psi = NQS(model, 1, num_samples)
+        s = jnp.zeros((num_samples, 1), dtype=global_defs.DT_SAMPLES)
+        G = psi.gradients(s)
+        ref = jnp.array(
+            [
+                -1.1 + 0.0j,
+                -1.1 + 0.0j,
+                -1.1 + 0.0j,
+                -1.1 + 0.0j,
+                -0.0 - 1.0j,
+                -0.0 - 1.0j,
+                -0.0 - 1.0j,
+                -0.0 - 1.0j,
+            ]
+        )
+        self.assertTrue(jnp.allclose(G.T.ravel(), ref))
 
-                with self.subTest(i=j):
-                    self.assertTrue( jnp.max( jnp.abs( Gfd - G[...,j] ) ) < 1e-2 )
-        
-        for ds in dlist:
+    def test_lazy_gradients_matches_gradients(self):
+        """
+        lazy_gradients (batched_jacobian's backend) must reproduce the
+        dense gradients(), batch by batch. 4 samples per device and batch over
+        10 samples per device is deliberately uneven ([4, 4, 2] per device) to
+        hit the padding/trimming logic. On more than one device a batch does
+        not consist of consecutive samples, so the dense gradients are split
+        with the layout of the lazy iterable.
+        """
+        L = 3
+        batch_size = 4 * jax.device_count()
 
-            global_defs.set_pmap_devices(ds)
+        rbm = nets.CpxRBM(num_hidden=3, bias=True)
+        psi = NQS(rbm, L, batch_size, seed=42)
 
-            model = CpxRBM_nonHolomorphic()
+        # The second number of samples is not divisible by the number of devices (if there
+        # are several): the samples are padded and the batches include the padding samples
+        for num_samples in (10 * jax.device_count(), 10 * jax.device_count() + 1):
+            with self.subTest(num_samples=num_samples):
+                key = jax.random.PRNGKey(0)
+                s = jax.random.randint(key, (num_samples, L), 0, 2).astype(
+                    global_defs.DT_SAMPLES
+                )
 
-            s=jnp.zeros(get_shape((4,3)),dtype=np.int32)
-            s=s.at[...,0,1].set(1)
-            s=s.at[...,2,2].set(1)
-            
-            psi = NQS(model)
-            psi0 = psi(s)
-            G = psi.gradients(s)
-            delta=1e-5
-            params = psi.get_parameters()
-            for j in range(G.shape[-1]):
-                u = jnp.zeros(G.shape[-1], dtype=jVMC.global_defs.tCpx).at[j].set(1)
-                psi.update_parameters(delta * u)
-                psi1 = psi(s)
-                psi.set_parameters(params)
+                dense = psi.gradients(s)
+                lazy = psi.lazy_gradients(s)
+                pieces = list(lazy)
 
-                # Finite difference gradients
-                Gfd = (psi1-psi0) / delta
-
-                with self.subTest(i=j):
-                    self.assertTrue( jnp.max( jnp.abs( Gfd - G[...,j] ) ) < 1e-2 )
-
-        for ds in dlist:
-
-            global_defs.set_pmap_devices(ds)
-
-            model = MatrixMultiplication_NonHolomorphic(holo=False)
-
-            s=jnp.zeros(get_shape((1,4)),dtype=np.int32)
-            
-            psi = NQS(model)
-            psi0 = psi(s)
-            G = psi.gradients(s)
-            ref = jnp.array([-1.1+0.j, -1.1+0.j, -1.1+0.j, -1.1+0.j, -0.-1.j, -0.-1.j, -0.-1.j, -0.-1.j])
-            self.assertTrue( jnp.allclose( G.ravel(), ref ) )
-
+                self.assertEqual(len(pieces), lazy.layout.n_batches)
+                in_sample_order = jnp.concatenate(pieces)[lazy.layout.batch_positions()]
+                self.assertTrue(jnp.allclose(in_sample_order[:num_samples], dense))
+                if num_samples == lazy.layout.num_samples:
+                    for piece, expected in zip(pieces, lazy.layout.split(dense)):
+                        self.assertEqual(piece.shape, expected.shape)
+                        self.assertTrue(jnp.allclose(piece, expected))
 
     def test_gradient_dict(self):
-        
-        dlist=[[jax.devices()[0],], jax.devices()]
+        L = 3
+        num_samples = 4
+        net = jVMC.nets.CpxRBM(num_hidden=8, bias=False)
 
-        for ds in dlist:
+        psi = jVMC.vqs.NQS(net, L, num_samples, seed=1234)
+        s = jnp.zeros((num_samples, L))
+        g1 = psi.gradients(s)
+        g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]
 
-            global_defs.set_pmap_devices(ds)
+        self.assertTrue(isclose(jnp.linalg.norm(g1 - g2), 0.0))
 
-            net = jVMC.nets.CpxRBM(numHidden=8, bias=False)
-            psi = jVMC.vqs.NQS(net, seed=1234)  # Variational wave function
-
-            s = jnp.zeros((len(ds),3,4))
-            psi(s)
-
-            g1 = psi.gradients(s)
-            g2 = psi.gradients_dict(s)["Dense_0"]["kernel"]
-
-            self.assertTrue(isclose(jnp.linalg.norm(g1-g2),0.0))
 
 class TestEvaluation(unittest.TestCase):
+    def test_mixed_precision_nqs_boundary(self):
+        L = 3
+        num_samples = 4
+        model = nets.CpxRBM(num_hidden=2, bias=True)
+        psi = NQS(
+            model,
+            L,
+            num_samples,
+            seed=1234,
+            sampler_dtype=jnp.complex64,
+            eval_dtype=jnp.complex64,
+            grad_dtype=jnp.complex64,
+        )
 
-    def test_evaluation_cpx(self):
+        s = jnp.zeros((num_samples, L), dtype=global_defs.DT_SAMPLES)
+        out = psi(s)
+        gradients = psi.gradients(s)
+        self.assertEqual(out.dtype, global_defs.DT_OUT_CPX)
+        self.assertEqual(gradients.dtype, global_defs.DT_OUT_CPX)
 
-        dlist = [jax.devices()[0], jax.devices()]
+        psi.parameters = psi.parameters_flat + jnp.asarray(1e-4, dtype=jnp.float64)
+        param_leaves = jax.tree_util.tree_leaves(psi.parameters["params"])
+        self.assertTrue(all(p.dtype == global_defs.DT_PARAMS_CPX for p in param_leaves))
 
-        for ds in dlist:
-
-            global_defs.set_pmap_devices(ds)
-
-            L = 3
-            model = nets.CpxRBM(numHidden=2, bias=True)
-            psiC = NQS(model)
-
-            s = jnp.zeros(get_shape((4, L)), dtype=np.int32)
-            s = s.at[..., 0, 1].set(1)
-            s = s.at[..., 2, 2].set(1)
-
-            cpxCoeffs = psiC(s)
-            f, p = psiC.get_sampler_net()
-            realCoeffs = global_defs.pmap_for_my_devices(lambda x: jax.vmap(lambda y: f(p, y))(x))(s)
-
-            self.assertTrue(jnp.linalg.norm(jnp.real(cpxCoeffs) - realCoeffs) < 1e-6)
+        ratio_psi = NQS(
+            nets.CpxRBMRatio(num_hidden=2, bias=True),
+            L,
+            num_samples,
+            seed=1234,
+            sampler_dtype=jnp.complex64,
+            eval_dtype=jnp.complex64,
+            grad_dtype=jnp.complex64,
+        )
+        sp = s.at[:, 0].set(1)
+        ratio = ratio_psi.call_ratio(s, sp)
+        self.assertEqual(ratio.dtype, global_defs.DT_OUT_CPX)
 
 
 if __name__ == "__main__":
