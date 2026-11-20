@@ -232,7 +232,7 @@ class AbstractOptimizer(ABC):
         observables: Dict[str, ObservableEntry] | None = None,
         callback: List[Callable] | None = None,
         save_meta_data: bool = False,
-        **kwargs,  # KWARGS ARE FOR BOTH THE STEPPER AND THE OBJECTIVE FUNCTION, TODO: ADD DOCUMENTATION ON THIS
+        **kwargs,
     ):
         """
         Minimize ``objective_function`` with ``steps`` steps of ``stepper``.

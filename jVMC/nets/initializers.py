@@ -6,7 +6,6 @@ import jax.numpy as jnp
 from jVMC import global_defs
 
 
-# TODO: this should be removed as 99% of the functions in this file
 def init_fn_args(**kwargs):
     """Return Flax module kwargs with matching compute and parameter dtype."""
     if "dtype" in kwargs and "param_dtype" not in kwargs:

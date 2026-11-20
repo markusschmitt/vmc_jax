@@ -100,7 +100,6 @@ class RBM(nn.Module):
         return jnp.sum(x, dtype=x.dtype)
 
 
-# TODO: isn't this class completely useless?
 class CpxRBMRatio(nn.Module):
     """Restricted Boltzmann machine with complex parameters.
 

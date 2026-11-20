@@ -766,9 +766,7 @@ class ProjectedOrbitNet(nn.Module):
             (self.symmetry.nsymm,) + s.shape
         )
 
-        # TODO: This can create OOM issues since it is batched externally
         base_logs = jax.vmap(self.base_net)(states)
-        # TODO: why complex128 always?
         base_logs = jnp.asarray(base_logs, dtype=jnp.complex128)
 
         if self.coefficient_net is not None:

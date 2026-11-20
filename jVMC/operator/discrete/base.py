@@ -41,7 +41,6 @@ class Operator(AbstractOperator):
 
     def __add__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
-            # TODO: Since I don't know the total dim of the Hilbert space this is not doable
             raise NotImplementedError
         elif isinstance(other, Operator):
             return self._create_composite(self, other, "sum")
@@ -52,7 +51,6 @@ class Operator(AbstractOperator):
         if isinstance(other, (int, float, complex)):
             if other == 0:
                 return self
-            # TODO: Same as previous todo
             raise NotImplementedError
         else:
             return NotImplemented
@@ -62,7 +60,6 @@ class Operator(AbstractOperator):
 
     def __sub__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
-            # TODO: Same as previous todo
             raise NotImplementedError
         elif isinstance(other, Operator):
             return self._create_composite(self, -other, "sum")
@@ -71,7 +68,6 @@ class Operator(AbstractOperator):
 
     def __rsub__(self, other) -> Operator:
         if isinstance(other, (int, float, complex)):
-            # TODO: Same as previous todo
             raise NotImplementedError
         else:
             return NotImplemented

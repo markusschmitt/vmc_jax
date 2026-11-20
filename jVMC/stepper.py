@@ -537,8 +537,6 @@ class RK23(AbstractAdaptiveStepper):
             New value of :math:`y` and time step used :math:`\\Delta t`.
         """
         converged = False
-        # k0 = self._k0 if self._k0 is not None else f(y, t, **rhs_args, int_step=0)
-        # TODO: at the moment this is needed to trigger int_step=0, but the above line saves a step
         k0 = f(y, t, **rhs_args, int_step=0)
         y_norm = norm_function(y)
 
@@ -631,8 +629,6 @@ class RK45(AbstractAdaptiveStepper):
             New value of :math:`y` and time step used :math:`\\Delta t`.
         """
         converged = False
-        # k0 = self._k0 if self._k0 is not None else f(y, t, **rhs_args, int_step=0)
-        # TODO: at the moment this is needed to trigger int_step=0, but the above line saves a step
         k0 = f(y, t, **rhs_args, int_step=0)
         y_norm = norm_function(y)
 

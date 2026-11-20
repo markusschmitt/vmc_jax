@@ -452,7 +452,6 @@ class MALA(AbstractProposeCont):
         return {"params": None, "tau": 0}
 
     def init_arg(self, vqs, num_chains):
-        # TODO: implement version for tau in more dims
         if self._tau is None:
             tau = jnp.array(self.geometry.extent)[0] * 0.01
         elif self._tau < 0:
@@ -510,7 +509,7 @@ class MALA(AbstractProposeCont):
         new_tau = tau * jnp.exp(self.adapt_rate * (acceptance_rate - self.target_rate))
         return jnp.clip(
             new_tau, max=jnp.array(self.geometry.extent)[0] / 2
-        )  # TODO: change when tau gets more dims
+        )
 
     def _custom_therm_fun(
         self,

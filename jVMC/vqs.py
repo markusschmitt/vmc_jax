@@ -531,9 +531,6 @@ class NQS:
         if seed == None:
             seed = generate_seed()
 
-        # TODO: this is fragile and is only needed for holo check.
-        # Holo should be given by the user at init to make it more genera
-        # Otherwise another optional function, which would take an input state as well, could be used to check holo
         dummy_sample = jax.random.normal(jax.random.PRNGKey(seed), self.sample_shape)
         self._parameters = jax.device_put(
             self.net.init(jax.random.PRNGKey(seed), dummy_sample), REPLICATED_SHARDING

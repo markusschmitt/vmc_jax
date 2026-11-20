@@ -124,7 +124,6 @@ class Observable(AbstractObjectiveFunction):
     def __init__(self, operator: AbstractOperator, batched_jacobian: bool = False):
         super().__init__(batched_jacobian)
         self._operator = operator
-        # TODO: might add a batch size here so that one can have different batch sizes
 
     @property
     def operator(self):
