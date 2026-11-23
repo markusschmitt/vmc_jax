@@ -117,7 +117,7 @@ class Adam(AbstractOptimizer):
 
             pbar.set_postfix(E=f"{self.o_loc}")
 
-        self.output_manager.print_timings()
+        self.output_manager.print_total_timings()
 
         if save_meta_data:
             return self.output_manager.data["observables"], self.output_manager.data[

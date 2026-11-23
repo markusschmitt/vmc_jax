@@ -149,6 +149,7 @@ class OutputManager:
         self.data: dict[str, Any] = {}
         self._timings: dict[str, dict[str, float | int]] = {}
         self.timings = self._timings
+        self._printed_totals: dict[str, float] = {}
         self._parameter_attrs: dict[str, dict[str, Any]] = {}
         self._parameter_latest: str | None = None
         self.is_main_process = _is_main_process()
@@ -502,6 +503,26 @@ class OutputManager:
         print(f"{indent}Recorded timings:", flush=True)
         for key, item in self._timings.items():
             print(f"{indent}    - {key}: {item['last_timing']:.6f}s", flush=True)
+
+    def print_total_timings(self, indent: str = "") -> None:
+        """
+        Print the time accumulated by every timer since the last call of this method, and its \
+        percentage of the sum over all timers, on process 0. Every line starts with ``indent``. \
+        The percentages are meaningful only if the timers do not overlap.
+        """
+        if not self.is_main_process:
+            return
+        deltas = {}
+        for key, item in self._timings.items():
+            total = float(item["total"])
+            deltas[key] = total - self._printed_totals.get(key, 0.0)
+            self._printed_totals[key] = total
+        overall = sum(deltas.values())
+        print(f"{indent}Recorded timings:", flush=True)
+        for key, delta in deltas.items():
+            percentage = 100.0 * delta / overall if overall > 0 else 0.0
+            print(f"{indent}    - {key}: {delta:.6f}s ({percentage:.1f}%)", flush=True)
+        print(f"{indent}    Total: {overall:.6f}s", flush=True)
 
     def flush_timings(self, path: str | Path | None = None) -> None:
         """
