@@ -1,6 +1,5 @@
-import jax
-import jax.numpy as jnp
 import flax.linen as nn
+import jax.numpy as jnp
 
 
 def square(x):
@@ -14,19 +13,24 @@ def poly6(x):
 
 def poly5(x):
     xsq = x**2
-    return ((0.133333333 * xsq - 0.333333333) * xsq + 1.) * x
+    return ((0.133333333 * xsq - 0.333333333) * xsq + 1.0) * x
+
 
 def log_cosh(x):
-    sgn_x = -2 * jnp.signbit(x.real) + 1
+    two = jnp.asarray(2, dtype=x.real.dtype)
+    half_log_two = jnp.log(two)
+    sgn_x = -two * jnp.signbit(x.real) + 1
+    sgn_x = sgn_x.astype(x.dtype)
     x = x * sgn_x
-    return x + jnp.log1p(jnp.exp(-2.0 * x)) - jnp.log(2.0)
+
+    return x + jnp.log1p(jnp.exp(-two * x)) - half_log_two
 
 
-activationFunctions = {
+activation_functions = {
     "square": square,
     "poly5": poly5,
     "poly6": poly6,
     "elu": nn.elu,
     "relu": nn.relu,
-    "tanh": jnp.tanh
+    "tanh": jnp.tanh,
 }

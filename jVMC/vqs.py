@@ -1,492 +1,759 @@
-import jax
-jax.config.update("jax_enable_x64", True)
-from jax import jit, grad, vmap
-from jax import numpy as jnp
-from jax import random
-from jax.tree_util import tree_flatten, tree_unflatten, tree_map
-from jax.flatten_util import ravel_pytree
+import collections
+import copy
+from functools import reduce
+from typing import Tuple
+
 import flax
 import flax.linen as nn
-from flax.core.frozen_dict import freeze, unfreeze
-import numpy as np
+import jax
+from flax import nnx
+from flax.core.frozen_dict import freeze
+from jax import numpy as jnp
+from jax.tree_util import tree_flatten, tree_map, tree_unflatten
 
-import jVMC
-import jVMC.global_defs as global_defs
-from jVMC.nets import CpxRBM
-from jVMC.nets import RBM
-import jVMC.mpi_wrapper as mpi
-
-from functools import partial
-import collections
-import time
-from math import isclose
-
-from typing import Sequence
-
-
-def create_batches(configs, b):
-
-    append = b * ((configs.shape[0] + b - 1) // b) - configs.shape[0]
-    pads = [(0, append), ] + [(0, 0)] * (len(configs.shape) - 1)
-
-    return jnp.pad(configs, pads).reshape((-1, b) + configs.shape[1:])
-
-
-def eval_batched(batchSize, fun, s):
-
-    sb = create_batches(s, batchSize)
-
-    def scan_fun(c, x):
-        return c, jax.vmap(lambda y: fun(y), in_axes=(0,))(x)
-
-    res = jax.lax.scan(scan_fun, None, jnp.array(sb))[1].reshape((-1,))
-
-    return res[:s.shape[0]]
-
-def flat_gradient(fun, params, arg):
-    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
-    gr = tree_flatten(tree_map(lambda x: x.ravel(), gr))[0]
-    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)["params"]
-    gi = tree_flatten(tree_map(lambda x: x.ravel(), gi))[0]
-    return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
-
-def flat_gradient_cpx_nonholo(fun, params, arg):
-    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
-    gr = tree_flatten(tree_map(lambda x: [jnp.real(x.ravel()), -jnp.imag(x.ravel())], gr))[0]
-    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)["params"]
-    gi = tree_flatten(tree_map(lambda x: [jnp.real(x.ravel()), -jnp.imag(x.ravel())], gi))[0]
-    return jnp.concatenate(gr) + 1.j * jnp.concatenate(gi)
+from jVMC import global_defs
+from jVMC.nets.two_nets_wrapper import TwoNets
+from jVMC.sharding_config import (
+    DEVICE_SHARDING,
+    MESH,
+    REPLICATED_SHARDING,
+    BatchLayout,
+    SizedIterable,
+    broadcast_split_key,
+    pad_to_devices,
+    sharded,
+)
+from jVMC.symmetry import ProjectedOrbitNet, SymmetryProjector
+from jVMC.util.grads import pick_gradient
+from jVMC.util.key_gen import format_key, generate_seed
+from jVMC.util.util import has_callable_attr
 
 
-def flat_gradient_real(fun, params, arg):
-    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
-    g = tree_flatten(tree_map(lambda x: x.ravel(), g))[0]
-    return jnp.concatenate(g)
+def _check_dtype(dtype: jnp.dtype | None, dtype_ref: jnp.dtype, label: str):
+    if dtype is None:
+        return dtype_ref
+    ref_is_real = jnp.issubdtype(dtype_ref, jnp.floating)
+    given_is_real = jnp.issubdtype(dtype, jnp.floating)
+    if ref_is_real and not given_is_real:
+        raise TypeError(
+            f"The given dtype for {label} is complex but the parameters are real"
+        )
+    if not ref_is_real and given_is_real:
+        raise TypeError(
+            f"The given dtype for {label} is real but the parameters are complex"
+        )
 
-def flat_gradient_holo(fun, params, arg):
-    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
-    g = tree_flatten(tree_map(lambda x: [x.ravel(), 1.j*x.ravel()], g))[0]
-    return jnp.concatenate(g)
-
-def dict_gradient(fun, params, arg):
-    gr = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
-    gr = tree_map(lambda x: x.ravel(), gr)
-    gi = grad(lambda p, y: jnp.imag(fun.apply(p, y)))(params, arg)["params"]
-    gi = tree_map(lambda x: x.ravel(), gi)
-    return tree_map(lambda x,y: x + 1.j*y, gr, gi)
+    return dtype
 
 
-def dict_gradient_real(fun, params, arg):
-    g = grad(lambda p, y: jnp.real(fun.apply(p, y)))(params, arg)["params"]
-    g = tree_map(lambda x: x.ravel(), g)
-    return g
+def _cast_pytree(pytree, dtype):
+    return jax.tree_util.tree_map(lambda x: x.astype(dtype), pytree)
+
+
+def _check_model(model, nnx_init_kwargs=None):
+    if isinstance(model, nn.Module):
+        return model
+
+    if isinstance(model, nnx.Module):
+        raise ValueError(
+            "Pass the NNX class, not an instance: "
+            f"use {type(model).__name__} instead of {type(model).__name__}(...)"
+        )
+
+    if isinstance(model, type) and issubclass(model, nnx.Module):
+        kwargs = nnx_init_kwargs or {}
+        return nnx.bridge.to_linen(model, **kwargs)
+
+    raise ValueError(
+        f"Expected a flax.linen.Module instance or a flax.nnx.Module class, got {type(model)}"
+    )
 
 
 class NQS:
-    """Wrapper class providing basic functionality of variational states.
-    
-    This class can operate in two modi:
-        #. Single-network ansatz
-            Quantum state of the form :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, \
-            where the network :math:`r_\\theta` is
-            a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`.
-            b) non-holomorphic, i.e., parametrized by real valued parameters :math:`\\theta`.
-        #. Two-network ansatz
-            Quantum state of the form 
-            :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
-            with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
-            :math:`\\varphi_{\\theta_\\phi}` \
-            parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
+    """
+    Variational quantum state.
 
-    Initializer arguments:
-        * ``net``: Variational network.
-            A network has to be registered as pytree node and provide \
-            a ``__call__`` function for evaluation.
-            It is expected that the network is of type ``jVMC.nets.sym_wrapper.SymNet``.
-            If the network is composed of two networks, the correct wrapping structure is
-            ``jVMC.nets.sym_wrapper.SymNet(jVMC.nets.two_nets_wrapper.TwoNets)``.
-        * ``batchSize``: Batch size for batched network evaluation. Choice \
-            of this parameter impacts performance: with too small values performance \
-            is limited by memory access overheads, too large values can lead \
-            to "out of memory" issues.
-        * ``seed``: Seed for the PRNG to initialize the network parameters.
+    The wave function is defined by a network, which is evaluated, differentiated and sampled \
+    through this class. It can take two forms:
+
+    #. Single-network ansatz: quantum state of the form \
+       :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, where the network :math:`r_\\theta` is \
+       either holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`, or \
+       non-holomorphic, parametrized by real or complex valued parameters.
+    #. Two-network ansatz: quantum state of the form \
+       :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` with an \
+       amplitude network :math:`r_{\\theta_{r}}` and a phase network \
+       :math:`\\varphi_{\\theta_\\phi}`, parametrized by real valued parameters \
+       :math:`\\theta_r,\\theta_\\phi`.
+
+    The type of parameters and holomorphicity are detected at construction, see ``real_params`` \
+    and ``holomorphic``.
+
+    The ``__call__`` method of a network takes a single configuration and returns a scalar. \
+    Vectorization, batching and the distribution across devices are handled by this class: all \
+    its methods take configurations as an array of shape ``(N, *sample_shape)``, with any ``N``, \
+    and return results in the same order. The attribute ``apply_fun(parameters, s)`` evaluates \
+    :math:`\\ln\\psi(s)` of a single configuration, without these steps.
+
+    A network keeps its variables in the ``params`` collection, with a single data type, and can \
+    provide these optional methods:
+
+    * ``sample(key)``: Returns a configuration drawn directly from the distribution of the network. \
+      Samplers then use direct sampling instead of MCMC, see ``is_generator``.
+    * ``eval_ratio(s, sp)``: Returns :math:`\\psi(s')/\\psi(s)`. MCMC and ``call_ratio()`` then use \
+      it instead of evaluating the two coefficients. It is not used if a symmetry projector is \
+      applied, see ``eval_ratio``.
+    * ``eval_real(s)``: Returns :math:`\\text{Re}\\ln\\psi(s)`. MCMC then uses it to compute \
+      probabilities.
+
+    Args:
+        * ``net``: Variational network, tuple of two networks, or ``flax.nnx.Module`` subclass. \
+          If a tuple of two networks is given, the first is used for the logarithmic \
+          amplitude and the second for the phase of the wave function coefficient. \
+          If a ``flax.nnx.Module`` subclass is given, it will be automatically wrapped \
+          into a ``flax.linen``-compatible module via ``flax.nnx.bridge.to_linen``. \
+          In this case, its constructor arguments are given by ``nnx_init``.
+        * ``sample_shape``: Shape of a configuration. An ``int`` ``n`` stands for ``(n,)``.
+        * ``batch_size``: Total batch size for batched network evaluation, divisible by the number \
+          of devices. Choice of this parameter impacts performance: with too small values \
+          performance is limited by memory access overheads, too large values can lead \
+          to "out of memory" issues. Exactly one of ``batch_size`` and ``batch_size_per_device`` \
+          must be given.
+        * ``batch_size_per_device``: Batch size on each device, as an alternative to ``batch_size``.
+        * ``logarithmic``: Boolean variable indicating, whether the ANN returns logarithmic \
+          (:math:`\\log\\psi_\\theta(s)`) or plain (:math:`\\psi_\\theta(s)`) wave function coefficients.
+        * ``seed``: Seed for the PRNG to initialize the network parameters. If ``None``, a random \
+          seed is generated.
+        * ``orbit``: Symmetry projector defining the symmetry operations (instance of \
+          ``jVMC.symmetry.SymmetryProjector``). If this argument is given, the wave function is \
+          symmetrized to be invariant under symmetry operations.
+        * ``symmetry_average``: Built-in symmetry average name (``"exp"``, ``"log"`` or ``"sep"``) \
+          or callable passed to ``ProjectedOrbitNet``.
+        * ``sampler_dtype``: Data type of the parameters while sampling. If ``None``, the data \
+          type of the parameters is used.
+        * ``eval_dtype``: Data type of the parameters while evaluating coefficients. If ``None``, \
+          the data type of the parameters is used.
+        * ``grad_dtype``: Data type of the parameters while computing gradients. If ``None``, the \
+          data type of the parameters is used.
+        * ``nnx_init``: Dictionary of keyword arguments passed to the ``flax.nnx.Module`` constructor, \
+          excluding ``rngs`` (which is handled internally). It is ignored for ``flax.linen`` \
+          networks. If ``net`` is a tuple of two ``flax.nnx.Module`` subclasses, ``nnx_init`` must be \
+          a tuple of two dictionaries, one per network.
+
+    The three data types allow to run these steps at lower precision than the stored parameters. \
+    They must be real for real parameters and complex for complex parameters. Coefficients and \
+    gradients are returned with data type ``out_dtype`` in any case.
+
+    Example:
+        Using a ``flax.linen`` model::
+
+            psi = NQS(RBMLinenModel(num_hidden=4), sample_shape, batch_size=32, seed=0)
+
+        Using a ``flax.nnx`` model::
+
+            psi = NQS(RBMNNXModel, sample_shape, batch_size=32, seed=0,
+                      nnx_init=dict(in_features=10, num_hidden=4, bias=True))
+
+        Using two ``flax.nnx`` models::
+
+            psi = NQS((AmplitudeNNX, PhaseNNX), sample_shape, batch_size=32, seed=0,
+                      nnx_init=(dict(in_features=10, num_hidden=4),
+                                dict(in_features=10, num_hidden=4)))
     """
 
-    def __init__(self, net, 
-                        logarithmic=True,
-                        batchSize=1000, 
-                        seed=1234, 
-                        orbit=None, 
-                        avgFun=jVMC.nets.sym_wrapper.avgFun_Coefficients_Exp):
-        """Initializes NQS class.
-        
-        This class can operate in two modi:
-            #. Single-network ansatz
-                Quantum state of the form :math:`\\psi_\\theta(s)\\equiv\\exp(r_\\theta(s))`, \
-                where the network :math:`r_\\theta` is
-                a) holomorphic, i.e., parametrized by complex valued parameters :math:`\\vartheta`.
-                b) non-holomorphic, i.e., parametrized by real valued parameters :math:`\\theta`.
-            #. Two-network ansatz
-                Quantum state of the form 
-                :math:`\\psi_\\theta(s)\\equiv\\exp(r_{\\theta_r}(s)+i\\varphi_{\\theta_\\phi}(s))` \
-                with an amplitude network :math:`r_{\\theta_{r}}` and a phase network \
-                :math:`\\varphi_{\\theta_\\phi}` \
-                parametrized by real valued parameters :math:`\\theta_r,\\theta_\\phi`.
-        Args:       
-            * ``net``: Variational network or tuple of networks.
-                A network has to be registered as pytree node and provide \
-                a ``__call__`` function for evaluation. \
-                If a tuple of two networks is given, the first is used for the logarithmic \
-                amplitude and the second for the phase of the wave function coefficient.
-            * ``logarithmic``: Boolean variable indicating, whether the ANN returns logarithmic \
-                (:math:`\\log\\psi_\\theta(s)`) or plain (:math:`\\psi_\\theta(s)`) wave function coefficients.
-            * ``batchSize``: Batch size for batched network evaluation. Choice \
-                of this parameter impacts performance: with too small values performance \
-                is limited by memory access overheads, too large values can lead \
-                to "out of memory" issues.
-            * ``seed``: Seed for the PRNG to initialize the network parameters.
-            * ``orbit``: Orbit which defining the symmetry operations (instance of ``util.symmetries.LatticeSymmetry``). \
-                If this argument is given, the wave function is symmetrized to be invariant under symmetry operations.
-            * ``avgFun``: Reduction operation for the symmetrization.
-        """
-
-        # The net arguments have to be instances of flax.nn.Model
-        self.realNets = False
-        self.holomorphic = False
-        self.flat_gradient_function = flat_gradient_real
-        self.dict_gradient_function = dict_gradient_real
-        self.logarithmic = logarithmic
-
-        self.initialized = False
-        self.seed = seed
-        self.parameters = None
-
-        self._isGenerator = False
+    def __init__(
+        self,
+        net: nn.Module | Tuple[nn.Module, nn.Module],
+        sample_shape: int | tuple,
+        batch_size: int | None = None,
+        batch_size_per_device: int | None = None,
+        logarithmic=True,
+        seed: None | int = None,
+        orbit=None,
+        symmetry_average="exp",
+        sampler_dtype: jnp.dtype | None = None,
+        eval_dtype: jnp.dtype | None = None,
+        grad_dtype: jnp.dtype | None = None,
+        nnx_init=None,
+    ):
         if isinstance(net, collections.abc.Iterable):
-            net = jVMC.nets.two_nets_wrapper.TwoNets(net)
-        if not orbit is None:
-            net = jVMC.nets.sym_wrapper.SymNet(net=net, orbit=orbit, avgFun=avgFun)
-        if "sample" in dir(net):
-            if callable(net.sample):
-                self._isGenerator = True
-        self.net = net
-
-        self.batchSize = batchSize
-
-        # Need to keep handles of jit'd functions to avoid recompilation
-        self._eval_net_pmapd = global_defs.pmap_for_my_devices(self._eval, in_axes=(None, None, 0, None), static_broadcasted_argnums=(0, 3))
-        self._get_gradients_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
-        self._append_gradients = global_defs.pmap_for_my_devices(lambda x, y: jnp.concatenate((x[:, :], 1.j * y[:, :]), axis=1), in_axes=(0, 0))
-        self._get_gradients_dict_pmapd = global_defs.pmap_for_my_devices(self._get_gradients, in_axes=(None, None, 0, None, None), static_broadcasted_argnums=(0, 3, 4))
-        self._append_gradients_dict = global_defs.pmap_for_my_devices(lambda x, y: tree_map(lambda a,b: jnp.concatenate((a[:, :], 1.j * b[:, :]), axis=1), x, y), in_axes=(0, 0))
-        self._sample_jitd = {}
-
-    # **  end def __init__
-
-
-    def init_net(self, s):
-
-        if not self.initialized:
-    
-            self.parameters = self.net.init(jax.random.PRNGKey(self.seed), s[0,0,...])
-            self.realParams = False
-            dtypes = [a.dtype for a in tree_flatten(self.parameters)[0]]
-            if not all(d == dtypes[0] for d in dtypes):
-                raise Exception("Network uses different parameter data types. This is not supported.")
-            if dtypes[0] == np.single or dtypes[0] == np.double:
-                self.realParams = True
- 
-            # check Cauchy-Riemann condition to test for holomorphicity
-            def make_flat(t):
-                return jnp.concatenate([p.ravel() for p in tree_flatten(t)[0]])
-            grads_r = make_flat( jax.grad(lambda a,b: jnp.real(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
-            grads_i = make_flat( jax.grad(lambda a,b: jnp.imag(self.net.apply(a,b)))(self.parameters, s[0,0,...])["params"] )
-            if isclose(jnp.linalg.norm(grads_r - 1.j * grads_i)/grads_r.shape[0], 0.0, abs_tol=1e-14):
-                self.holomorphic = True
-                self.flat_gradient_function = flat_gradient_holo
+            if len(net) != 2:
+                raise ValueError(
+                    f"If a tuple is passed for 'net', this must have len 2. Got {len(net)}."
+                )
+            if nnx_init is not None:
+                if not isinstance(nnx_init, collections.abc.Iterable):
+                    raise ValueError(
+                        "If a tuple is passed for 'net', nnx_init can be either None or a tuple of len 2."
+                    )
+                if len(nnx_init) != 2:
+                    raise ValueError(
+                        "If a tuple is passed for 'net', and nnx_init is not None, nnx_init must be a tuple of len 2."
+                        f"Got {len(nnx_init)}"
+                    )
             else:
-                if self.realParams:
-                    self.flat_gradient_function = flat_gradient
-                    self.dict_gradient_function = dict_gradient
-                else:
-                    self.flat_gradient_function = flat_gradient_cpx_nonholo
+                nnx_init = (None, None)
+            net = tuple(_check_model(n, i) for n, i in zip(net, nnx_init))
+            net = TwoNets(net)
+        else:
+            net = _check_model(net, nnx_init)
 
-            self.paramShapes = [(p.size, p.shape) for p in tree_flatten(self.parameters["params"])[0]]
-            self.netTreeDef = jax.tree_util.tree_structure(self.parameters["params"])
-            self.numParameters = jnp.sum(jnp.array([p.size for p in tree_flatten(self.parameters["params"])[0]]))
+        if orbit is not None:
+            if not isinstance(orbit, SymmetryProjector):
+                raise TypeError(
+                    f"Orbit has to be an instance of jVMC.symmetry.SymmetryProjector, "
+                    f"got {orbit}"
+                )
+            net = ProjectedOrbitNet(
+                base_net=net, symmetry=orbit, symmetry_average=symmetry_average
+            )
+        self._net = net
 
-            self.initialized = True
+        if isinstance(self._net, ProjectedOrbitNet):
+            self._is_generator = has_callable_attr(net.base_net, "sample")
+        else:
+            self._is_generator = has_callable_attr(net, "sample")
 
-    # ** end init_net
+        self._eval_ratio = callable(getattr(net, "eval_ratio", None))
 
+        if isinstance(sample_shape, tuple):
+            self._sample_shape = sample_shape
+        else:
+            self._sample_shape = (sample_shape,)
+
+        num_devices = MESH.size
+        if (batch_size is None) == (batch_size_per_device is None):
+            raise ValueError(
+                "Exactly one of 'batch_size' or 'batch_size_per_device' must be specified"
+            )
+        if batch_size is None:
+            batch_size = batch_size_per_device * num_devices
+        elif batch_size % num_devices != 0:
+            raise ValueError(
+                f"The batch size ({batch_size}) has to be divisible by the number of devices ({num_devices})"
+            )
+        self._batch_size = batch_size
+
+        if logarithmic:
+            self.apply_fun = self.net.apply
+        else:
+
+            def apply_fun(parameters, s, *args, method=None, **kwargs):
+                out = self.net.apply(parameters, s, *args, method=method, **kwargs)
+
+                return jnp.log(out) if method is None else out
+
+            self.apply_fun = apply_fun
+
+        self.init_net(seed)
+
+        self._sampler_dtype = _check_dtype(sampler_dtype, self.param_dtype, "sampler")
+        self._eval_dtype = _check_dtype(eval_dtype, self.param_dtype, "eval")
+        self._grad_dtype = _check_dtype(grad_dtype, self.param_dtype, "grad")
+
+        self._append_gradients_dict_single = lambda x, y: tree_map(
+            lambda a, b: jnp.concatenate((a, 1.0j * b)), x, y
+        )
+        self._append_gradients_dict = lambda x, y: tree_map(
+            lambda a, b: jnp.concatenate((a[:, :], 1.0j * b[:, :]), axis=1), x, y
+        )
+        self._append_gradients_dict_jsh = jax.jit(self._append_gradients_dict)
+
+        self._frozen_params = None
+
+    @property
+    def parameters(self):
+        """
+        Variational parameters, as a dictionary with the parameter tree of the network under ``params``.
+
+        A new value can be a flat array, as given by ``parameters_flat``, or a parameter tree, with \
+        or without the ``params`` level. It is copied and cast to ``param_dtype``. The parameters \
+        listed in ``frozen_parameters`` keep their current value.
+        """
+        return self._parameters
+
+    @parameters.setter
+    def parameters(self, value):
+        if hasattr(value, "shape"):
+            if len(value) != len(self.parameters_flat):
+                raise ValueError(
+                    f"The given number of parameters ({len(value)}) "
+                    f"does not match the existing one ({len(self.parameters_flat)})"
+                )
+            value = self._param_unflatten(value)
+
+        if "params" not in value:
+            value = {"params": value}
+        if jax.tree_util.tree_structure(value["params"]) != self._net_tree_def:
+            raise ValueError(
+                "Parameter tree structure mismatch.\n"
+                f"  Expected: {self._net_tree_def}\n"
+                f"  Received: {jax.tree_util.tree_structure(value['params'])}"
+            )
+
+        if self._frozen_params is not None:
+            value = tree_map(lambda x: x, value)
+            for frozen_path in self._frozen_params:
+                original = reduce(lambda d, key: d[key], frozen_path, self.params)
+                reduce(lambda d, k: d[k], frozen_path[:-1], value["params"])[
+                    frozen_path[-1]
+                ] = original
+        if isinstance(self.parameters, flax.core.frozen_dict.FrozenDict):
+            value = freeze(value)
+
+        value = jax.tree_util.tree_map(lambda x: x.astype(self.param_dtype), value)
+        self._parameters = copy.deepcopy(value)
+
+    @property
+    def params(self):
+        """Parameter tree of the network. A new value can be given as for ``parameters``."""
+        return self.parameters["params"]
+
+    @params.setter
+    def params(self, value):
+        self.parameters = value
+
+    @property
+    def parameters_flat(self):
+        """
+        Get variational parameters.
+
+        Complex parameters are split into their real and imaginary parts: each leaf of the parameter \
+        tree contributes its real parts followed by its imaginary parts, so that the array has \
+        ``2 * num_parameters`` entries. Real parameters give ``num_parameters`` entries.
+
+        Returns:
+            Real array holding current values of all variational parameters.
+        """
+        if not self.real_params:
+            flat = jnp.concatenate(
+                [
+                    jnp.concatenate(
+                        [
+                            p.ravel().real,
+                            p.ravel().imag,
+                        ]
+                    )
+                    for p in tree_flatten(self.params)[0]
+                ]
+            )
+            return flat.astype(global_defs.DT_OUT_REAL)
+
+        return jnp.concatenate(
+            [p.ravel() for p in tree_flatten(self.params)[0]]
+        ).astype(global_defs.DT_OUT_REAL)
+
+    @property
+    def frozen_parameters(self):
+        """
+        Parameters that keep their value when ``parameters`` is assigned, as a list of paths.
+
+        A new value adds one path to the list: a ``str`` for an entry of the parameter tree, or a \
+        tuple or list of ``str`` for a nested one, e.g., ``("Dense_0", "kernel")``. ``None`` clears \
+        the list. Frozen parameters still appear in ``parameters_flat`` and in the gradients.
+        """
+        return self._frozen_params
+
+    @frozen_parameters.setter
+    def frozen_parameters(self, labels: list[str] | None | str):
+        if labels is not None:
+            if isinstance(labels, str):
+                labels = (labels,)
+            try:
+                reduce(lambda d, key: d[key], labels, self.parameters["params"])
+            except KeyError as e:
+                raise ValueError(f"The given label {e} does not exist in parameters")
+
+            if self._frozen_params is None:
+                self._frozen_params = []
+            if labels not in self._frozen_params:
+                self._frozen_params.append(labels)
+        else:
+            self._frozen_params = None
+
+    @property
+    def sampler_parameters(self):
+        """Parameters cast to ``sampler_dtype``."""
+        return _cast_pytree(self.parameters, self.sampler_dtype)
+
+    @property
+    def eval_parameters(self):
+        """Parameters cast to ``eval_dtype``."""
+        return _cast_pytree(self.parameters, self.eval_dtype)
+
+    @property
+    def grad_parameters(self):
+        """Parameters cast to ``grad_dtype``."""
+        return _cast_pytree(self.parameters, self.grad_dtype)
+
+    @property
+    def batch_size(self):
+        """Total batch size for batched network evaluation."""
+        return self._batch_size
+
+    @property
+    def gradient_batch_size(self):
+        """
+        Number of gradient rows per block of ``lazy_gradients()``: ``batch_size`` times the number of \
+        symmetry elements of the projector, if there is one.
+        """
+        nsymm = (
+            self.net.symmetry.nsymm if isinstance(self.net, ProjectedOrbitNet) else 1
+        )
+        return self.batch_size * nsymm
+
+    @property
+    def net(self):
+        """Network of the state, including the symmetry projector and the two-network wrapper."""
+        return self._net
+
+    @property
+    def sample_shape(self):
+        """Shape of a configuration."""
+        return self._sample_shape
+
+    def to_array(self, basis, *, normalize=True):
+        """
+        Evaluate the variational state on an ordered computational basis.
+
+        Args:
+            * ``basis``: Ordered basis with shape ``(dimension, *sample_shape)``.
+            * ``normalize``: Normalize the returned vector.
+
+        Returns:
+            State vector with shape ``(dimension,)``.
+        """
+        basis = jnp.asarray(basis)
+
+        if basis.ndim < 2 or tuple(basis.shape[1:]) != tuple(self.sample_shape):
+            raise ValueError(
+                f"Expected basis shape (dimension, {self.sample_shape}), got {basis.shape}."
+            )
+
+        if basis.shape[0] == 0:
+            raise ValueError("The basis is empty.")
+
+        values = self(basis).reshape(-1)
+
+        if values.shape[0] != basis.shape[0]:
+            raise RuntimeError(
+                "The number of amplitudes does not match the basis dimension."
+            )
+
+        if normalize:
+            values -= jnp.max(jnp.real(values))
+        statevector = jnp.exp(values)
+
+        if normalize:
+            norm = jnp.linalg.norm(statevector)
+
+            if not bool(jnp.isfinite(norm)) or bool(norm == 0):
+                raise ValueError(f"Cannot normalize statevector with norm {norm}.")
+
+            statevector /= norm
+
+        return statevector
+
+    @property
+    def is_generator(self):
+        """Whether the network, or the one under the symmetry projector, provides ``sample()``."""
+        return self._is_generator
+
+    @property
+    def eval_ratio(self):
+        """Whether the network provides ``eval_ratio()``. A symmetry projector does not."""
+        return self._eval_ratio
+
+    @property
+    def holomorphic(self):
+        """Whether the network is holomorphic in its parameters, as detected at construction."""
+        return self._holomorphic
+
+    @property
+    def real_params(self):
+        """Whether the parameters are real."""
+        return self._real_params
+
+    @property
+    def flat_gradient_function(self):
+        """Called as ``f(apply_fun, parameters, s)`` to get the flat gradient for a single configuration."""
+        return self._flat_gradient_function
+
+    @property
+    def dict_gradient_function(self):
+        """Called as ``f(apply_fun, parameters, s)`` to get the gradient tree for a single configuration."""
+        return self._dict_gradient_function
+
+    @property
+    def param_shapes(self):
+        """List with ``(size, shape)`` of every leaf of the parameter tree."""
+        return self._param_shapes
+
+    @property
+    def num_parameters(self):
+        """Number of parameters. A complex parameter counts as one."""
+        return self._num_parameters
+
+    @property
+    def param_dtype(self):
+        """Data type of the stored parameters."""
+        return self._param_dtype
+
+    @property
+    def sampler_dtype(self):
+        """Data type of the parameters while sampling."""
+        return self._sampler_dtype
+
+    @property
+    def eval_dtype(self):
+        """Data type of the parameters while evaluating coefficients."""
+        return self._eval_dtype
+
+    @property
+    def grad_dtype(self):
+        """Data type of the parameters while computing gradients."""
+        return self._grad_dtype
+
+    @property
+    def out_dtype(self):
+        """Data type of the returned coefficients and gradients."""
+        return self._out_dtype
+
+    def init_net(self, seed: int | None):
+        """
+        Initialize the network parameters and detect the type of the network.
+
+        This is called at construction, on a random real configuration.
+
+        Args:
+            * ``seed``: Seed for the PRNG. If ``None``, a random seed is generated.
+        """
+        if seed == None:
+            seed = generate_seed()
+
+        dummy_sample = jax.random.normal(jax.random.PRNGKey(seed), self.sample_shape)
+        self._parameters = jax.device_put(
+            self.net.init(jax.random.PRNGKey(seed), dummy_sample), REPLICATED_SHARDING
+        )
+        self._net_tree_def = jax.tree_util.tree_structure(self.params)
+        out = self.apply_fun(self.parameters, dummy_sample)
+        is_complex = jnp.issubdtype(out.dtype, jnp.complexfloating)
+        self._out_dtype = (
+            global_defs.DT_OUT_CPX if is_complex else global_defs.DT_OUT_REAL
+        )
+
+        (
+            self._real_params,
+            self._holomorphic,
+            self._flat_gradient_function,
+            self._dict_gradient_function,
+        ) = pick_gradient(self.apply_fun, self.parameters, dummy_sample)
+
+        self._param_shapes = []
+        self._num_parameters = 0
+        for p in tree_flatten(self.params)[0]:
+            self._param_shapes.append((p.size, p.shape))
+            self._num_parameters += p.size
+        self._param_dtype = p.dtype
 
     def __call__(self, s):
-        """Evaluate variational wave function.
+        """
+        Evaluate variational wave function.
         
         Compute the logarithmic wave function coefficients :math:`\\ln\\psi(s)` for \
         computational configurations :math:`s`.
         
         Args:
-            * ``s``: Array of computational basis states.
+            * ``s``: Array of computational basis states, of shape ``(N, *sample_shape)``.
+
         Returns:
-            Logarithmic wave function coefficients :math:`\\ln\\psi(s)`.
-        
+            Logarithmic wave function coefficients :math:`\\ln\\psi(s)`, of shape ``(N,)``.
+
         :meta public:
         """
+        return self._apply_fun_sh(
+            s, parameters=self.eval_parameters, batch_size=self.batch_size
+        ).astype(self.out_dtype)
 
-        self.init_net(s)
+    @sharded()
+    def _apply_fun_sh(self, s, *, parameters, batch_size):
+        return self.apply_fun(parameters, s)
 
-        return self._eval_net_pmapd(self.net, self.parameters, s, self.batchSize)
+    def call_ratio(self, s, sp):
+        """
+        Compute the ratio of wave function coefficients :math:`\\psi(s')/\\psi(s)`.
 
+        The ``eval_ratio()`` method of the network is used if it exists. Otherwise, the ratio \
+        is computed from :math:`\\ln\\psi`.
 
-    def _eval(self, net, params, s, batchSize):
+        Args:
+            * ``s``: Array of computational basis states, of shape ``(N, *sample_shape)``.
+            * ``sp``: Array of computational basis states :math:`s'`, of the same shape.
 
-        sb = create_batches(s, batchSize)
+        Returns:
+            Ratios of wave function coefficients, of shape ``(N,)``.
+        """
+        if self.eval_ratio:
+            return self._apply_ratio_sh(
+                s, sp, parameters=self.eval_parameters, batch_size=self.batch_size
+            ).astype(self.out_dtype)
 
-        def scan_fun(c, x):
-            return c, jax.vmap(lambda y: net.apply(params, y), in_axes=(0,))(x)
+        return jnp.exp(self(sp) - self(s))
 
-        res = jax.lax.scan(scan_fun, None, jnp.array(sb))[1].reshape((-1,))
-
-        return res[:s.shape[0]]
-
-    # **  end def __call__
-
-
-    def _get_gradients(self, net, params, s, batchSize, flat_grad):
-
-        sb = create_batches(s, batchSize)
-
-        def scan_fun(c, x):
-            return c, jax.vmap(lambda y: flat_grad(net, params, y), in_axes=(0,))(x)
-
-        g = jax.lax.scan(scan_fun, None, sb)[1]
-
-        g = tree_map(lambda x: x.reshape((-1,) + x.shape[2:]), g)
-
-        #return g[:s.shape[0]]
-        return tree_map(lambda x: x[:s.shape[0]], g)
-
+    @sharded()
+    def _apply_ratio_sh(self, s, sp, *, parameters, batch_size):
+        return self.apply_fun(parameters, s, sp, method=self.net.eval_ratio)
 
     def gradients(self, s):
-        """Compute gradients of logarithmic wave function.
+        """
+        Compute gradients of logarithmic wave function.
         
         Compute gradient of the logarithmic wave function coefficients, \
         :math:`\\nabla\\ln\\psi(s)`, for computational configurations :math:`s`.
         
         Args:
-            * ``s``: Array of computational basis states.
+            * ``s``: Array of computational basis states, of shape ``(N, *sample_shape)``.
+
         Returns:
-            A vector containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
+            An array of shape ``(N, P)`` containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
             with respect to each variational parameter :math:`\\theta_k` for each \
-            input configuration :math:`s`.
+            input configuration :math:`s`. The columns follow ``parameters_flat``: ``P`` is \
+            ``num_parameters`` for real parameters, and ``2 * num_parameters`` for complex parameters, \
+            whose real and imaginary parts are separate columns.
         """
-        
-        self.init_net(s)
+        return self._gradients_sh(
+            s, parameters=self.grad_parameters, batch_size=self.batch_size
+        ).astype(self.out_dtype)
 
-        return self._get_gradients_pmapd(self.net, self.parameters, s, self.batchSize, self.flat_gradient_function)
+    @sharded(
+        automatic_sharding=True
+    )  # TODO: Set flag to False once jax problem is solved
+    def _gradients_sh(self, s, *, parameters, batch_size):
+        return self.flat_gradient_function(self.apply_fun, parameters, s)
 
-    # **  end def gradients
+    def lazy_gradients(self, s):
+        """
+        Lazy version of ``gradients``: an iterable that recomputes one gradient block
+        at a time. Network evaluations use ``batch_size`` configurations; projected
+        networks collect up to ``gradient_batch_size = batch_size * nsymm`` gradient
+        rows per block, capped at the padded number of samples. Symmetry is reduced
+        before the rows are stored, so it does not multiply the block's row count.
 
+        On more than one device a batch does not consist of consecutive configurations.
+        To line up another array with the batches, split it with the ``layout`` of the
+        returned iterable, e.g. ``lazy.layout.split(pad_to_devices(weights))``: if the number
+        of configurations is not divisible by the number of devices, the configurations are
+        zero padded and the batches include the gradients of the padding configurations.
 
-    def gradients_dict(self, s):
-        """Compute gradients of logarithmic wave function and return them as dictionary.
-        
-        Compute gradient of the logarithmic wave function coefficients, \
-        :math:`\\nabla\\ln\\psi(s)`, for computational configurations :math:`s`.
-        
         Args:
-            * ``s``: Array of computational basis states.
-        Returns:
-            A dictionary containing derivatives :math:`\\partial_{\\theta_k}\\ln\\psi(s)` \
-            with respect to each variational parameter :math:`\\theta_k` for each \
-            input configuration :math:`s`.
-        """
-        
-        self.init_net(s)
-
-        # Here we need to add the treatment for the complex non-holomorphic case
-        gradOut = self._get_gradients_dict_pmapd(self.net, self.parameters, s, self.batchSize, self.dict_gradient_function)
-
-        if self.holomorphic:
-            return self._append_gradients_dict(gradOut, gradOut)
-
-        return gradOut
-
-    # **  end gradients_dict
-
-
-    def grad_dict_to_vec_map(self):
-
-        PTreeShape = []
-        start = 0
-        P = jnp.arange(2*self.numParameters)
-        for s in self.paramShapes:
-            # Here we need to add the treatment for the complex non-holomorphic case
-            if self.holomorphic:
-                PTreeShape.append( ( P[start:start + 2*s[0]]) )
-                start += 2*s[0]
-            else:
-                PTreeShape.append(P[start:start + s[0]])
-                start += s[0]
-        
-        # Return unflattened parameters
-        return tree_unflatten(self.netTreeDef, PTreeShape)
-
-
-    def get_sampler_net(self):
-        """Get real part of NQS and current parameters
-
-        This function returns a function that evaluates the real part of the NQS,
-        :math:`\\text{Re}(\\log\\psi(s))`, and the current parameters.
+            * ``s``: Array of computational basis states, of shape ``(N, *sample_shape)``.
 
         Returns:
-            Real part of the NQS and current parameters
+            A ``jVMC.sharding_config.SizedIterable`` yielding the gradient blocks, which can be \
+            iterated more than once.
         """
+        if self.gradient_batch_size == self.batch_size:
+            return self._lazy_gradients_sh(
+                s, parameters=self.grad_parameters, batch_size=self.batch_size
+            )
 
-        evalReal = lambda p,x: jnp.real( self.net.apply(p,x) )
-        if "eval_real" in dir(self.net):
-            if callable(self.net.eval_real):
-                evalReal = lambda p,x: jnp.real( self.net.apply(p,x,method=self.net.eval_real) )
+        s = jax.device_put(pad_to_devices(s), DEVICE_SHARDING)
+        layout = BatchLayout(s.shape[0], min(self.gradient_batch_size, s.shape[0]))
+        parameters = self.grad_parameters
 
-        return evalReal, self.parameters
+        def blocks():
+            for i in range(layout.n_batches):
+                samples = layout.trim(layout.take(s, i), i)
+                yield self._gradients_sh(
+                    samples, parameters=parameters, batch_size=self.batch_size
+                ).astype(self.out_dtype)
 
-    # **  end def get_sampler_net
+        return SizedIterable(blocks, layout.n_batches, layout.batch_size, layout)
 
-    def sample(self, numSamples, key, parameters=None):
-
-        if self._isGenerator:
-            net, params = self.net, self.parameters
-
-            if parameters is not None:
-                params = parameters
-
-            numSamplesStr = str(numSamples)
-
-            # check whether _get_samples is already compiled for given number of samples
-            if not numSamplesStr in self._sample_jitd:
-                self._sample_jitd[numSamplesStr] = global_defs.pmap_for_my_devices(lambda p, n, x: net.apply(p, n, x, method=net.sample),
-                                                                                   static_broadcasted_argnums=(1,), in_axes=(None, None, 0))
-
-            samples = self._sample_jitd[numSamplesStr](params, int(numSamples), key)
-
-            return samples
-
-        return None
-
-    # **  end def sample
-
-    def _sample(self, net, params, numSamples, key):
-
-        return net.apply(params, numSamples, key, method=net.sample)
-
-
-    def update_parameters(self, deltaP):
-        """Update variational parameters.
-        
-        Sets new values of all variational parameters by adding given values.
-        If parameters are not initialized, parameters are set to ``deltaP``.
-        
-        Args:
-            * ``deltaP``: Values to be added to variational parameters.
-        """
-
-        if not self.initialized:
-            self.set_parameters(deltaP)
-
-        # Compute new parameters
-        newParams = jax.tree_util.tree_map(
-            jax.lax.add, self.params,
-            self._param_unflatten(deltaP)
+    @sharded(automatic_sharding=True, yield_iter=True)
+    def _lazy_gradients_sh(self, s, *, parameters, batch_size):
+        return self.flat_gradient_function(self.apply_fun, parameters, s).astype(
+            self.out_dtype
         )
 
-        # Update model parameters
-        self.params = newParams
+    def gradients_dict(self, s):
+        """
+        Compute gradients of logarithmic wave function, organized as a parameter tree.
 
-    # **  end def update_parameters
-
-
-    def set_parameters(self, P):
-        """Set variational parameters.
-        
-        Sets new values of all variational parameters.
-        
         Args:
-            * ``P``: New values of variational parameters.
-        """
+            * ``s``: Array of computational basis states, of shape ``(N, *sample_shape)``.
 
-        if not self.initialized:
-            raise RuntimeError("Error in NQS.set_parameters(): Network not initialized. Evaluate net on example input for initialization.")
-
-        # Update model parameters
-        if isinstance(P, flax.core.frozen_dict.FrozenDict):
-            self.params = P
-        else:
-            self.params = self._param_unflatten(P)
-
-    # **  end def set_parameters
-
-
-    def _param_unflatten(self, P):
-
-        # Reshape parameter update according to net tree structure
-        PTreeShape = []
-        start = 0
-        for s in self.paramShapes:
-            if not self.realParams:
-                PTreeShape.append( ( P[start:start + s[0]] + 1.j * P[start + s[0]:start + 2*s[0]]).reshape(s[1]) )
-                start += 2*s[0]
-            else:
-                PTreeShape.append(P[start:start + s[0]].reshape(s[1]))
-                start += s[0]
-        
-        # Return unflattened parameters
-        return tree_unflatten(self.netTreeDef, PTreeShape)
-
-    # **  end def _param_unflatten
-
-
-    def get_parameters(self):
-        """Get variational parameters.
-        
         Returns:
-            Array holding current values of all variational parameters.
+            A tree with the structure of ``params``, where each leaf has shape ``(N, n)`` and holds \
+            the derivatives with respect to the flattened leaf of the parameter tree. For a \
+            holomorphic network, ``n`` is twice the size of the leaf, as in ``gradients()``.
         """
+        result = self._gradients_dict_sh(
+            s, parameters=self.grad_parameters, batch_size=self.batch_size
+        )
+        if self.holomorphic:
+            result = self._append_gradients_dict_jsh(result, result)
 
-        if not self.initialized:
+        return _cast_pytree(result, self.out_dtype)
 
-            return None
+    @sharded(
+        automatic_sharding=True
+    )  # TODO: Set flag to False once jax problem is solved
+    def _gradients_dict_sh(self, s, *, parameters, batch_size):
+        return self.dict_gradient_function(self.apply_fun, parameters, s)
 
+    def sample(self, num_samples, key=None):
+        """
+        Draw configurations directly from the ``sample()`` method of the network.
 
-        if not self.realParams:
-            paramOut = jnp.concatenate([jnp.concatenate([p.ravel().real, p.ravel().imag]) for p in tree_flatten(self.params)[0]])
-        else:
-            paramOut = jnp.concatenate([p.ravel() for p in tree_flatten(self.params)[0]])
+        Args:
+            * ``num_samples``: Number of configurations to draw.
+            * ``key``: An instance of ``jax.random.PRNGKey``, or an ``int`` used as seed. If \
+              ``None``, a random seed is generated. If several keys are given, the first one is used.
 
-        return paramOut
+        Returns:
+            Configurations of shape ``(num_samples, *sample_shape)``, or ``None`` if the network does \
+            not provide ``sample()``.
+        """
+        if self.is_generator:
+            key = format_key(key)
+            if len(key.shape) > 1:
+                key = key[0]
+            keys = broadcast_split_key(key, num_samples)
 
-    # **  end def set_parameters
+            return self._sample(
+                keys, parameters=self.sampler_parameters, batch_size=self.batch_size
+            )
 
-    @property
-    def is_generator(self):
-        return self._isGenerator
-
-    @property
-    def params(self):
-        if self.initialized:
-            return self.parameters["params"]
         return None
 
-    @params.setter
-    def params(self, val):
-        # Replace 'params' in parameters by `val`
-        ps = unfreeze(self.parameters)
-        ps["params"] = unfreeze(val)
-        if isinstance(self.parameters, flax.core.frozen_dict.FrozenDict):
-            ps = freeze(ps)
-        self.parameters = ps
-        # self.parameters = freeze({
-        #                        **unfreeze(self.parameters.pop("params")[0]),
-        #                        "params": unfreeze(val)
-        #                        })
+    @sharded()
+    def _sample(self, keys, *, parameters, batch_size):
+        return self.net.apply(parameters, keys, method=self.net.sample)
 
+    def _param_unflatten(self, P):
+        """
+        Reshape parameter array update according to net tree structure
+        """
+        if isinstance(P, dict):
+            if "params" in P:
+                return P["params"]
+            else:
+                return P
+
+        P_tree_shape = []
+        start = 0
+        for s in self.param_shapes:
+            if not self._real_params:
+                P_tree_shape.append(
+                    (
+                        P[start : start + s[0]]
+                        + 1.0j * P[start + s[0] : start + 2 * s[0]]
+                    ).reshape(s[1])
+                )
+                start += 2 * s[0]
+            else:
+                P_tree_shape.append(P[start : start + s[0]].reshape(s[1]))
+                start += s[0]
+
+        return tree_unflatten(self._net_tree_def, P_tree_shape)

@@ -1,268 +1,446 @@
 import unittest
-
-import jax
-jax.config.update("jax_enable_x64", True)
-
-import jax.random as random
-import jax.numpy as jnp
-
-import numpy as np
-
-import jVMC
-import jVMC.operator as op
-import jVMC.sampler
-import jVMC.nets as nets
-from jVMC.vqs import NQS
-import jVMC.global_defs as global_defs
+from functools import reduce
+from itertools import product
 
 import flax.linen as nn
-class Target(nn.Module):
-  """Target wave function, returns a vector with the same dimension as the Hilbert space
+import jax.numpy as jnp
+import numpy as np
+from jax import random
 
-    Initialization arguments:
-        * ``L``: System size
-        * ``d``: local Hilbert space dimension
-        * ``delta``: small number to avoid log(0)
+import jVMC.operator.discrete as op
+from jVMC import global_defs, nets
+from jVMC.sharding_config import distribute
+from jVMC.symmetry.lattice_symmetries import square_translation_symmetry
+from jVMC.vqs import NQS
+
+L = 4
+LDIM = 2
+KEY = random.PRNGKey(3)
+NUM_SAMPLES = 2**6
+
+
+def _parity_between(state, i, j):
+    if i == j:
+        return 1
+    if i < j:
+        mask = ((1 << j) - 1) ^ ((1 << (i + 1)) - 1)
+    else:
+        mask = ((1 << i) - 1) ^ ((1 << (j + 1)) - 1)
+    return 1 - 2 * ((state & mask).bit_count() & 1)
+
+
+def _hop_reference(H, state, src, dst, amplitude):
+    if ((state >> src) & 1) == 0 or ((state >> dst) & 1) == 1:
+        return
+    sign = _parity_between(state, dst, src)
+    new_state = state ^ (1 << src) ^ (1 << dst)
+    H[new_state, state] += amplitude * sign
+
+
+def _spinless_orbital(site, L_chain):
+    return L_chain - 1 - site
+
+
+def _spinful_orbital(site, spin, L_chain):
+    if spin == "down":
+        return 2 * (L_chain - 1 - site)
+    if spin == "up":
+        return 2 * (L_chain - 1 - site) + 1
+    raise ValueError(f"Unknown spin '{spin}'")
+
+
+def _spinless_config_from_state(state, L_chain):
+    return [
+        ((state >> _spinless_orbital(site, L_chain)) & 1) for site in range(L_chain)
+    ]
+
+
+def _spinless_state_from_config(config):
+    L_chain = len(config)
+    state = 0
+    for site, occ in enumerate(config):
+        state |= int(occ) << _spinless_orbital(site, L_chain)
+    return state
+
+
+def _spinful_config_from_state(state, L_chain):
+    config = []
+    for site in range(L_chain):
+        up = (state >> _spinful_orbital(site, "up", L_chain)) & 1
+        down = (state >> _spinful_orbital(site, "down", L_chain)) & 1
+        config.append(up + 2 * down)
+    return config
+
+
+def _spinful_state_from_config(config):
+    L_chain = len(config)
+    state = 0
+    for site, local_state in enumerate(config):
+        state |= (int(local_state) & 1) << _spinful_orbital(site, "up", L_chain)
+        state |= ((int(local_state) >> 1) & 1) << _spinful_orbital(
+            site, "down", L_chain
+        )
+    return state
+
+
+def _site_matrix(L_chain, site, A, right=None):
+    """
+    ``A`` on ``site`` of a chain of two-level sites, site 0 being the leftmost factor of the
+    Kronecker product, and ``right`` on all sites to its right (identities if None).
+    """
+    right = np.eye(2) if right is None else right
+    return reduce(np.kron, [np.eye(2)] * site + [A] + [right] * (L_chain - site - 1))
+
+
+def _dense_matrix_from_operator(operator, configs, state_from_config):
+    configs = np.asarray(configs, dtype=np.int32)
+    sp, mat_els = operator.get_conn_elements(
+        jnp.asarray(configs, dtype=global_defs.DT_SAMPLES), configs.shape[0]
+    )
+    sp = np.asarray(sp)
+    mat_els = np.asarray(mat_els)
+
+    dim = configs.shape[0]
+    H = np.zeros((dim, dim), dtype=np.complex128)
+    for col, _ in enumerate(configs):
+        for row_config, mat_el in zip(sp[col], mat_els[col]):
+            H[state_from_config(row_config), col] += mat_el
+    return H
+
+
+def _reference_spinful_hubbard(L_chain, t, U, mu):
+    n_orbitals = 2 * L_chain
+    dim = 1 << n_orbitals
+    H = np.zeros((dim, dim), dtype=np.float64)
+
+    for state in range(dim):
+        for site in range(L_chain):
+            nbr = (site + 1) % L_chain
+            for spin in ("down", "up"):
+                site_orb = _spinful_orbital(site, spin, L_chain)
+                nbr_orb = _spinful_orbital(nbr, spin, L_chain)
+                _hop_reference(H, state, site_orb, nbr_orb, t)
+                _hop_reference(H, state, nbr_orb, site_orb, t)
+
+            up_occ = (state >> _spinful_orbital(site, "up", L_chain)) & 1
+            down_occ = (state >> _spinful_orbital(site, "down", L_chain)) & 1
+            H[state, state] += U * up_occ * down_occ
+            H[state, state] -= mu * (up_occ + down_occ)
+
+    return H
+
+
+def _reference_spinless_tv(L_chain, t, V, mu):
+    dim = 1 << L_chain
+    H = np.zeros((dim, dim), dtype=np.float64)
+
+    for state in range(dim):
+        for site in range(L_chain):
+            nbr = (site + 1) % L_chain
+            site_orb = _spinless_orbital(site, L_chain)
+            nbr_orb = _spinless_orbital(nbr, L_chain)
+            _hop_reference(H, state, site_orb, nbr_orb, t)
+            _hop_reference(H, state, nbr_orb, site_orb, t)
+
+            site_occ = (state >> site_orb) & 1
+            nbr_occ = (state >> nbr_orb) & 1
+            H[state, state] += V * site_occ * nbr_occ
+            H[state, state] -= mu * site_occ
+
+    return H
+
+
+class Target(nn.Module):
+    """
+    Target wave function, returns a vector with the same dimension as the Hilbert space
+
+      Initialization arguments:
+          * ``L``: System size
+          * ``d``: local Hilbert space dimension
+          * ``delta``: small number to avoid log(0)
 
     """
-  L: int
-  d: float = 2.00
-  delta: float = 1e-15
 
-  @nn.compact
-  def __call__(self, s):
-    kernel = self.param('kernel',
-                        nn.initializers.constant(1),
-                        (int(self.d**self.L)))
-    # return amplitude for state s
-    idx = ((self.d**jnp.arange(self.L)).dot(s[::-1])).astype(int) # NOTE that the state is reversed to account for different bit conventions used in openfermion
-    return jnp.log(abs(kernel[idx]+self.delta)) + 1.j*jnp.angle(kernel[idx]) 
+    L: int
+    d: float = 2.00
+    delta: float = 1e-15
 
+    @nn.compact
+    def __call__(self, s):
+        kernel = self.param(
+            "kernel", nn.initializers.constant(1), (int(self.d**self.L))
+        )
+        # return amplitude for state s
+        idx = ((self.d ** jnp.arange(self.L)).dot(s[::-1])).astype(
+            int
+        )  # NOTE that the state is reversed to account for different bit conventions used in openfermion
 
-def get_shape(shape):
-    return (global_defs.device_count(),) + shape
+        return jnp.log(abs(kernel[idx] + self.delta)) + 1.0j * jnp.angle(kernel[idx])
 
 
 class TestOperator(unittest.TestCase):
-
-    def test_nonzeros(self):
-
-        L = 4
-        lDim = 2
-        key = random.PRNGKey(3)
-        s = random.randint(key, (24, L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L)))
-
-        h = op.BranchFreeOperator()
-
-        h += 2. * op.Sp(0)
-        h += 2. * op.Sp(1)
-        h += 2. * op.Sp(2)
-
-        sp, matEl = h.get_s_primes(s)
-
-        logPsi = jnp.ones(s.shape[:-1])
-        logPsiSP = jnp.ones(sp.shape[:-1])
-
-        tmp = h.get_O_loc_unbatched(logPsi, logPsiSP)
-
-        self.assertTrue(jnp.sum(jnp.abs(tmp - 2. * jnp.sum(-(s[..., :3] - 1), axis=-1))) < 1e-7)
-
-    def test_op_with_arguments(self):
-
-        L = 4
-        key = random.PRNGKey(3)
-        s = random.randint(key, (24, L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L)))
-
-        h = op.BranchFreeOperator()
-
-        def f(t):
-            return 2.0 * t
-
-        h.add(op.scal_opstr(f, (op.Sp(0),)))
-        h.add(op.scal_opstr(f, (op.Sp(1),)))
-        h.add(op.scal_opstr(f, (op.Sp(2),)))
-
-        for t in [0.5, 2, 13.9]:
-            sp, matEl = h.get_s_primes(s, t)
-
-            logPsi = jnp.ones(s.shape[:-1])
-            logPsiSP = jnp.ones(sp.shape[:-1])
-
-            tmp = h.get_O_loc_unbatched(logPsi, logPsiSP)
-
-            self.assertTrue(jnp.sum(jnp.abs(tmp - f(t) * jnp.sum(-(s[..., :3] - 1), axis=-1))) < 1e-7)
-
     def test_op_2d(self):
+        s = random.randint(KEY, (NUM_SAMPLES, L, L), 0, 2, dtype=global_defs.DT_SAMPLES)
 
-        L = 4
-        key = random.PRNGKey(3)
-        s = random.randint(key, (24, L, L), 0, 2, dtype=np.int32).reshape(get_shape((-1, L, L)))
+        h = 0.3 * op.SigmaPlus(0) + 1.1 * op.SigmaPlus(1) + 0.15 * op.SigmaPlus(4)
 
-        h = op.BranchFreeOperator()
+        sp, mat_els = h.get_conn_elements(s, NUM_SAMPLES)
 
-        h += 0.3 * op.Sp(0)
-        h += 1.1 * op.Sp(1)
-        h += 0.15 * op.Sp(4)
-
-        sp, matEl = h.get_s_primes(s)
-
-        self.assertTrue(sp.shape[2:] == (L,L))
-
-
-    def test_batched_Oloc(self):
-
-        L = 4
-
-        h = op.BranchFreeOperator()
-        for i in range(L):
-            h.add(op.scal_opstr(2., (op.Sx(i),)))
-            h.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
-
-        rbm = nets.CpxRBM(numHidden=2, bias=False)
-        psi = NQS(rbm)
-
-        mcSampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip, numChains=1)
-
-        numSamples = 100
-        s, logPsi, _ = mcSampler.sample(numSamples=numSamples)
-
-        sp, matEl = h.get_s_primes(s)
-        logPsiSp = psi(sp)
-        Oloc1 = h.get_O_loc_unbatched(logPsi, logPsiSp)
-
-        batchSize = 13
-        Oloc2 = h.get_O_loc_batched(s, psi, logPsi, batchSize)
-
-        self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)
-
-    def test_batched_Oloc2(self):
-        L = 4
-
-        hamilton_unbatched = op.BranchFreeOperator()
-        hamilton_batched = op.BranchFreeOperator(ElocBatchSize=13)
-        for i in range(L):
-            hamilton_unbatched.add(op.scal_opstr(2., (op.Sx(i),)))
-            hamilton_unbatched.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
-            hamilton_batched.add(op.scal_opstr(2., (op.Sx(i),)))
-            hamilton_batched.add(op.scal_opstr(2., (op.Sy(i), op.Sz((i + 1) % L))))
-
-        rbm = nets.CpxRBM(numHidden=2, bias=False)
-        psi = NQS(rbm)
-
-        mcSampler = jVMC.sampler.MCSampler(psi, (L,), random.PRNGKey(0), updateProposer=jVMC.sampler.propose_spin_flip,
-                                           numChains=1)
-
-        numSamples = 100
-        s, logPsi, _ = mcSampler.sample(numSamples=numSamples)
-
-        Oloc1 = hamilton_unbatched.get_O_loc(s, psi, logPsi)
-
-        Oloc2 = hamilton_batched.get_O_loc(s, psi, logPsi)
-
-        self.assertTrue(jnp.abs(jnp.sum(Oloc1) - jnp.sum(Oloc2)) < 1e-5)
+        self.assertTrue(sp.shape[2:] == (L, L))
 
     def test_td_prefactor(self):
+        h = op.SigmaZ(0) + op.SigmaZ(1) + 0.1 * (op.SigmaX(0) + op.SigmaX(1))
+        h._compile()
 
-        hamiltonian = op.BranchFreeOperator()
-        hamiltonian.add((op.Sz(0),))
-        hamiltonian.add((op.Sz(1),))
-        # hamiltonian.add((op.Sx(0),op.Sx(1)))
-        hamiltonian.add(op.scal_opstr(0.1, (op.Sx(0), op.Sx(1))))
-
-        hamiltonian.compile()
-
-    def test_fermionic_operators(self):
-        L = 2
-
-        rbm = nets.CpxRBM(numHidden=2, bias=True)
-        psi = NQS(rbm)
-
-        sampler = jVMC.sampler.ExactSampler(psi, (L,))
-
-        def commutator(i,j):
-            Comm = op.BranchFreeOperator()
-            # Comm.add(op.scal_opstr( 1., (op.annihilation(i), op.creation(j), ) ) )
-            # Comm.add(op.scal_opstr( 1., (op.creation(j), op.annihilation(i), ) ) )
-            Comm.add(op.scal_opstr( 1., (op.creation(j), op.annihilation(i)) ) )
-            Comm.add(op.scal_opstr( 1., (op.annihilation(i), op.creation(j)) ) )
-            return Comm
-
-        observalbes_dict = {
-                            "same_site": [commutator(0,0),commutator(1,1)], 
-                            "distinct_site": [commutator(0,1),commutator(1,0)]
-                            }
-        out_dict = jVMC.util.util.measure(observalbes_dict, psi, sampler)
-
-        self.assertTrue(
-            jnp.allclose(
-                jnp.concatenate(
-                    (out_dict["same_site"]['mean'],
-                     out_dict["distinct_site"]['mean'])),
-                        jnp.array([1.,1.,0.,0.]),
-                        rtol=1e-15)
+    ########################################################################
+    # spinful fermionic operators
+    ########################################################################
+    def test_spinful_fermionic_onsite_anticommutators(self):
+        for spin in ["up", "down"]:
+            anti = op.Creation(0, spin) * op.Annihilation(0, spin) + op.Annihilation(
+                0, spin
+            ) * op.Creation(0, spin)
+            sp, mat_els = anti.get_conn_elements(
+                jnp.array([[0], [1], [2], [3]], dtype=global_defs.DT_SAMPLES), 4
             )
-        
+            loc = jnp.sum(mat_els, axis=1)
+            self.assertTrue(jnp.allclose(loc, jnp.ones(4)))
+
+    def test_spinful_fermionic_onsite_cross_anticommutator(self):
+        s = jnp.array([[0], [1], [2], [3]], dtype=global_defs.DT_SAMPLES)
+
+        anti = op.Creation(0, "up") * op.Creation(0, "down") + op.Creation(
+            0, "down"
+        ) * op.Creation(0, "up")
+
+        sp, mat_els = anti.get_conn_elements(s, 4)
+        loc = jnp.sum(mat_els, axis=1)
+
+        self.assertTrue(jnp.allclose(loc, jnp.zeros(4)))
+
+    def test_spinful_fermionic_intersite_anticommutator(self):
+        s = jnp.array(
+            [
+                [0, 0],
+                [1, 0],
+                [0, 2],
+                [3, 1],
+            ],
+            dtype=global_defs.DT_SAMPLES,
+        )
+
+        anti = op.Creation(0, "up") * op.Creation(1, "down") + op.Creation(
+            1, "down"
+        ) * op.Creation(0, "up")
+
+        sp, mat_els = anti.get_conn_elements(s, s.shape[0])
+        loc = jnp.sum(mat_els, axis=1)
+
+        self.assertTrue(jnp.allclose(loc, jnp.zeros(s.shape[0])))
+
+    def test_spinful_hubbard_dense_matrix(self):
+        L_chain = 4
+        t = 1.0
+        U = 4.0
+        mu = U / 2
+
+        h = 0
+        for site in range(L_chain):
+            nbr = (site + 1) % L_chain
+            for spin in ("down", "up"):
+                h += t * op.Creation(nbr, spin) * op.Annihilation(site, spin)
+                h += t * op.Creation(site, spin) * op.Annihilation(nbr, spin)
+            h += U * op.Number(site, "up") * op.Number(site, "down")
+            h += -mu * (op.Number(site, "up") + op.Number(site, "down"))
+
+        dim = 4**L_chain
+        configs = [_spinful_config_from_state(state, L_chain) for state in range(dim)]
+        H_jvmc = _dense_matrix_from_operator(h, configs, _spinful_state_from_config)
+        H_ref = _reference_spinful_hubbard(L_chain, t, U, mu)
+        self.assertTrue(np.allclose(H_jvmc, H_ref))
+
+    ########################################################################
+    # spinless fermionic operators
+    ########################################################################
+    def test_spinless_fermionic_onsite_anticommutators(self):
+        anti = op.Creation(0) * op.Annihilation(0) + op.Annihilation(0) * op.Creation(0)
+        sp, mat_els = anti.get_conn_elements(
+            jnp.array([[0], [1]], dtype=global_defs.DT_SAMPLES), distribute(2)
+        )
+        loc = jnp.sum(mat_els, axis=1)
+        self.assertTrue(jnp.allclose(loc, jnp.ones(2)))
+
+    def test_spinless_fermionic_intersite_anticommutator(self):
+        s = jnp.array(
+            [
+                [0, 0],
+                [1, 0],
+            ],
+            dtype=global_defs.DT_SAMPLES,
+        )
+
+        anti = op.Creation(0) * op.Creation(1) + op.Creation(1) * op.Creation(0)
+
+        _, mat_els = anti.get_conn_elements(s, distribute(s.shape[0]))
+        loc = jnp.sum(mat_els, axis=1)
+
+        self.assertTrue(jnp.allclose(loc, jnp.zeros(s.shape[0])))
+
+    def test_spinless_tv_dense_matrix(self):
+        L_chain = 4
+        t = 1.0
+        V = 4.0
+        mu = V / 2
+
+        h = 0
+        for site in range(L_chain):
+            nbr = (site + 1) % L_chain
+            h += t * op.Creation(nbr) * op.Annihilation(site)
+            h += t * op.Creation(site) * op.Annihilation(nbr)
+            h += V * op.Number(site) * op.Number(nbr)
+            h += -mu * op.Number(site)
+
+        dim = 2**L_chain
+        configs = [_spinless_config_from_state(state, L_chain) for state in range(dim)]
+        H_jvmc = _dense_matrix_from_operator(h, configs, _spinless_state_from_config)
+        H_ref = _reference_spinless_tv(L_chain, t, V, mu)
+
+        self.assertTrue(np.allclose(H_jvmc, H_ref))
+
+    def test_O_loc_same_operator_different_states(self):
+        L = 6
+        make_H = lambda: sum(
+            -1.0 * op.SigmaZ(i) * op.SigmaZ((i + 1) % L) - 0.7 * op.SigmaX(i)
+            for i in range(L)
+        )
+        s = random.randint(KEY, (NUM_SAMPLES, L), 0, 2).astype(global_defs.DT_SAMPLES)
+        # Different architectures and batch sizes, so the operator must not reuse
+        # the function compiled for the first state
+        psi_a = NQS(nets.CpxRBM(num_hidden=4, bias=True), L, 8, seed=1)
+        psi_b = NQS(nets.CpxRBM(num_hidden=8, bias=True), L, 4, seed=2)
+        psi_c = NQS(
+            nets.CpxRBM(num_hidden=4, bias=True),
+            L,
+            8,
+            seed=3,
+            orbit=square_translation_symmetry(L, 1, "spin"),
+        )
+
+        H = make_H()
+        for psi in (psi_a, psi_b, psi_c, psi_a):
+            O_loc = H.get_O_loc(s, psi)
+            O_loc_ref = make_H().get_O_loc(s, psi)
+            self.assertTrue(np.allclose(O_loc, O_loc_ref))
+
+    def test_callable_prefactors(self):
+        t = 0.3
+        f = lambda t, **kwargs: jnp.cos(t)
+        g = lambda t, **kwargs: 1 + t**2
+        cos_t = float(np.cos(t))
+        s = jnp.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=global_defs.DT_SAMPLES)
+
+        # f multiplies several strings, twice in one of them
+        h = (
+            f * op.SigmaX(0)
+            + g * (f * op.SigmaZ(0) * op.SigmaZ(1))
+            + f * (f * op.SigmaY(1))
+            + 0.5 * op.SigmaZ(1)
+        )
+        h_ref = (
+            cos_t * op.SigmaX(0)
+            + (1 + t**2) * cos_t * op.SigmaZ(0) * op.SigmaZ(1)
+            + cos_t**2 * op.SigmaY(1)
+            + 0.5 * op.SigmaZ(1)
+        )
+
+        sp, mat_els = h.get_conn_elements(s, distribute(s.shape[0]), t=t)
+        sp_ref, mat_els_ref = h_ref.get_conn_elements(s, distribute(s.shape[0]))
+        self.assertTrue(np.array_equal(sp, sp_ref))
+        self.assertTrue(np.allclose(mat_els, mat_els_ref))
+
+    def test_repeated_sites_dense_matrix(self):
+        L_chain = 3
+        X = np.array([[0, 1], [1, 0]])
+        Y = np.array([[0, -1j], [1j, 0]])
+        Z = np.diag([1, -1])
+        P = np.array([[0, 1], [0, 0]])
+        on = lambda site, A: _site_matrix(L_chain, site, A)
+
+        # Strings acting more than once on the same site
+        h = (
+            op.SigmaX(0) * op.SigmaX(0)
+            + 0.5 * op.SigmaPlus(1) * op.SigmaX(1) * op.SigmaMinus(1)
+            + op.SigmaX(2) * op.SigmaZ(2) * op.SigmaX(0) * op.SigmaY(2)
+            + 0.3 * op.SigmaZ(1) * op.SigmaZ(1)
+        )
+        H_ref = (
+            on(0, X) @ on(0, X)
+            + 0.5 * on(1, P) @ on(1, X) @ on(1, P.T)
+            + on(2, X) @ on(2, Z) @ on(0, X) @ on(2, Y)
+            + 0.3 * on(1, Z) @ on(1, Z)
+        )
+
+        basis = jnp.asarray(
+            list(product((0, 1), repeat=L_chain)), dtype=global_defs.DT_SAMPLES
+        )
+        self.assertTrue(np.allclose(h.to_dense(basis), H_ref))
+
+    def test_pauli_and_ladder_operators_dense_matrix(self):
+        X = np.array([[0, 1], [1, 0]])
+        Y = np.array([[0, -1j], [1j, 0]])
+        Z = np.diag([1, -1])
+        basis = jnp.asarray([[0], [1]], dtype=global_defs.DT_SAMPLES)
+        dense = lambda operator: np.asarray(operator.to_dense(basis))
+
+        self.assertTrue(np.allclose(dense(op.SigmaX(0)), X))
+        self.assertTrue(np.allclose(dense(op.SigmaY(0)), Y))
+        self.assertTrue(np.allclose(dense(op.SigmaZ(0)), Z))
+        self.assertTrue(np.allclose(dense(op.SigmaPlus(0)), (X + 1j * Y) / 2))
+        self.assertTrue(np.allclose(dense(op.SigmaMinus(0)), (X - 1j * Y) / 2))
         self.assertTrue(
-            jnp.allclose(
-                jnp.concatenate(
-                    (out_dict["same_site"]['variance'],
-                     out_dict["distinct_site"]['variance'])),
-                        jnp.array([0.,0.,0.,0.]),
-                        rtol=1e-15)
+            np.allclose(
+                dense(
+                    op.SigmaPlus(0) * op.SigmaMinus(0)
+                    - op.SigmaMinus(0) * op.SigmaPlus(0)
+                ),
+                Z,
             )
-        
+        )
 
-        t = - 1.0 # hopping
-        mu = -2.0 # chemical potential
-        V = 4.0 # interaction
-        L = 4   # number of sites
-        flavour = 2 # number of flavours
-        flavourL = flavour*L # number of spins times sites
+    def test_spinless_fermionic_strings_dense_matrix(self):
+        L_chain = 4
+        # Jordan-Wigner: the sign counts the occupied sites to the right
+        c = lambda site: _site_matrix(
+            L_chain, site, np.array([[0, 1], [0, 0]]), np.diag([1, -1])
+        )
+        cd = lambda site: c(site).T
 
-        # initalize the Hamitonian
-        hamiltonian = op.BranchFreeOperator()
-        # impurity definitions
-        site1UP = 0
-        site1DO = flavourL-1#//flavour
-        # loop over the 1d lattice
-        for i in range(0,flavourL//flavour):
-            # interaction
-            hamiltonian.add(op.scal_opstr( V, ( op.number(site1UP + i) , op.number(site1DO - i) ) ) )
-            # chemical potential
-            hamiltonian.add(op.scal_opstr(mu , ( op.number(site1UP + i) ,) ) )
-            hamiltonian.add(op.scal_opstr(mu , ( op.number(site1DO - i) ,) ) )
-            if i == flavourL//flavour-1:
-                continue
-            # up chain hopping
-            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1UP + i + 1), op.annihilation(site1UP + i) ,  ) ) )
-            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1UP + i), op.annihilation(site1UP + i + 1) ,  ) ) )
-            # down chain hopping
-            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1DO - i - 1), op.annihilation(site1DO - i) ,  ) ) )
-            hamiltonian.add(op.scal_opstr( t, ( op.creation(site1DO - i), op.annihilation(site1DO - i - 1) ,  ) ) )
+        # Strings acting more than once on the same site, between and around other sites
+        h = (
+            op.Creation(0) * op.Annihilation(2) * op.Creation(2) * op.Annihilation(1)
+            + 0.5
+            * op.Creation(1)
+            * op.Annihilation(1)
+            * op.Creation(3)
+            * op.Annihilation(0)
+            + 0.7
+            * op.Annihilation(3)
+            * op.Creation(0)
+            * op.Annihilation(0)
+            * op.Creation(2)
+            + 1.3 * op.Creation(2) * op.Number(1) * op.Annihilation(3)
+        )
+        H_ref = (
+            cd(0) @ c(2) @ cd(2) @ c(1)
+            + 0.5 * cd(1) @ c(1) @ cd(3) @ c(0)
+            + 0.7 * c(3) @ cd(0) @ c(0) @ cd(2)
+            + 1.3 * cd(2) @ cd(1) @ c(1) @ c(3)
+        )
 
-        b = np.loadtxt("tests/data_ref/fermion_ref.txt", dtype=np.complex128)
-        chi_model = Target(L=flavourL, d=2)
-        chi = NQS(chi_model)
-        chi(jnp.array(jnp.ones((1, 1, flavourL))))
-        chi.set_parameters(b)
-        chiSampler = jVMC.sampler.ExactSampler(chi, (flavourL,))
-        s, logPsi, p = chiSampler.sample()
-        sPrime, _ = hamiltonian.get_s_primes(s)
-        Oloc = hamiltonian.get_O_loc(s, chi, logPsi)
-        Omean = jVMC.mpi_wrapper.global_mean(Oloc,p)
-
-        self.assertTrue(jnp.allclose(Omean, -9.95314531))
-        
-    def test_opstr(self):
-        op1 = op.Sz(3)
-        op2 = op.Sx(5)
-
-        opstr1 = 13. * op1 * op2
-        opstr2 = 1.j * opstr1 * op1
-
-        self.assertTrue(jnp.allclose(opstr2[0](), 13.j))
-        for o in opstr2[1:]:
-            self.assertTrue(isinstance(o, (op.LocalOp, dict)))
+        basis = jnp.asarray(
+            list(product((0, 1), repeat=L_chain)), dtype=global_defs.DT_SAMPLES
+        )
+        self.assertTrue(np.allclose(h.to_dense(basis), H_ref))
 
 
 if __name__ == "__main__":

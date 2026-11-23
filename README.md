@@ -7,9 +7,11 @@ This is an impementation of Variational Monte Carlo (VMC) for quantum many-body 
 
 1. [Documentation](#documentation)
 2. [Installation](#installation)
-3. [Online example](#online-example)
-4. [Important gotchas](#important-gotchas)
-5. [Citing jVMC](#citing-jvmc)
+3. [Migrating from jVMC 1.x](#migrating-from-jvmc-1x)
+4. [Using jVMC with AI coding agents](#using-jvmc-with-ai-coding-agents)
+5. [Online example](#online-example)
+6. [Important gotchas](#important-gotchas)
+7. [Citing jVMC](#citing-jvmc)
 
 Please report bugs as well as other issues or suggestions on our [issues page](https://github.com/markusschmitt/vmc_jax/issues).
 
@@ -25,9 +27,11 @@ Documentation is available [here](https://jvmc.readthedocs.io/en/latest/ "Docume
 
 To install jVMC with GPU support, use
 
-        pip install jVMC[gpu]
+        pip install jVMC[cuda12]
 
-This is assuming, that `jax[cuda12]` will work for you (see the [JAX documentation](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier)).
+or ``pip install jVMC[cuda13]`` depending on your CUDA version. This is assuming, that `jax[cuda12]`/`jax[cuda13]` will work for you (see the [JAX documentation](https://docs.jax.dev/en/latest/installation.html#pip-installation-nvidia-gpu-cuda-installed-via-pip-easier)), and additionally installs `jaxmg` for distributed linear algebra across multiple GPUs.
+
+On a cluster where CUDA is already provided (e.g. via an environment module) rather than pip-installed, use the ``-local`` variant instead, e.g. ``pip install jVMC[cuda12-local]`` or ``pip install jVMC[cuda13-local]``.
 
 ### Option 2: Clone and ``pip``-install for development
 
@@ -43,6 +47,19 @@ This is assuming, that `jax[cuda12]` will work for you (see the [JAX documentati
 Test that everything worked, e.g. run 'python -c "import jVMC"' from a place different than ``vmc_jax``.
 
 
+## Migrating from jVMC 1.x
+
+jVMC 2.0 changes most of the API. See [MIGRATION.md](MIGRATION.md) for what changed and how to port existing scripts.
+
+## Using jVMC with AI coding agents
+
+The folder [`skills/jvmc`](skills/jvmc/SKILL.md) is an [Agent Skill](https://agentskills.io) that teaches coding agents how to use jVMC 2.0. Without it, agents tend to write code for the 1.x API. To install it for Claude Code, copy the folder into your skills directory, using the tag of the jVMC version you have installed:
+
+        git clone --depth 1 --branch <version tag> https://github.com/computational-quantum-science/jvmc-2.0.git jvmc-src
+        cp -r jvmc-src/skills/jvmc ~/.claude/skills/
+
+Use `<your project>/.claude/skills/` instead of `~/.claude/skills/` to enable it for one project only. For other agents, copy the folder into their skills directory.
+
 ## Online example
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/markusschmitt/vmc_jax/blob/master/examples/ex0_ground_state_search.ipynb)
@@ -51,7 +68,7 @@ Click on the badge above to open a notebook that implements an exemplary ground 
 
 ## Important gotchas
 ### Out-of-memory issues and batching
-Memory requirements grow with increasing network sizes. To avoid out-of-memory issues, the ``batchSize`` parameter of the ``NQS`` class has to be adjusted. The ``batchSize`` indicates on how many input configurations the network is evaluated concurrently. Out-of-memory issues are usually resolved by reducing this number. The ``numChains`` parameter of the ``Sampler`` class for Markov Chain Monte Carlo sampling plays a similar role, but its optimal values in terms of computational speed are typically not memory critical.
+Memory requirements grow with increasing network sizes. To avoid out-of-memory issues, the ``batch_size`` parameter of the ``NQS`` class has to be adjusted. The ``batch_size`` indicates on how many input configurations the network is evaluated concurrently. Out-of-memory issues are usually resolved by reducing this number. The ``num_chains`` parameter of the ``Sampler`` class for Markov Chain Monte Carlo sampling plays a similar role, but its optimal values in terms of computational speed are typically not memory critical.
 
 ## Citing jVMC
 

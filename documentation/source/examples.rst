@@ -1,21 +1,23 @@
 .. _Examples:
 
-Example applications
---------------------
+Examples
+========
+
+These notebooks are in the ``examples`` folder of the repository and are shown here with their
+saved outputs. To run them, install the plotting and reference packages they use with
+``pip install "jVMC[examples]"``.
 
 .. toctree::
     :maxdepth: 1
-    :hidden:
-    :glob:
 
-    examples/*
-
-The following examples illustrate different possible applications of the jVMC codebase:
-
-    * :ref:`ex0_ground_state_search`
-    * :ref:`ex2_unitary_time_evolution`
-    * :ref:`ex3_custom_net`
-    * :ref:`ex4_benchmarks`
-    * :ref:`ex5_dissipative_Lindblad`
-    * :ref:`ex6_dissipative_Lindblad_2D`
-
+    examples/ground_state_search
+    examples/unitary_time_evolution
+    examples/custom_net
+    examples/fermions
+    examples/infidelity_optimization
+    examples/projected_time_evolution
+    examples/2dho_ground_state_search
+    examples/viteritti_vit_ground_state_search
+    examples/rwkv_ground_state_search
+    examples/rwkv2d_ground_state_search
+    examples/hidden_pfaffian_vit_ground_state_search
