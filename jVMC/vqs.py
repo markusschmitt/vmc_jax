@@ -160,7 +160,8 @@ class NQS:
         self.initialized = False
         self.seed = seed
         self.parameters = None
-
+        
+        self._isGumbel = False
         self._isGenerator = False
         if isinstance(net, collections.abc.Iterable):
             net = jVMC.nets.two_nets_wrapper.TwoNets(net)
@@ -169,6 +170,9 @@ class NQS:
         if "sample" in dir(net):
             if callable(net.sample):
                 self._isGenerator = True
+        if "_gumbel_step" in dir(net):
+            if callable(net._gumbel_step):
+                self._isGumbel = True
         self.net = net
 
         self.batchSize = batchSize
@@ -471,6 +475,9 @@ class NQS:
     def is_generator(self):
         return self._isGenerator
 
+    @property
+    def is_gumbel(self):
+        return self._isGumbel
     @property
     def params(self):
         if self.initialized:

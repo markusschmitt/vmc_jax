@@ -1,0 +1,8 @@
+{
+    "[python]": {
+        "testing.pytestEnabled": true,
+        "testing.pytestArgs": [
+            "tests"
+        ]
+    }
+}
