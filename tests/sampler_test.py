@@ -131,7 +131,7 @@ def _test_autoreg_sampling(
     num_chains = 2**16
 
     psi = NQS(net, L, num_samples, seed=1234)
-    exact_psi = NQS(net, L, 2 ** sum(L), seed=1234)
+    exact_psi = NQS(net, L, 2 ** int(np.prod(L)), seed=1234)
 
     # Set up exact sampler
     exact_sampler = sampler.ExactSampler(exact_psi)
@@ -165,7 +165,7 @@ def _test_autoreg_sampling(
     )
 
     # Compute histogram of sampled configurations
-    samples_int = state_to_int(samples)
+    samples_int = state_to_int(samples.reshape(samples.shape[0], -1))
     pmc, _ = np.histogram(samples_int, bins=np.arange(0, 17), weights=p)
     pmc = pmc / jnp.sum(pmc)
 
@@ -283,29 +283,56 @@ class TestMC(unittest.TestCase):
         _test_autoreg_sampling((rnn, rbm), self)
 
 
-#     def test_autoregressive_sampling_with_rnn2d(self):
-#         rnn = nets.RNN2DGeneral(L=2, hidden_size=5, cell="RNN", real_valued_params=True, real_valued_output=True)
-#         model = jVMC.nets.TwoNets((rnn, rnn))
-#         orbit = square_translation_symmetry(2, 2, "spin")
-#         net = orbit * model
+    def test_autoregressive_sampling_with_rnn2d(self):
+        rnn = nets.RNN2DGeneral(
+            L=2,
+            hidden_size=5,
+            cell="RNN",
+            real_valued_params=True,
+            real_valued_output=True,
+        )
 
-#         _test_autoreg_sampling(net, self, L=(4, 4))
+        _test_autoreg_sampling(rnn, self, L=(2, 2))
 
-#     def test_autoregressive_sampling_with_rnn2d_symmetric(self):
-#         rnn = nets.RNN2DGeneral(L=2, hidden_size=5, cell="RNN", real_valued_params=True, real_valued_output=True)
-#         model = jVMC.nets.TwoNets((rnn, rnn))
-#         orbit = square_translation_symmetry(2, 2, "spin")
-#         net = orbit * model
+    def test_autoregressive_sampling_with_rnn2d_symmetric(self):
+        rnn = nets.RNN2DGeneral(
+            L=2,
+            hidden_size=5,
+            cell="RNN",
+            real_valued_params=True,
+            real_valued_output=True,
+        )
+        model = jVMC.nets.TwoNets((rnn, rnn))
+        orbit = square_translation_symmetry(2, 2, "spin")
+        net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
 
-#         _test_autoreg_sampling(net, self, L=(4, 4))
+        _test_autoreg_sampling(net, self, L=(2, 2))
 
-#     def test_autoregressive_sampling_with_lstm2d(self):
-#         rnn = nets.RNN2DGeneral(L=2, hidden_size=5, cell="LSTM", real_valued_params=True, real_valued_output=True)
-#         model = jVMC.nets.TwoNets((rnn, rnn))
-#         orbit = square_translation_symmetry(2, 2, "spin")
-#         net = orbit * model
+    def test_autoregressive_sampling_with_lstm2d(self):
+        rnn = nets.RNN2DGeneral(
+            L=2,
+            hidden_size=5,
+            cell="LSTM",
+            real_valued_params=True,
+            real_valued_output=True,
+        )
+        model = jVMC.nets.TwoNets((rnn, rnn))
+        orbit = square_translation_symmetry(2, 2, "spin")
+        net = ProjectedOrbitNet(base_net=model, symmetry=orbit, symmetry_average="sep")
 
-#         _test_autoreg_sampling(net, self, L=(4, 4))
+        _test_autoreg_sampling(net, self, L=(2, 2))
+
+    def test_autoregressive_sampling_with_gru2d(self):
+        rnn = nets.RNN2DGeneral(
+            L=2,
+            hidden_size=5,
+            cell="GRU",
+            real_valued_params=True,
+            real_valued_output=True,
+        )
+        rbm = nets.RBM(num_hidden=2, bias=False)
+
+        _test_autoreg_sampling((rnn, rbm), self, L=(2, 2))
 
 
 class TestAcceptanceRatio(unittest.TestCase):

@@ -80,7 +80,7 @@ class RNN1DGeneral(nn.Module):
         * ``init_scale``: factor by which the initial parameters are scaled
         * ``log_prob_factor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
         * ``real_valued_output``: Boolean indicating whether the network output is a real or complex number.
-        * ``real_valued_params``: Boolean indicating whether the network parameters are real or complex parameters.
+        * ``real_valued_params``: Boolean indicating whether the network parameters are real or complex parameters. Complex parameters are not supported.
         * ``cell``: String ("RNN", "LSTM", or "GRU") or custom definition indicating which type of cell to use for hidden state  transformations.
 
     """
@@ -97,12 +97,8 @@ class RNN1DGeneral(nn.Module):
     cell: Union[str, list] = "RNN"
 
     def setup(self):
-        if (
-            isinstance(self.cell, str)
-            and self.cell != "RNN"
-            and not self.real_valued_params
-        ):
-            raise ValueError("Complex parameters for LSTM/GRU not yet implemented.")
+        if not self.real_valued_params:
+            raise ValueError("Complex parameters are not supported.")
 
         if self.real_valued_params:
             self.dtype = global_defs.DT_PARAMS_REAL

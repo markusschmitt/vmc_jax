@@ -53,7 +53,7 @@ class RNNCellStack(nn.Module):
 
 class RNN2DGeneral(nn.Module):
     """
-    Implementation of a multi-layer RNN for one-dimensional data with arbitrary cell.
+    Implementation of a multi-layer RNN for two-dimensional data with arbitrary cell.
     This implementation follows approximately the original proposal for RNN wave functions in
     `Hibat-Allah et al., Phys. Rev. Research 2, 023358 (2020) <https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.2.023358>`_.
 
@@ -84,7 +84,7 @@ class RNN2DGeneral(nn.Module):
         * ``init_scale``: factor by which the initial parameters are scaled
         * ``log_prob_factor``: factor defining how output and associated sample probability are related. 0.5 for pure states and 1 for POVMs.
         * ``real_valued_output``: Boolean indicating whether the network output is a real or complex number.
-        * ``real_valued_params``: Boolean indicating whether the network parameters are real or complex parameters.
+        * ``real_valued_params``: Boolean indicating whether the network parameters are real or complex parameters. Complex parameters are not supported.
         * ``cell``: String ("RNN", "LSTM", or "GRU") or custom definition indicating which type of cell to use for hidden state  transformations.
 
     """
@@ -101,6 +101,9 @@ class RNN2DGeneral(nn.Module):
     cell: Union[str, list] = "RNN"
 
     def setup(self):
+        if not self.real_valued_params:
+            raise ValueError("Complex parameters are not supported.")
+
         if self.real_valued_params:
             self.dtype = global_defs.DT_PARAMS_REAL
             self.init_function = jax.nn.initializers.variance_scaling(
@@ -114,9 +117,6 @@ class RNN2DGeneral(nn.Module):
             self.init_function = jVMC.nets.initializers.cplx_variance_scaling
 
         if isinstance(self.cell, str):
-            if self.cell in ["LSTM", "GRU"] and not self.real_valued_params:
-                ValueError("Complex parameters for LSTM/GRU not yet implemented.")
-
             self.zero_carry = jnp.zeros(
                 (self.L, self.depth, 1, self.hidden_size), dtype=self.dtype
             )
@@ -139,7 +139,7 @@ class RNN2DGeneral(nn.Module):
                     GRUCell(features=self.hidden_size) for _ in range(self.depth)
                 ]
             else:
-                ValueError("Cell name not recognized.")
+                raise ValueError("Cell name not recognized.")
         else:
             self.cells = self.cell[0]
             self.zero_carry = self.cell[1]
@@ -172,17 +172,25 @@ class RNN2DGeneral(nn.Module):
 
         return (self.log_prob_factor * jax.nn.log_softmax(amp)).transpose() + phase
 
+    def _initial_carry(self, axis_marker, zero_carry, input_shape):
+        # Same method as in the RWKV to make the input device-varying, otherwise it doesn't work with shard_map
+        axis_marker = jnp.asarray(axis_marker, dtype=jnp.int32) * jnp.asarray(
+            0, dtype=jnp.int32
+        )
+        return (zero_carry + axis_marker, jnp.zeros(input_shape) + axis_marker)
+
     def reverse_line(self, line, b):
         return jax.lax.cond(b == 1, lambda z: z, lambda z: jnp.flip(z, 0), line)
 
     def __call__(self, x):
+        x = jnp.asarray(x, dtype=jnp.int32)
         # Scan directions for zigzag path
         direction = np.ones(self.L, dtype=np.int32)
         direction[1::2] = -1
         direction = jnp.asarray(direction)
         _, probs = self.rnn_cell_V(
-            (self.zero_carry, jnp.zeros((self.L, self.input_dim), dtype=np.int32)),
-            (jax.nn.one_hot(x, self.input_dim, dtype=np.int32), direction),
+            self._initial_carry(x[0, 0], self.zero_carry, (self.L, self.input_dim)),
+            (jax.nn.one_hot(x, self.input_dim), direction),
         )
         return jnp.sum(probs)
 
@@ -191,12 +199,12 @@ class RNN2DGeneral(nn.Module):
     )
     def rnn_cell_V(self, carry, x):
         _, out = self.rnn_cell_H(
-            self.zero_carry[0],
+            self._initial_carry(x[0][0, 0], self.zero_carry[0], ())[0],
             (
                 self.reverse_line(carry[0], x[1]),
                 jnp.concatenate(
                     (
-                        jnp.zeros((1, self.input_dim), dtype=np.int32),
+                        jnp.zeros((1, self.input_dim)),
                         self.reverse_line(x[0], x[1]),
                     ),
                     axis=0,
@@ -226,7 +234,8 @@ class RNN2DGeneral(nn.Module):
 
         my_keys = jax.random.split(key, self.L)
         _, sample = self.rnn_cell_V_sample(
-            (self.zero_carry, jnp.zeros((self.L, self.input_dim))), (my_keys, direction)
+            self._initial_carry(key[0], self.zero_carry, (self.L, self.input_dim)),
+            (my_keys, direction),
         )
         return sample
 
@@ -236,7 +245,7 @@ class RNN2DGeneral(nn.Module):
     def rnn_cell_V_sample(self, carry, x):
         keys = jax.random.split(x[0], self.L)
         _, out = self.rnn_cell_H_sample(
-            (self.zero_carry[0], jnp.zeros(self.input_dim)),
+            self._initial_carry(x[0][0], self.zero_carry[0], self.input_dim),
             (
                 self.reverse_line(carry[0], x[1]),
                 self.reverse_line(carry[1], x[1]),

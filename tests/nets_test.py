@@ -69,27 +69,6 @@ class TestProjectedOrbitNet(unittest.TestCase):
 
 
 class TestCpxNet(unittest.TestCase):
-    def test_cpx_rnn_1d(self):
-        rnn = nets.RNN1DGeneral(L=5, real_valued_params=False)
-        params = rnn.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
-
-        S0 = jnp.array([1, 0, 1, 1, 0])
-        psi_s0 = rnn.apply(params, S0)
-        self.assertTrue(psi_s0.dtype == np.complex128)
-
-    # def test_cpx_rnn_2d(self):
-    #     rnn = nets.RNN2DGeneral(L=4, real_valued_params=False)
-    #     params = rnn.init(random.PRNGKey(0), jnp.zeros((4, 4), dtype=np.int32))
-
-    #     S0 = jnp.array(
-    #         [[1, 0, 1, 1],
-    #          [0, 1, 1, 1],
-    #          [0, 0, 1, 0],
-    #          [1, 0, 0, 1]]
-    #     )
-    #     psi_s0 = rnn.apply(params, S0)
-    #     self.assertTrue(psi_s0.dtype == np.complex128)
-
     def test_cpx_cnn_1d(self):
         cnn = nets.CpxCNN(F=(4,), channels=[3, 2, 5])
         params = cnn.init(random.PRNGKey(0), jnp.zeros((5,), dtype=np.int32))
